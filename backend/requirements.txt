@@ -5,3 +5,5 @@ python-multipart==0.0.9
 SQLAlchemy==2.0.35
 pydantic==2.9.2
 pandas==2.2.3
+anthropic>=1.0.0
+python-dotenv==1.0.1

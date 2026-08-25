@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, SYNTHETIC_P2P_DIR
+from app.config import AI_MAPPER, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, SYNTHETIC_P2P_DIR
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
 from app.models import (
@@ -26,7 +26,7 @@ from app.models import (
     SourceSystem,
 )
 from app import state
-from app.services.ai_mapping import HeuristicAIMapper
+from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.services.transformation import build_ocel, compile_defs
 from app.services.validation import run_data_quality_checks
 
@@ -37,6 +37,12 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 OUTPUT_DIR = DATA_DIR / "output"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _get_ai_mapper() -> AIMapper:
+    if AI_MAPPER == "claude":
+        return ClaudeAIMapper()
+    return HeuristicAIMapper()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -121,8 +127,10 @@ async def handle_upload(
     tables_schema = connector.discover_schema()
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
 
-    mapper = HeuristicAIMapper()
+    mapper = _get_ai_mapper()
     proposals = mapper.propose_mapping(tables_schema, sess["context"])
+    mapper_label = "Claude (LLM reale)" if AI_MAPPER == "claude" else "euristica mock"
+    dataset_label = f"{dataset_label} · AI Mapping Service: {mapper_label}"
 
     rows = []
     for i, p in enumerate(proposals):

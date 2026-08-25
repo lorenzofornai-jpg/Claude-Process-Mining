@@ -12,7 +12,7 @@ generazione del log OCEL 2.0 e Data Quality report.
 |---|---|
 | A. Contestualizzazione | `templates/context.html`, `POST /ingestion/new` |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
-| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper` + mock `HeuristicAIMapper`) |
+| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |
 | G. Salvataggio config + run | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
 
@@ -36,16 +36,42 @@ uvicorn app.main:app --reload
 Apri `http://127.0.0.1:8000` e segui il wizard: Contesto → Dati sorgente
 (seleziona "usa dataset sintetico") → Revisione mapping → Risultato.
 
+### AI Mapping Service reale (Claude) invece del mock
+
+Di default l'app usa `HeuristicAIMapper` (nessuna chiamata esterna). Per
+usare `ClaudeAIMapper` (vera chiamata all'API Anthropic, structured output
+via `client.messages.parse`), crea `backend/.env` (mai committato, è in
+`.gitignore`):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+AI_MAPPER=claude
+```
+
+`ANTHROPIC_MODEL` (opzionale, default `claude-opus-5`) per cambiare modello.
+`ClaudeAIMapper` non ha nessuna conoscenza precodificata delle tabelle P2P
+(a differenza del mock, che usa il template `genericfile_p2p_v1`): ragiona
+da zero su nomi tabella/colonna, tipi, valori di esempio e Process Context
+Profile — lo stesso materiale che avrebbe un revisore umano.
+
+**Testato con una vera chiamata**: su questo dataset, Claude ha coperto
+tutte le 29 colonne, riconosciuto correttamente chiavi/timestamp/relazioni,
+ed è arrivato persino a proporre un 5° tipo oggetto (`Vendor`, separato da
+`PurchaseOrder`) che l'euristica mock non modella — segno di un ragionamento
+reale, non di un pattern-matching precotto. Ha anche nominato gli event type
+in modo diverso dal mock (`"PO Created"` invece di `"Create Purchase
+Order"`), il che ha fatto emergere un bug reale nel Data Quality Engine:
+due check avevano il nome dell'evento di creazione hardcoded. Corretto
+facendo leva sul qualifier `"involves"` (assegnato dal Transformation Engine
+al collegamento evento→oggetto nativo) invece che sul nome dell'event type
+— i check ora sono indipendenti da come l'AI Mapping Service, mock o reale,
+decide di chiamare gli eventi.
+
 ## Semplificazioni deliberate di questo prototipo
 
 Sono scelte fatte per avere qualcosa di testabile subito, non limiti
 strutturali del disegno:
 
-- **AI Mapping Service è un mock euristico** (`HeuristicAIMapper`), non una
-  vera chiamata LLM: nessuna `ANTHROPIC_API_KEY` era disponibile in questo
-  ambiente. L'interfaccia `AIMapper.propose_mapping(...)` è pensata apposta
-  per essere implementata da un `ClaudeAIMapper` senza toccare il resto
-  della pipeline (review UI, transformation engine).
 - **Solo relazioni E2O** (event-to-object), non O2O: per la process
   discovery multi-oggetto sono le E2O a fare il lavoro; le O2O restano nello
   schema dati come possibilità futura.

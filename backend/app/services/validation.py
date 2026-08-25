@@ -13,6 +13,18 @@ from datetime import datetime
 
 from app.services.transformation import SkipRecord
 
+# Object type scelto come "case notion" per questi check (P2P: l'ordine d'acquisto).
+# Semplificazione nota: in questo prototipo è fisso; una piattaforma multi-processo
+# lo renderebbe configurabile per Ingestion Config.
+CASE_OBJECT_TYPE = "PurchaseOrder"
+
+# Qualifier assegnato dal Transformation Engine al collegamento evento->oggetto
+# "nativo" (evento generato dalla stessa riga/tabella che ha creato l'oggetto).
+# Usarlo invece del nome dell'event type rende i check indipendenti da come
+# l'AI Mapping Service (mock o LLM reale) ha chiamato l'evento di creazione:
+# un mapper diverso puo' chiamarlo "Create Purchase Order", "PO Created", ecc.
+HOME_QUALIFIER = "involves"
+
 
 def _check_missing_timestamps(skip_log: list[SkipRecord]) -> dict:
     by_type = defaultdict(int)
@@ -30,13 +42,12 @@ def _check_missing_timestamps(skip_log: list[SkipRecord]) -> dict:
 
 
 def _check_events_before_case_start(ocel: dict) -> dict:
+    prefix = f"{CASE_OBJECT_TYPE}:"
     case_start: dict[str, datetime] = {}
     for e in ocel["events"]:
-        if e["type"] != "Create Purchase Order":
-            continue
         t = datetime.strptime(e["time"], "%Y-%m-%dT%H:%M:%SZ")
         for rel in e["relationships"]:
-            if rel["objectId"].startswith("PurchaseOrder:"):
+            if rel["qualifier"] == HOME_QUALIFIER and rel["objectId"].startswith(prefix):
                 case_start[rel["objectId"]] = min(t, case_start.get(rel["objectId"], t))
 
     violations = []
@@ -73,15 +84,15 @@ def _check_orphan_objects(ocel: dict) -> dict:
 
 
 def _check_case_without_creation_event(ocel: dict) -> dict:
-    po_ids = {o["id"] for o in ocel["objects"] if o["type"] == "PurchaseOrder"}
+    po_ids = {o["id"] for o in ocel["objects"] if o["type"] == CASE_OBJECT_TYPE}
     created_ids = {
         rel["objectId"]
-        for e in ocel["events"] if e["type"] == "Create Purchase Order"
-        for rel in e["relationships"] if rel["qualifier"] == "involves"
+        for e in ocel["events"]
+        for rel in e["relationships"] if rel["qualifier"] == HOME_QUALIFIER
     }
     missing = sorted(po_ids - created_ids)
     return {
-        "check_name": "PurchaseOrder senza evento di creazione",
+        "check_name": f"{CASE_OBJECT_TYPE} senza evento di creazione",
         "severity": "error",
         "passed": len(missing) == 0,
         "details": ", ".join(missing) if missing else "ogni PurchaseOrder ha il proprio evento di creazione",

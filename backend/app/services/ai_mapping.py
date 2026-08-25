@@ -19,10 +19,15 @@ Due percorsi dimostrati deliberatamente:
 """
 from __future__ import annotations
 
+import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Literal, Optional
 
+from pydantic import BaseModel
+
+from app.config import ANTHROPIC_MODEL
 from app.connectors.base import TableSchema
 from app.services import catalog
 
@@ -214,3 +219,131 @@ class HeuristicAIMapper(AIMapper):
 
 def out_has_timestamp(proposals: list[MappingProposal], table_name: str) -> bool:
     return any(p.source_table == table_name and p.ocel_element == "event_type.timestamp" for p in proposals)
+
+
+# ---------------------------------------------------------------------------
+# ClaudeAIMapper: implementazione reale con una chiamata LLM, stessa
+# interfaccia di HeuristicAIMapper. A differenza del mock non ha nessuna
+# conoscenza precodificata delle tabelle P2P: ragiona da zero su nomi
+# tabella/colonna, tipi inferiti, valori di esempio e Process Context
+# Profile - lo stesso materiale che avrebbe un revisore umano.
+# ---------------------------------------------------------------------------
+
+class LLMFieldMapping(BaseModel):
+    source_table: str
+    source_column: str
+    ocel_element: Literal[
+        "object_type.key", "object_type.attribute",
+        "event_type.timestamp", "event_type.attribute", "e2o_relationship",
+    ]
+    object_type: Optional[str] = None
+    event_type: Optional[str] = None
+    attribute_name: Optional[str] = None
+    qualifier: Optional[str] = None
+    related_object_type: Optional[str] = None
+    confidence: float
+    rationale: str
+
+
+class LLMMappingResponse(BaseModel):
+    proposals: list[LLMFieldMapping]
+
+
+_MAPPING_SYSTEM_PROMPT = """\
+Sei l'AI Mapping Service di una piattaforma enterprise di process mining.
+Il tuo compito e' proporre, per OGNI colonna di OGNI tabella sorgente ricevuta, un mapping verso un
+log OCEL 2.0 (object-centric event log). Non hai accesso a documentazione esterna: ragiona solo dai
+nomi di tabella/colonna, dai tipi inferiti, dai valori di esempio, dalle statistiche (null_ratio,
+distinct_ratio) e dal contesto di processo fornito.
+
+Per ciascuna colonna scegli una o piu' di queste categorie (ocel_element) - piu' di una riga per la
+stessa colonna e' corretto quando contribuisce a piu' aspetti del modello (es. componente di chiave
+composita E relazione verso un altro oggetto):
+
+- "object_type.key": la colonna (da sola o in combinazione con altre dello stesso tipo oggetto)
+  identifica univocamente un'istanza di un tipo di oggetto di business (es. numero ordine).
+- "object_type.attribute": descrive un attributo stabile dell'oggetto (es. nome fornitore).
+- "event_type.timestamp": la colonna e' la data/ora di un evento di processo. Una tabella
+  transazionale puo' avere piu' timestamp plausibili: se cosi', proponi event type distinti,
+  ciascuno con la propria confidence, invece di sceglierne uno a caso.
+- "event_type.attribute": descrive un attributo specifico dell'occorrenza dell'evento (es. utente
+  che ha eseguito la transazione, importo di quella transazione).
+- "e2o_relationship": la colonna collega l'evento (generato dalla riga corrente) a un oggetto di un
+  ALTRO tipo (es. una fattura che referenzia l'ordine d'acquisto). In questo caso valorizza anche
+  event_type, related_object_type e un qualifier breve in inglese (es. "for order",
+  "receives against").
+
+Regole:
+- Sii onesto sulla confidence (0.0-1.0): alta (>0.85) solo se il pattern e' inequivocabile, media
+  (0.6-0.85) se plausibile ma con alternative ragionevoli, bassa (<0.6) se ambiguo o se stai
+  indovinando - in questi casi la rationale deve spiegare l'ambiguita' come faresti a un revisore
+  umano che deve decidere se accettare o correggere.
+- Non inventare colonne o tabelle che non ti sono state fornite.
+- rationale sempre in italiano, una frase sola, concreta (cita nomi di colonna/valori quando aiuta).
+- Se una tabella e' puramente anagrafica/di supporto senza una data plausibile, non forzare un
+  event_type.timestamp: assegna solo object_type.key/attribute a quella tabella.
+"""
+
+
+class ClaudeAIMapper(AIMapper):
+    """Implementazione reale via Anthropic API (stessa interfaccia del mock)."""
+
+    def __init__(self, model: str | None = None):
+        import anthropic  # import locale: il pacchetto non deve essere richiesto se non si usa questa classe
+
+        self._client = anthropic.Anthropic()
+        self._model = model or ANTHROPIC_MODEL
+
+    def propose_mapping(self, tables: list[TableSchema], context_profile: dict) -> list[MappingProposal]:
+        payload = {
+            "process_context": context_profile,
+            "tables": [
+                {
+                    "name": t.name,
+                    "row_count": t.row_count,
+                    "columns": [
+                        {
+                            "name": c.name,
+                            "inferred_type": c.inferred_type,
+                            "sample_values": c.sample_values,
+                            "null_ratio": c.null_ratio,
+                            "distinct_ratio": c.distinct_ratio,
+                        }
+                        for c in t.columns
+                    ],
+                }
+                for t in tables
+            ],
+        }
+
+        response = self._client.messages.parse(
+            model=self._model,
+            max_tokens=16000,
+            system=_MAPPING_SYSTEM_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Schema delle tabelle sorgente e contesto di processo:\n\n"
+                    + json.dumps(payload, indent=2, ensure_ascii=False)
+                ),
+            }],
+            output_format=LLMMappingResponse,
+        )
+
+        parsed = response.parsed_output
+        return [
+            MappingProposal(
+                source_table=p.source_table,
+                source_column=p.source_column,
+                ocel_element=p.ocel_element,
+                object_type=p.object_type,
+                event_type=p.event_type,
+                attribute_name=p.attribute_name,
+                qualifier=p.qualifier,
+                related_object_type=p.related_object_type,
+                confidence=p.confidence,
+                rationale=p.rationale,
+                based_on_template=None,
+            )
+            for p in parsed.proposals
+        ]
