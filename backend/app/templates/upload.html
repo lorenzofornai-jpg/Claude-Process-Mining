@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Fase B/C/D — Dati sorgente</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong> ({{ context.process_type }}).
+    Scegli come acquisire i dati: connettore file (CSV/TXT) con il dataset sintetico di test,
+    oppure carica i tuoi file.
+  </p>
+
+  <form method="post" action="/ingestion/upload" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="session_id" value="{{ session_id }}">
+
+    <div class="option-box">
+      <label class="checkbox">
+        <input type="checkbox" name="use_synthetic" value="1" checked onchange="toggleUpload(this)">
+        Usa il dataset sintetico Purchase-to-Pay (purchase_orders, po_lines, goods_receipts, invoices)
+      </label>
+    </div>
+
+    <div class="option-box" id="upload-box" style="display:none">
+      <label>Carica file CSV/TXT
+        <input type="file" name="files" multiple accept=".csv,.txt">
+      </label>
+    </div>
+
+    <button type="submit" class="primary">Avanti: proposte di mapping AI</button>
+  </form>
+</div>
+
+<script>
+function toggleUpload(checkbox) {
+  document.getElementById('upload-box').style.display = checkbox.checked ? 'none' : 'block';
+}
+</script>
+{% endblock %}

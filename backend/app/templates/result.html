@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Fase G — Log OCEL 2.0 generato</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong> ({{ context.process_type }}).
+    Ingestion Config salvata e collegata a questo processo (riusabile su altri processi
+    previa approvazione del Process Owner).
+  </p>
+
+  <div class="stat-row">
+    <div class="stat"><span class="stat-value">{{ result.stats.object_count }}</span><span class="stat-label">oggetti</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.object_types }}</span><span class="stat-label">tipi oggetto</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.event_count }}</span><span class="stat-label">eventi</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.event_types }}</span><span class="stat-label">tipi evento</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.skipped_count }}</span><span class="stat-label">righe scartate</span></div>
+    <div class="stat"><span class="stat-value">{{ result.rejected_count }}</span><span class="stat-label">mapping rifiutati</span></div>
+  </div>
+
+  <h2>Data Quality Report</h2>
+  <table class="dq-table">
+    <thead>
+      <tr><th>Check</th><th>Severità</th><th>Esito</th><th>Dettaglio</th></tr>
+    </thead>
+    <tbody>
+      {% for dq in result.dq_results %}
+      <tr>
+        <td>{{ dq.check_name }}</td>
+        <td><span class="badge badge-{{ dq.severity }}">{{ dq.severity }}</span></td>
+        <td>{{ '✓ passed' if dq.passed else '✗ ' ~ dq.affected_count ~ ' elementi coinvolti' }}</td>
+        <td class="rationale">{{ dq.details }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <a class="primary button-link" href="/ingestion/download/{{ session_id }}">Scarica log OCEL 2.0 (JSON)</a>
+    <a class="secondary button-link" href="/ingestion/new">Avvia un nuovo processo</a>
+  </div>
+</div>
+{% endblock %}

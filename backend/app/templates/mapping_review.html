@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Fase E/F — Revisione mapping AI</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}.
+    Ogni riga è una proposta dell'AI Mapping Service verso il modello OCEL 2.0: verifica la
+    <em>rationale</em>, correggi la decisione dove non ti convince, poi conferma.
+  </p>
+
+  {% if pending_count > 0 %}
+  <div class="banner warning">
+    {{ pending_count }} proposte sotto la soglia di auto-accettazione ({{ (threshold*100)|round|int }}%)
+    richiedono una decisione esplicita prima di poter generare il log OCEL.
+  </div>
+  {% else %}
+  <div class="banner ok">Tutte le proposte hanno una decisione. Puoi generare il log OCEL.</div>
+  {% endif %}
+
+  <form method="post" action="/ingestion/review">
+    <input type="hidden" name="session_id" value="{{ session_id }}">
+
+    {% for table_name, rows in by_table.items() %}
+    <section class="table-block">
+      <h2>{{ table_name }}</h2>
+      <table class="mapping-table">
+        <thead>
+          <tr>
+            <th>Colonna sorgente</th>
+            <th>Mapping proposto (target OCEL)</th>
+            <th>Confidence</th>
+            <th>Rationale</th>
+            <th>Decisione</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{{ 'row-pending' if r.status == 'proposed' else '' }}">
+            <td class="mono">{{ r.source_column }}</td>
+            <td>{{ r.target_label }}</td>
+            <td>
+              <span class="badge {{ 'badge-high' if r.confidence >= threshold else ('badge-mid' if r.confidence >= 0.6 else 'badge-low') }}">
+                {{ (r.confidence * 100)|round|int }}%
+              </span>
+              {% if r.based_on_template %}
+              <div class="tiny muted">template: {{ r.based_on_template }}</div>
+              {% endif %}
+            </td>
+            <td class="rationale">{{ r.rationale }}</td>
+            <td class="decision">
+              <label class="radio">
+                <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status == 'confirmed' else '' }}>
+                Accetta
+              </label>
+              <label class="radio">
+                <input type="radio" name="decision_{{ r.row_id }}" value="rejected" {{ 'checked' if r.status == 'rejected' else '' }}>
+                Rifiuta
+              </label>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endfor %}
+
+    <div class="actions">
+      <button type="submit" name="action" value="bulk_accept" class="secondary">
+        Accetta tutte le proposte ≥ {{ (threshold*100)|round|int }}%
+      </button>
+      <button type="submit" name="action" value="save" class="secondary">Salva decisioni</button>
+      <button type="submit" name="action" value="finalize" class="primary">
+        Conferma mapping e genera log OCEL
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

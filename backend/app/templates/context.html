@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Fase A — Contestualizzazione del processo</h1>
+  <p class="muted">
+    Poche informazioni per guidare i suggerimenti dell'AI Mapping Service nei passi successivi:
+    quale processo stai analizzando, di che tipo, e su quale perimetro.
+  </p>
+  <form method="post" action="/ingestion/new" class="form">
+    <label>Nome processo
+      <input type="text" name="process_name" placeholder="es. Purchase-to-Pay Italia 2026" required>
+    </label>
+    <label>Tipo di processo
+      <select name="process_type" required>
+        <option value="P2P">Purchase-to-Pay (P2P)</option>
+        <option value="O2C">Order-to-Cash (O2C)</option>
+        <option value="Custom">Altro / custom</option>
+      </select>
+    </label>
+    <label>Business unit (opzionale)
+      <input type="text" name="business_unit" placeholder="es. Divisione Industrial">
+    </label>
+    <div class="row">
+      <label>Periodo da
+        <input type="date" name="period_from">
+      </label>
+      <label>Periodo a
+        <input type="date" name="period_to">
+      </label>
+    </div>
+    <button type="submit" class="primary">Avanti: dati sorgente</button>
+  </form>
+</div>
+{% endblock %}
