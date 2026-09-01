@@ -1,0 +1,12 @@
+{
+  "name": "AI Process Mining - Modulo 1",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "cd backend && python -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt && .venv/bin/python scripts/generate_synthetic_p2p.py",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "AI Process Mining - Ingestion",
+      "onAutoForward": "openPreview"
+    }
+  }
+}
