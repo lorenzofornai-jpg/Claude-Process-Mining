@@ -137,6 +137,13 @@ async def handle_upload(
         d = asdict(p)
         d["row_id"] = i
         d["status"] = "confirmed" if p.confidence >= AUTO_ACCEPT_CONFIDENCE_THRESHOLD else "proposed"
+        # snapshot immutabile di cio' che l'AI ha proposto in origine: sopravvive a
+        # eventuali correzioni manuali successive, per audit trail (FieldMapping.original_ai_proposal)
+        d["original_ai_proposal"] = {
+            "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
+            "attribute_name": p.attribute_name, "qualifier": p.qualifier,
+            "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
+        }
         rows.append(d)
 
     sess["dataset_label"] = dataset_label
@@ -147,18 +154,26 @@ async def handle_upload(
     return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
 
 
+EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
+VALID_OCEL_ELEMENTS = [
+    "object_type.key", "object_type.attribute",
+    "event_type.timestamp", "event_type.attribute", "e2o_relationship",
+]
+
+
 def _target_label(r: dict) -> str:
+    v = lambda k: r.get(k) or "—"  # noqa: E731
     el = r["ocel_element"]
     if el == "object_type.key":
-        return f'Chiave oggetto → {r["object_type"]}'
+        return f'Chiave oggetto → {v("object_type")}'
     if el == "object_type.attribute":
-        return f'Attributo oggetto → {r["object_type"]}.{r["attribute_name"]}'
+        return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
     if el == "event_type.timestamp":
-        return f'Timestamp evento → "{r["event_type"]}"'
+        return f'Timestamp evento → "{v("event_type")}"'
     if el == "event_type.attribute":
-        return f'Attributo evento → "{r["event_type"]}".{r["attribute_name"]}'
+        return f'Attributo evento → "{v("event_type")}".{v("attribute_name")}'
     if el == "e2o_relationship":
-        return f'Relazione evento→oggetto → "{r["event_type"]}" —[{r["qualifier"]}]→ {r["related_object_type"]}'
+        return f'Relazione evento→oggetto → "{v("event_type")}" —[{v("qualifier")}]→ {v("related_object_type")}'
     return el
 
 
@@ -185,6 +200,7 @@ def review_page(request: Request, session_id: str):
             "by_table": by_table,
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
+            "ocel_elements": VALID_OCEL_ELEMENTS,
             "step": 3,
         },
     )
@@ -200,6 +216,20 @@ async def submit_review(request: Request, session_id: str = Form(...), action: s
         decision = form.get(f"decision_{r['row_id']}")
         if decision in ("confirmed", "rejected"):
             r["status"] = decision
+
+        changed = False
+        for field in EDITABLE_FIELDS:
+            submitted = form.get(f"field_{field}_{r['row_id']}")
+            if submitted is None:
+                continue
+            submitted = submitted.strip() or None
+            if submitted != r.get(field):
+                r[field] = submitted
+                changed = True
+        # una correzione manuale prevale sulla decisione radio: la riga resta
+        # "nel mapping" ma tracciata come intervento umano, non proposta AI accettata
+        if changed and r["status"] != "rejected":
+            r["status"] = "overridden"
 
     if action == "bulk_accept":
         for r in rows:
@@ -222,7 +252,7 @@ async def submit_review(request: Request, session_id: str = Form(...), action: s
 
 def _finalize(session_id: str, sess: dict) -> None:
     rows = sess["mapping_rows"]
-    confirmed = [r for r in rows if r["status"] == "confirmed"]
+    confirmed = [r for r in rows if r["status"] in ("confirmed", "overridden")]
 
     ocel, skip_log, stats = build_ocel(sess["tables_data"], confirmed)
     dq_results = run_data_quality_checks(ocel, skip_log)
@@ -281,14 +311,17 @@ def _finalize(session_id: str, sess: dict) -> None:
             ))
 
         for r in rows:
+            overridden = r["status"] == "overridden"
             db.add(FieldMapping(
                 ingestion_config_id=config.id,
                 source_table=r["source_table"], source_column=r["source_column"],
                 ocel_element=r["ocel_element"], object_type=r["object_type"], event_type=r["event_type"],
                 attribute_name=r["attribute_name"], qualifier=r["qualifier"],
                 related_object_type=r["related_object_type"],
-                proposal_source="ai", confidence=r["confidence"], rationale=r["rationale"],
+                proposal_source="user" if overridden else "ai",
+                confidence=r["confidence"], rationale=r["rationale"],
                 based_on_template=r["based_on_template"],
+                original_ai_proposal=r["original_ai_proposal"] if overridden else None,
                 status=r["status"], confirmed_by="admin",
             ))
 
@@ -322,7 +355,8 @@ def _finalize(session_id: str, sess: dict) -> None:
         "stats": stats,
         "dq_results": dq_results,
         "ingestion_config_id": ingestion_config_id,
-        "rejected_count": len(rows) - len(confirmed),
+        "rejected_count": sum(1 for r in rows if r["status"] == "rejected"),
+        "overridden_count": sum(1 for r in rows if r["status"] == "overridden"),
     }
 
 

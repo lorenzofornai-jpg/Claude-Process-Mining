@@ -137,9 +137,42 @@ tr.row-pending { background: #fffaf0; }
 .badge-info { background: #6b7280; }
 .badge-warning { background: var(--warn); }
 .badge-error { background: var(--error); }
+.badge-overridden { background: var(--brand); }
 
 .decision { white-space: nowrap; }
 .radio { font-size: 12.5px; margin-right: 10px; display: inline-flex; align-items: center; gap: 4px; }
+tr.row-overridden { background: #eef2fc; }
+
+.edit-mapping { margin-top: 8px; white-space: normal; }
+.edit-mapping summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--brand);
+  font-weight: 600;
+}
+.edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  background: #f8f9fb;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.edit-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.edit-fields input, .edit-fields select {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12.5px;
+}
 
 .actions { margin-top: 24px; display: flex; align-items: center; }
 

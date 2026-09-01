@@ -77,9 +77,16 @@ strutturali del disegno:
   schema dati come possibilità futura.
 - **Attributi oggetto non time-varying**: presi come snapshot, non come
   storia di cambiamenti (OCEL 2.0 lo supporterebbe).
-- **Revisione HITL solo accetta/rifiuta per riga**, non editing libero dei
-  singoli campi di mapping (il modello dati lo prevede via
-  `FieldMapping.override`, la UI no).
+- **Revisione HITL: correzione dei campi target di una proposta esistente**,
+  non creazione libera di un mapping da zero. In `mapping_review.html` ogni
+  riga ha un pannello "Modifica" (ocel_element, object_type, event_type,
+  attribute_name, qualifier, related_object_type); una modifica marca la
+  riga come `overridden` (`proposal_source="user"`), conserva la proposta
+  AI originale in `FieldMapping.original_ai_proposal` per audit, e la
+  correzione si propaga davvero fino al log OCEL generato (verificato: la
+  correzione di `invoices.payment_status` da attributo statico dell'oggetto
+  Invoice ad attributo dell'evento "Post Invoice" cambia effettivamente
+  l'OCEL prodotto).
 - **Nessuna autenticazione/ruoli**: un solo utente implicito ("admin"); i
   ruoli granulari Process Owner/Analyst/Viewer disegnati concettualmente non
   sono cablati qui.

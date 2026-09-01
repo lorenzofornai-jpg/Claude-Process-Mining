@@ -5,7 +5,8 @@
   <p class="muted">
     Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}.
     Ogni riga è una proposta dell'AI Mapping Service verso il modello OCEL 2.0: verifica la
-    <em>rationale</em>, correggi la decisione dove non ti convince, poi conferma.
+    <em>rationale</em>, correggi la decisione dove non ti convince (o modifica direttamente il
+    mapping proposto con "Modifica" se l'AI ha sbagliato target ma l'idea è giusta), poi conferma.
   </p>
 
   {% if pending_count > 0 %}
@@ -35,9 +36,12 @@
         </thead>
         <tbody>
           {% for r in rows %}
-          <tr class="{{ 'row-pending' if r.status == 'proposed' else '' }}">
+          <tr class="{{ 'row-pending' if r.status == 'proposed' else ('row-overridden' if r.status == 'overridden' else '') }}">
             <td class="mono">{{ r.source_column }}</td>
-            <td>{{ r.target_label }}</td>
+            <td>
+              {{ r.target_label }}
+              {% if r.status == 'overridden' %}<div class="tiny"><span class="badge badge-overridden">modificato</span></div>{% endif %}
+            </td>
             <td>
               <span class="badge {{ 'badge-high' if r.confidence >= threshold else ('badge-mid' if r.confidence >= 0.6 else 'badge-low') }}">
                 {{ (r.confidence * 100)|round|int }}%
@@ -49,13 +53,40 @@
             <td class="rationale">{{ r.rationale }}</td>
             <td class="decision">
               <label class="radio">
-                <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status == 'confirmed' else '' }}>
+                <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status in ('confirmed', 'overridden') else '' }}>
                 Accetta
               </label>
               <label class="radio">
                 <input type="radio" name="decision_{{ r.row_id }}" value="rejected" {{ 'checked' if r.status == 'rejected' else '' }}>
                 Rifiuta
               </label>
+              <details class="edit-mapping">
+                <summary>Modifica</summary>
+                <div class="edit-fields">
+                  <label>Tipo mapping
+                    <select name="field_ocel_element_{{ r.row_id }}">
+                      {% for opt in ocel_elements %}
+                      <option value="{{ opt }}" {{ 'selected' if r.ocel_element == opt else '' }}>{{ opt }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>Object type
+                    <input type="text" name="field_object_type_{{ r.row_id }}" value="{{ r.object_type or '' }}">
+                  </label>
+                  <label>Event type
+                    <input type="text" name="field_event_type_{{ r.row_id }}" value="{{ r.event_type or '' }}">
+                  </label>
+                  <label>Attribute name
+                    <input type="text" name="field_attribute_name_{{ r.row_id }}" value="{{ r.attribute_name or '' }}">
+                  </label>
+                  <label>Qualifier
+                    <input type="text" name="field_qualifier_{{ r.row_id }}" value="{{ r.qualifier or '' }}">
+                  </label>
+                  <label>Related object type
+                    <input type="text" name="field_related_object_type_{{ r.row_id }}" value="{{ r.related_object_type or '' }}">
+                  </label>
+                </div>
+              </details>
             </td>
           </tr>
           {% endfor %}
