@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Amministrazione</h1>
+  <p class="muted">Crea nuovi processi, crea utenti Data Engineer e assegnali ai processi.</p>
+
+  <div class="actions" style="margin-top:0">
+    <a class="primary button-link" href="/ingestion/new">+ Nuovo processo</a>
+    <a class="secondary button-link" href="/admin/users/new">+ Nuovo utente</a>
+  </div>
+
+  <h2>Processi</h2>
+  <table class="admin-table">
+    <thead>
+      <tr><th>Processo</th><th>Tipo</th><th>Creato il</th><th>Data Engineer assegnato</th><th>Assegna / riassegna</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.workspace.process_name }}</td>
+        <td>{{ row.workspace.process_type }}</td>
+        <td class="tiny muted">{{ row.workspace.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if row.assigned_user %}
+          <span class="pill">{{ row.assigned_user.name }}</span>
+          {% else %}
+          <span class="pill pill-unassigned">non assegnato</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if data_engineers %}
+          <form method="post" action="/admin/processes/{{ row.workspace.id }}/assign" class="assign-form">
+            <select name="user_id">
+              {% for de in data_engineers %}
+              <option value="{{ de.id }}" {{ 'selected' if row.assigned_user and row.assigned_user.id == de.id else '' }}>{{ de.name }} ({{ de.email }})</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="secondary">Assegna</button>
+          </form>
+          {% else %}
+          <span class="tiny muted">crea prima un utente</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Nessun processo ancora creato.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Utenti Data Engineer</h2>
+  <table class="admin-table">
+    <thead><tr><th>Nome</th><th>Email</th></tr></thead>
+    <tbody>
+      {% for de in data_engineers %}
+      <tr><td>{{ de.name }}</td><td>{{ de.email }}</td></tr>
+      {% else %}
+      <tr><td colspan="2" class="muted">Nessun Data Engineer ancora creato.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

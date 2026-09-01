@@ -19,7 +19,7 @@
   {% endif %}
 
   <form method="post" action="/ingestion/review">
-    <input type="hidden" name="session_id" value="{{ session_id }}">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     {% for table_name, rows in by_table.items() %}
     <section class="table-block">

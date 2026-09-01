@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Nuovo utente (Data Engineer)</h1>
+  <p class="muted">Crea un utente a cui potrai poi assegnare uno o più processi.</p>
+  {% if error %}
+  <div class="banner warning">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/admin/users/new" class="form">
+    <label>Nome
+      <input type="text" name="name" placeholder="es. Carlos Alcaraz" required>
+    </label>
+    <label>Email
+      <input type="email" name="email" required>
+    </label>
+    <label>Password iniziale
+      <input type="password" name="password" required minlength="8">
+    </label>
+    <button type="submit" class="primary">Crea utente</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Accedi — AI Process Mining</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="content" style="max-width:420px; margin-top:80px;">
+    <div class="card">
+      <h1>AI Process Mining</h1>
+      <p class="muted">Accedi con le tue credenziali.</p>
+      {% if error %}
+      <div class="banner warning">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/login" class="form">
+        <label>Email
+          <input type="email" name="email" required autofocus>
+        </label>
+        <label>Password
+          <input type="password" name="password" required>
+        </label>
+        <button type="submit" class="primary">Accedi</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

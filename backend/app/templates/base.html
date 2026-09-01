@@ -8,12 +8,24 @@
 <body>
   <header class="app-header">
     <div class="brand">AI Process Mining <span>Modulo 1 · Ingestion</span></div>
+    {% if step %}
     <div class="steps">
       <span class="step {{ 'active' if step == 1 else '' }}">1. Contesto</span>
       <span class="step {{ 'active' if step == 2 else '' }}">2. Dati sorgente</span>
       <span class="step {{ 'active' if step == 3 else '' }}">3. Revisione mapping</span>
       <span class="step {{ 'active' if step == 4 else '' }}">4. Risultato</span>
     </div>
+    {% endif %}
+    {% if user %}
+    <div class="user-box">
+      {% if user.is_admin %}<a href="/admin" class="nav-link">Admin</a>{% endif %}
+      <a href="/ingestion/dashboard" class="nav-link">I miei processi</a>
+      <span class="user-name">{{ user.name }} {{ '(admin)' if user.is_admin else '(data engineer)' }}</span>
+      <form method="post" action="/logout" style="display:inline">
+        <button type="submit" class="link-button">Esci</button>
+      </form>
+    </div>
+    {% endif %}
   </header>
   <main class="content">
     {% block content %}{% endblock %}

@@ -42,8 +42,28 @@ python scripts/generate_synthetic_p2p.py   # genera il dataset di test in data/s
 uvicorn app.main:app --reload
 ```
 
-Apri `http://127.0.0.1:8000` e segui il wizard: Contesto → Dati sorgente
-(seleziona "usa dataset sintetico") → Revisione mapping → Risultato.
+Apri `http://127.0.0.1:8000`: al primo avvio viene creato un utente
+**admin** iniziale, con email/password stampate nei log di avvio (o
+personalizzabili impostando `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env`).
+Login come admin → **Amministrazione** → crea un utente Data Engineer e un
+nuovo processo → assegna il Data Engineer al processo. Poi accedi come quel
+Data Engineer (o resta admin, che ha accesso a tutto) e da **I miei
+processi** apri il Modulo 1: Dati sorgente → Revisione mapping → Risultato.
+
+### Ruoli e permessi
+
+- **Admin**: crea utenti e processi, assegna un **Data Engineer** per
+  processo, accesso illimitato a tutto.
+- **Data Engineer**: accede solo al Modulo 1 (Ingestion) dei processi a cui è
+  stato assegnato (`ProcessAssignment.role = "data_engineer"`); tentare di
+  aprire un processo non assegnato risponde 403. Chi conferma/corregge un
+  mapping viene registrato per nome in `IngestionConfig.owner` e
+  `FieldMapping.confirmed_by` — audit trail reale, non un placeholder.
+- Password con bcrypt, sessione via cookie firmato (Starlette
+  `SessionMiddleware`). I ruoli Process Owner/Analyst/Viewer per gli altri
+  moduli restano concettuali per ora: lo schema (`ProcessAssignment.role` è
+  una stringa libera) è già pensato per estendersi senza migrazioni quando
+  arriveranno.
 
 ### AI Mapping Service reale (Claude) invece del mock
 
@@ -96,9 +116,12 @@ strutturali del disegno:
   correzione di `invoices.payment_status` da attributo statico dell'oggetto
   Invoice ad attributo dell'evento "Post Invoice" cambia effettivamente
   l'OCEL prodotto).
-- **Nessuna autenticazione/ruoli**: un solo utente implicito ("admin"); i
-  ruoli granulari Process Owner/Analyst/Viewer disegnati concettualmente non
-  sono cablati qui.
+- **Un solo ruolo cablato (Data Engineer → Modulo 1)**: Process
+  Owner/Analyst/Viewer per gli altri moduli restano concettuali, non ancora
+  implementati (lo schema li supporta senza modifiche).
+- **Stato dell'ingestion in-memory per workspace**: sopravvive finché il
+  processo del server resta attivo, non a un riavvio (a differenza di
+  utenti/assegnazioni/IngestionConfig, quelli sono su DB).
 - **Riuso della Ingestion Config non automatizzato**: ogni finalizzazione
   crea una nuova `IngestionConfig` invece di proporre il riuso di una
   config approvata esistente per lo stesso sistema+processo.

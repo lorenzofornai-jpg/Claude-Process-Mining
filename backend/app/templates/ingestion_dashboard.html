@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>I miei processi</h1>
+  <p class="muted">
+    {% if user.is_admin %}
+    Vista amministratore: tutti i processi. Per crearne uno nuovo o assegnare un Data Engineer vai in <a href="/admin">Amministrazione</a>.
+    {% else %}
+    Processi su cui sei stato assegnato come Data Engineer per il Modulo 1 (Ingestion).
+    {% endif %}
+  </p>
+
+  <table class="admin-table">
+    <thead>
+      <tr><th>Processo</th><th>Tipo</th><th>Creato il</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for ws in workspaces %}
+      <tr>
+        <td>{{ ws.process_name }}</td>
+        <td>{{ ws.process_type }}</td>
+        <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td><a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Apri Modulo 1</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">
+        Nessun processo assegnato ancora.
+        {% if user.is_admin %}Creane uno da <a href="/admin">Amministrazione</a>.{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

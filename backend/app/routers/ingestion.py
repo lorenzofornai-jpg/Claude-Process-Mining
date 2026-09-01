@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.auth import current_user, has_process_access
 from app.config import AI_MAPPER, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, SYNTHETIC_P2P_DIR
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
@@ -21,9 +22,11 @@ from app.models import (
     IngestionConfig,
     IngestionConfigVersion,
     ObjectTypeDef,
+    ProcessAssignment,
     ProcessIngestionLink,
     ProcessWorkspace,
     SourceSystem,
+    User,
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
@@ -45,24 +48,103 @@ def _get_ai_mapper() -> AIMapper:
     return HeuristicAIMapper()
 
 
+def _require_process_access(request: Request, workspace_id: str):
+    """Ritorna (user, None) se autorizzato al Modulo 1 di questo processo,
+    altrimenti (None, redirect_o_403)."""
+    user = current_user(request)
+    if user is None:
+        return None, RedirectResponse("/login", status_code=303)
+    if not has_process_access(user, workspace_id):
+        return None, HTMLResponse(
+            "Accesso negato: non sei assegnato come Data Engineer a questo processo.",
+            status_code=403,
+        )
+    return user, None
+
+
+def _load_session(workspace_id: str) -> dict:
+    """Stato in-memory per il workspace, inizializzato al volo dal DB se e' la
+    prima visita di questa run del server (vedi state.py)."""
+    sess = state.ensure(workspace_id)
+    if "context" not in sess:
+        db = SessionLocal()
+        try:
+            ws = db.get(ProcessWorkspace, workspace_id)
+        finally:
+            db.close()
+        sess["context"] = {
+            "process_name": ws.process_name,
+            "process_type": ws.process_type,
+            "business_unit": ws.business_unit or "",
+            "period_from": ws.period_from or "",
+            "period_to": ws.period_to or "",
+        }
+    return sess
+
+
 @router.get("/", response_class=HTMLResponse)
-def root():
-    return RedirectResponse(url="/ingestion/new")
+def root(request: Request):
+    if current_user(request) is None:
+        return RedirectResponse(url="/login")
+    return RedirectResponse(url="/ingestion/dashboard")
+
+
+@router.get("/ingestion/dashboard", response_class=HTMLResponse)
+def ingestion_dashboard(request: Request):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    db = SessionLocal()
+    try:
+        if user.is_admin:
+            workspaces = db.query(ProcessWorkspace).order_by(ProcessWorkspace.created_at.desc()).all()
+        else:
+            assigned_ids = [
+                a.workspace_id
+                for a in db.query(ProcessAssignment).filter_by(user_id=user.id, role="data_engineer").all()
+            ]
+            workspaces = (
+                db.query(ProcessWorkspace)
+                .filter(ProcessWorkspace.id.in_(assigned_ids))
+                .order_by(ProcessWorkspace.created_at.desc())
+                .all()
+                if assigned_ids
+                else []
+            )
+    finally:
+        db.close()
+
+    return templates.TemplateResponse(
+        "ingestion_dashboard.html", {"request": request, "user": user, "workspaces": workspaces}
+    )
 
 
 @router.get("/ingestion/new", response_class=HTMLResponse)
 def new_context_form(request: Request):
-    return templates.TemplateResponse("context.html", {"request": request, "step": 1})
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not user.is_admin:
+        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
+    return templates.TemplateResponse("context.html", {"request": request, "user": user, "step": 1})
 
 
 @router.post("/ingestion/new")
 def create_workspace(
+    request: Request,
     process_name: str = Form(...),
     process_type: str = Form(...),
     business_unit: str = Form(""),
     period_from: str = Form(""),
     period_to: str = Form(""),
 ):
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not user.is_admin:
+        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
+
     db = SessionLocal()
     try:
         ws = ProcessWorkspace(
@@ -71,53 +153,75 @@ def create_workspace(
             business_unit=business_unit or None,
             period_from=period_from or None,
             period_to=period_to or None,
+            created_by=user.name,
         )
         db.add(ws)
         db.commit()
-        db.refresh(ws)
-        workspace_id = ws.id
     finally:
         db.close()
 
-    session_id = state.new_session()
-    state.get(session_id)["workspace_id"] = workspace_id
-    state.get(session_id)["context"] = {
-        "process_name": process_name,
-        "process_type": process_type,
-        "business_unit": business_unit,
-        "period_from": period_from,
-        "period_to": period_to,
-    }
-    return RedirectResponse(url=f"/ingestion/upload?session_id={session_id}", status_code=303)
+    # Il wizard di Ingestion (Fasi B-G) lo porta avanti il Data Engineer assegnato,
+    # non l'admin: si torna alla dashboard admin per fare l'assegnazione.
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
+VALID_OCEL_ELEMENTS = [
+    "object_type.key", "object_type.attribute",
+    "event_type.timestamp", "event_type.attribute", "e2o_relationship",
+]
+
+
+def _target_label(r: dict) -> str:
+    v = lambda k: r.get(k) or "—"  # noqa: E731
+    el = r["ocel_element"]
+    if el == "object_type.key":
+        return f'Chiave oggetto → {v("object_type")}'
+    if el == "object_type.attribute":
+        return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
+    if el == "event_type.timestamp":
+        return f'Timestamp evento → "{v("event_type")}"'
+    if el == "event_type.attribute":
+        return f'Attributo evento → "{v("event_type")}".{v("attribute_name")}'
+    if el == "e2o_relationship":
+        return f'Relazione evento→oggetto → "{v("event_type")}" —[{v("qualifier")}]→ {v("related_object_type")}'
+    return el
 
 
 @router.get("/ingestion/upload", response_class=HTMLResponse)
-def upload_page(request: Request, session_id: str):
-    ctx = state.get(session_id)["context"]
+def upload_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    ctx = _load_session(workspace_id)["context"]
     return templates.TemplateResponse(
-        "upload.html", {"request": request, "session_id": session_id, "context": ctx, "step": 2}
+        "upload.html", {"request": request, "user": user, "workspace_id": workspace_id, "context": ctx, "step": 2}
     )
 
 
 @router.post("/ingestion/upload")
 async def handle_upload(
-    session_id: str = Form(...),
+    request: Request,
+    workspace_id: str = Form(...),
     use_synthetic: str = Form(""),
     files: list[UploadFile] = File(default_factory=list),
 ):
-    sess = state.get(session_id)
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
 
     if use_synthetic:
         file_paths = sorted(SYNTHETIC_P2P_DIR.glob("*.csv"))
         dataset_label = "Dataset sintetico P2P"
     else:
-        session_upload_dir = UPLOAD_DIR / session_id
-        session_upload_dir.mkdir(parents=True, exist_ok=True)
+        workspace_upload_dir = UPLOAD_DIR / workspace_id
+        workspace_upload_dir.mkdir(parents=True, exist_ok=True)
         file_paths = []
         for f in files or []:
             if not f.filename:
                 continue
-            dest = session_upload_dir / f.filename
+            dest = workspace_upload_dir / f.filename
             with dest.open("wb") as out:
                 shutil.copyfileobj(f.file, out)
             file_paths.append(dest)
@@ -151,35 +255,15 @@ async def handle_upload(
     sess["tables_data"] = tables_data
     sess["mapping_rows"] = rows
 
-    return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
-
-
-EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
-VALID_OCEL_ELEMENTS = [
-    "object_type.key", "object_type.attribute",
-    "event_type.timestamp", "event_type.attribute", "e2o_relationship",
-]
-
-
-def _target_label(r: dict) -> str:
-    v = lambda k: r.get(k) or "—"  # noqa: E731
-    el = r["ocel_element"]
-    if el == "object_type.key":
-        return f'Chiave oggetto → {v("object_type")}'
-    if el == "object_type.attribute":
-        return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
-    if el == "event_type.timestamp":
-        return f'Timestamp evento → "{v("event_type")}"'
-    if el == "event_type.attribute":
-        return f'Attributo evento → "{v("event_type")}".{v("attribute_name")}'
-    if el == "e2o_relationship":
-        return f'Relazione evento→oggetto → "{v("event_type")}" —[{v("qualifier")}]→ {v("related_object_type")}'
-    return el
+    return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
 
 @router.get("/ingestion/review", response_class=HTMLResponse)
-def review_page(request: Request, session_id: str):
-    sess = state.get(session_id)
+def review_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
     rows = sess["mapping_rows"]
     for r in rows:
         r["target_label"] = _target_label(r)
@@ -194,7 +278,8 @@ def review_page(request: Request, session_id: str):
         "mapping_review.html",
         {
             "request": request,
-            "session_id": session_id,
+            "user": user,
+            "workspace_id": workspace_id,
             "context": sess["context"],
             "dataset_label": sess["dataset_label"],
             "by_table": by_table,
@@ -207,8 +292,11 @@ def review_page(request: Request, session_id: str):
 
 
 @router.post("/ingestion/review")
-async def submit_review(request: Request, session_id: str = Form(...), action: str = Form(...)):
-    sess = state.get(session_id)
+async def submit_review(request: Request, workspace_id: str = Form(...), action: str = Form(...)):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
     rows = sess["mapping_rows"]
     form = await request.form()
 
@@ -235,22 +323,22 @@ async def submit_review(request: Request, session_id: str = Form(...), action: s
         for r in rows:
             if r["status"] == "proposed" and r["confidence"] >= AUTO_ACCEPT_CONFIDENCE_THRESHOLD:
                 r["status"] = "confirmed"
-        return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
     if action == "save":
-        return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
     if action == "finalize":
         still_pending = [r for r in rows if r["status"] == "proposed"]
         if still_pending:
-            return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
-        _finalize(session_id, sess)
-        return RedirectResponse(url=f"/ingestion/result?session_id={session_id}", status_code=303)
+            return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+        _finalize(workspace_id, sess, user)
+        return RedirectResponse(url=f"/ingestion/result?workspace_id={workspace_id}", status_code=303)
 
-    return RedirectResponse(url=f"/ingestion/review?session_id={session_id}", status_code=303)
+    return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
 
-def _finalize(session_id: str, sess: dict) -> None:
+def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     rows = sess["mapping_rows"]
     confirmed = [r for r in rows if r["status"] in ("confirmed", "overridden")]
 
@@ -258,7 +346,7 @@ def _finalize(session_id: str, sess: dict) -> None:
     dq_results = run_data_quality_checks(ocel, skip_log)
     object_defs, event_defs = compile_defs(confirmed)
 
-    ocel_path = OUTPUT_DIR / f"{session_id}.ocel.json"
+    ocel_path = OUTPUT_DIR / f"{workspace_id}.ocel.json"
     ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")
 
     db = SessionLocal()
@@ -288,15 +376,15 @@ def _finalize(session_id: str, sess: dict) -> None:
             process_type=ctx["process_type"],
             status="approved",
             current_version=1,
-            owner="admin",
+            owner=user.name,
         )
         db.add(config)
         db.flush()
 
         db.add(IngestionConfigVersion(
             ingestion_config_id=config.id, version=1,
-            changelog="Prima versione confermata dall'utente nel wizard di ingestion.",
-            approved_by="admin",
+            changelog="Prima versione confermata dal Data Engineer nel wizard di ingestion.",
+            approved_by=user.name,
         ))
 
         for od in object_defs.values():
@@ -322,16 +410,16 @@ def _finalize(session_id: str, sess: dict) -> None:
                 confidence=r["confidence"], rationale=r["rationale"],
                 based_on_template=r["based_on_template"],
                 original_ai_proposal=r["original_ai_proposal"] if overridden else None,
-                status=r["status"], confirmed_by="admin",
+                status=r["status"], confirmed_by=user.name,
             ))
 
         db.add(ProcessIngestionLink(
-            workspace_id=sess["workspace_id"], ingestion_config_id=config.id,
-            pinned_version=1, linked_by="admin", approved_by="admin",
+            workspace_id=workspace_id, ingestion_config_id=config.id,
+            pinned_version=1, linked_by=user.name, approved_by=user.name,
         ))
 
         run = ExtractionRun(
-            workspace_id=sess["workspace_id"], ingestion_config_id=config.id,
+            workspace_id=workspace_id, ingestion_config_id=config.id,
             run_type="snapshot", status="completed",
             object_count=stats["object_count"], event_count=stats["event_count"],
             ocel_file_path=str(ocel_path),
@@ -361,13 +449,17 @@ def _finalize(session_id: str, sess: dict) -> None:
 
 
 @router.get("/ingestion/result", response_class=HTMLResponse)
-def result_page(request: Request, session_id: str):
-    sess = state.get(session_id)
+def result_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
     return templates.TemplateResponse(
         "result.html",
         {
             "request": request,
-            "session_id": session_id,
+            "user": user,
+            "workspace_id": workspace_id,
             "context": sess["context"],
             "result": sess["result"],
             "step": 4,
@@ -375,8 +467,11 @@ def result_page(request: Request, session_id: str):
     )
 
 
-@router.get("/ingestion/download/{session_id}")
-def download_ocel(session_id: str):
-    sess = state.get(session_id)
+@router.get("/ingestion/download/{workspace_id}")
+def download_ocel(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
     path = sess["result"]["ocel_path"]
     return FileResponse(path, media_type="application/json", filename="event_log.ocel.json")

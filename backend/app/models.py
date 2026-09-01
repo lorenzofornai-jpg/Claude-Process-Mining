@@ -38,6 +38,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    """Utente della piattaforma. is_admin=True puo' creare utenti/processi e assegnare
+    accessi; gli altri utenti operano solo sui processi a cui sono assegnati
+    (vedi ProcessAssignment)."""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(200), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    assignments: Mapped[list["ProcessAssignment"]] = relationship(back_populates="user")
+
+
 class ProcessWorkspace(Base):
     """Il processo attivato dall'utente (contesto minimo per il test del Modulo 1)."""
 
@@ -49,9 +66,32 @@ class ProcessWorkspace(Base):
     business_unit: Mapped[str | None] = mapped_column(String(200), nullable=True)
     period_from: Mapped[str | None] = mapped_column(String(50), nullable=True)
     period_to: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     links: Mapped[list["ProcessIngestionLink"]] = relationship(back_populates="workspace")
+    assignments: Mapped[list["ProcessAssignment"]] = relationship(back_populates="workspace")
+
+
+class ProcessAssignment(Base):
+    """Assegnazione di un utente a un processo con un ruolo per modulo.
+
+    Per ora il solo ruolo cablato e' "data_engineer" (accesso al Modulo 1 -
+    Ingestion). E' pensato per estendersi ad altri ruoli/moduli (es.
+    "analyst" per il Modulo 2) senza cambiare schema.
+    """
+
+    __tablename__ = "process_assignment"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("process_workspace.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    role: Mapped[str] = mapped_column(String(50))  # "data_engineer"
+    assigned_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    workspace: Mapped["ProcessWorkspace"] = relationship(back_populates="assignments")
+    user: Mapped["User"] = relationship(back_populates="assignments")
 
 
 class SourceSystem(Base):
