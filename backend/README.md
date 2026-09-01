@@ -25,6 +25,15 @@ versioning), `object_type_def`, `event_type_def`, `field_mapping` (con
 
 ## Come si avvia
 
+Comando unico (macOS/Linux, richiede Python 3.11+): crea il venv, installa le
+dipendenze, genera il dataset di test se manca, avvia il server.
+
+```bash
+bash backend/run_dev.sh
+```
+
+Passo-passo equivalente (anche per Windows, adattando l'attivazione del venv):
+
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
