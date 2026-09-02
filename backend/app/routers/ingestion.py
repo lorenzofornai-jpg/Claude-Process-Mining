@@ -240,7 +240,10 @@ async def handle_upload(
     for i, p in enumerate(proposals):
         d = asdict(p)
         d["row_id"] = i
-        d["status"] = "confirmed" if p.confidence >= AUTO_ACCEPT_CONFIDENCE_THRESHOLD else "proposed"
+        # Tutto parte come "proposed": e' il pulsante "Accetta tutte >= soglia" a promuovere
+        # le righe ad alta confidence a "confirmed" in un click, esplicitamente. Pre-confermarle
+        # gia' qui renderebbe quel pulsante un no-op silenzioso (bug reale trovato in test).
+        d["status"] = "proposed"
         # snapshot immutabile di cio' che l'AI ha proposto in origine: sopravvive a
         # eventuali correzioni manuali successive, per audit trail (FieldMapping.original_ai_proposal)
         d["original_ai_proposal"] = {
@@ -259,7 +262,7 @@ async def handle_upload(
 
 
 @router.get("/ingestion/review", response_class=HTMLResponse)
-def review_page(request: Request, workspace_id: str):
+def review_page(request: Request, workspace_id: str, error: str | None = None):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
@@ -274,6 +277,15 @@ def review_page(request: Request, workspace_id: str):
 
     pending_count = sum(1 for r in rows if r["status"] == "proposed")
 
+    blocked_message = None
+    if error == "pending" and pending_count > 0:
+        blocked_message = (
+            f"Non ho generato il log: ci sono ancora {pending_count} proposte senza una decisione "
+            "esplicita (righe evidenziate in giallo qui sotto). Accettale, rifiutale o modificale "
+            "prima di confermare — oppure usa \"Accetta tutte ≥ soglia\" per sbrigare in blocco "
+            "quelle ad alta confidence."
+        )
+
     return templates.TemplateResponse(
         "mapping_review.html",
         {
@@ -286,6 +298,7 @@ def review_page(request: Request, workspace_id: str):
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
             "ocel_elements": VALID_OCEL_ELEMENTS,
+            "blocked_message": blocked_message,
             "step": 3,
         },
     )
@@ -331,7 +344,9 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
     if action == "finalize":
         still_pending = [r for r in rows if r["status"] == "proposed"]
         if still_pending:
-            return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+            return RedirectResponse(
+                url=f"/ingestion/review?workspace_id={workspace_id}&error=pending", status_code=303
+            )
         _finalize(workspace_id, sess, user)
         return RedirectResponse(url=f"/ingestion/result?workspace_id={workspace_id}", status_code=303)
 

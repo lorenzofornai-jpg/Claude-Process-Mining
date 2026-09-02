@@ -9,10 +9,12 @@
     mapping proposto con "Modifica" se l'AI ha sbagliato target ma l'idea è giusta), poi conferma.
   </p>
 
-  {% if pending_count > 0 %}
+  {% if blocked_message %}
+  <div class="banner error">{{ blocked_message }}</div>
+  {% elif pending_count > 0 %}
   <div class="banner warning">
-    {{ pending_count }} proposte sotto la soglia di auto-accettazione ({{ (threshold*100)|round|int }}%)
-    richiedono una decisione esplicita prima di poter generare il log OCEL.
+    {{ pending_count }} proposte non hanno ancora una decisione (nessuna è pre-accettata: usa
+    "Accetta tutte ≥ soglia" per quelle ad alta confidence, poi decidi le rimanenti una per una).
   </div>
   {% else %}
   <div class="banner ok">Tutte le proposte hanno una decisione. Puoi generare il log OCEL.</div>
@@ -99,11 +101,17 @@
       <button type="submit" name="action" value="bulk_accept" class="secondary">
         Accetta tutte le proposte ≥ {{ (threshold*100)|round|int }}%
       </button>
-      <button type="submit" name="action" value="save" class="secondary">Salva decisioni</button>
+      <button type="submit" name="action" value="save" class="secondary">Salva e resta in revisione</button>
       <button type="submit" name="action" value="finalize" class="primary">
         Conferma mapping e genera log OCEL
       </button>
     </div>
+    <p class="tiny muted" style="margin-top:8px">
+      "Accetta tutte ≥ soglia" promuove in blocco le righe ad alta confidence ancora da decidere.
+      "Salva e resta in revisione" registra le scelte fatte finora senza generare il log, utile se
+      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Conferma mapping" genera il
+      log OCEL solo quando ogni riga ha una decisione.
+    </p>
   </form>
 </div>
 {% endblock %}

@@ -114,6 +114,7 @@ button, .button-link {
 }
 .banner.warning { background: #fff6e5; color: #7a5700; border: 1px solid #f0d999; }
 .banner.ok { background: #e9f8f0; color: #0f6a41; border: 1px solid #a9e4c6; }
+.banner.error { background: #fdecec; color: #8a2727; border: 1px solid #f0b8b8; }
 
 .table-block { margin-bottom: 28px; }
 .mapping-table, .dq-table {
