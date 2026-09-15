@@ -3,10 +3,10 @@
 <div class="card">
   <h1>Aggiorna dati — {{ config.name }} (v{{ config.current_version }})</h1>
   <p class="muted">
-    Carica una versione aggiornata delle tabelle sorgente, nello stesso formato di prima: verranno
-    riapplicate esattamente le stesse scelte di mapping già confermate, senza rifare AI e
-    revisione. Se il formato non è compatibile (tabelle o colonne mancanti), te lo segnalo prima di
-    generare qualsiasi cosa.
+    Carica una versione aggiornata delle tabelle sorgente, nello stesso formato di prima (file
+    singoli o un unico .zip che li contiene): verranno riapplicate esattamente le stesse scelte di
+    mapping già confermate, senza rifare AI e revisione. Se il formato non è compatibile (tabelle o
+    colonne mancanti), te lo segnalo prima di generare qualsiasi cosa.
   </p>
 
   {% if error %}
@@ -18,8 +18,8 @@
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     <div class="option-box">
-      <label>Carica file CSV/TXT aggiornati
-        <input type="file" name="files" multiple accept=".csv,.txt" required>
+      <label>Carica file CSV/TXT aggiornati, o un file .zip che li contiene
+        <input type="file" name="files" multiple accept=".csv,.txt,.zip" required>
       </label>
     </div>
 

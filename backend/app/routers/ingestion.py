@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+import zipfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -41,6 +42,44 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 OUTPUT_DIR = DATA_DIR / "output"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_TABLE_EXTENSIONS = {".csv", ".txt"}
+MAX_ZIP_MEMBER_BYTES = 50 * 1024 * 1024  # 50 MB per file estratto: guardia contro zip bomb
+
+
+def _save_uploaded_files(files: list[UploadFile], dest_dir: Path) -> list[Path]:
+    """Salva i file caricati in dest_dir. Accetta CSV/TXT diretti oppure uno o
+    più file .zip che li contengono: estrae automaticamente solo i membri con
+    estensione consentita, scartando il percorso di cartella di ogni membro
+    (mai zip-slip: il nome finale è sempre solo il basename dentro dest_dir),
+    e ignora membri oltre MAX_ZIP_MEMBER_BYTES."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for f in files or []:
+        if not f.filename:
+            continue
+        suffix = Path(f.filename).suffix.lower()
+        if suffix == ".zip":
+            with zipfile.ZipFile(f.file) as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        continue
+                    name = Path(member.filename).name
+                    if not name or Path(name).suffix.lower() not in ALLOWED_TABLE_EXTENSIONS:
+                        continue
+                    if member.file_size > MAX_ZIP_MEMBER_BYTES:
+                        continue
+                    dest = dest_dir / name
+                    with zf.open(member) as src, dest.open("wb") as out:
+                        shutil.copyfileobj(src, out)
+                    saved.append(dest)
+        elif suffix in ALLOWED_TABLE_EXTENSIONS:
+            dest = dest_dir / f.filename
+            with dest.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            saved.append(dest)
+        # altre estensioni: ignorate silenziosamente
+    return saved
 
 
 def _get_ai_mapper() -> AIMapper:
@@ -261,16 +300,7 @@ async def handle_upload(
         return denied
     sess = _load_session(workspace_id)
 
-    workspace_upload_dir = UPLOAD_DIR / workspace_id
-    workspace_upload_dir.mkdir(parents=True, exist_ok=True)
-    file_paths = []
-    for f in files or []:
-        if not f.filename:
-            continue
-        dest = workspace_upload_dir / f.filename
-        with dest.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
-        file_paths.append(dest)
+    file_paths = _save_uploaded_files(files, UPLOAD_DIR / workspace_id)
 
     if not file_paths:
         editing_config = None
@@ -285,7 +315,7 @@ async def handle_upload(
             "upload.html", {
                 "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
                 "editing_config": editing_config, "step": 2,
-                "error": "Carica almeno un file CSV/TXT prima di continuare.",
+                "error": "Carica almeno un file CSV/TXT (o uno ZIP che li contenga) prima di continuare.",
             },
             status_code=400,
         )
@@ -678,23 +708,14 @@ async def update_data_submit(
     finally:
         db.close()
 
-    update_dir = UPLOAD_DIR / f"{config_id}-update"
-    update_dir.mkdir(parents=True, exist_ok=True)
-    file_paths = []
-    for f in files or []:
-        if not f.filename:
-            continue
-        dest = update_dir / f.filename
-        with dest.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
-        file_paths.append(dest)
+    file_paths = _save_uploaded_files(files, UPLOAD_DIR / f"{config_id}-update")
 
     if not file_paths:
         return templates.TemplateResponse(
             "update_data.html",
             {
                 "request": request, "user": user, "workspace_id": workspace_id, "config": config,
-                "error": "Carica almeno un file CSV/TXT prima di continuare.",
+                "error": "Carica almeno un file CSV/TXT (o uno ZIP che li contenga) prima di continuare.",
             },
             status_code=400,
         )

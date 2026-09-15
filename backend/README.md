@@ -88,7 +88,11 @@ processi** apri il Modulo 1: Dati sorgente → Revisione mapping → Risultato.
 L'unico modo di acquisire dati è caricare file CSV/TXT (nessuna scorciatoia
 "dataset sintetico" nell'interfaccia): usa i CSV in `data/synthetic_p2p/`
 (rigenerabili con `python scripts/generate_synthetic_p2p.py`) come file di
-prova da caricare manualmente.
+prova da caricare manualmente, singolarmente o raggruppati in un unico
+`.zip`. L'upload ZIP è supportato ovunque si carichino file nell'app (nuova
+struttura e "Aggiorna dati"): l'estrazione è sanificata (nessun path fuori
+dalla cartella di destinazione, solo membri `.csv`/`.txt`, max 50 MB per
+membro come guardia contro zip bomb).
 
 ### Ruoli e permessi
 
