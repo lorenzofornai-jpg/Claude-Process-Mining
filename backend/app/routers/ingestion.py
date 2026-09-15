@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import uuid
 import zipfile
@@ -82,10 +83,16 @@ def _save_uploaded_files(files: list[UploadFile], dest_dir: Path) -> list[Path]:
     return saved
 
 
-def _get_ai_mapper() -> AIMapper:
+def _get_ai_mapper() -> tuple[AIMapper, str]:
+    """Ritorna (mapper, label). Default: Claude (ragiona da zero, nessun
+    catalogo di tabelle note). Fallback automatico sull'euristica mock solo
+    se manca la chiave API: evita di bloccare del tutto chi non l'ha ancora
+    configurata, ma non e' il percorso pensato per l'uso normale."""
     if AI_MAPPER == "claude":
-        return ClaudeAIMapper()
-    return HeuristicAIMapper()
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return ClaudeAIMapper(), "Claude (LLM reale)"
+        print("AI_MAPPER=claude ma ANTHROPIC_API_KEY non impostata: fallback sull'euristica mock per questo upload.")
+    return HeuristicAIMapper(), "euristica mock"
 
 
 def _require_process_access(request: Request, workspace_id: str):
@@ -325,9 +332,18 @@ async def handle_upload(
     tables_schema = connector.discover_schema()
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
 
-    mapper = _get_ai_mapper()
-    proposals = mapper.propose_mapping(tables_schema, sess["context"])
-    mapper_label = "Claude (LLM reale)" if AI_MAPPER == "claude" else "euristica mock"
+    mapper, mapper_label = _get_ai_mapper()
+    try:
+        proposals = mapper.propose_mapping(tables_schema, sess["context"])
+    except Exception as exc:
+        if mapper_label == "euristica mock":
+            raise
+        # La chiamata Claude puo' fallire per motivi esterni (rete, chiave non
+        # valida, rate limit): meglio un fallback trasparente sull'euristica
+        # mock, con l'errore reale visibile nei log e in etichetta, che un 500.
+        print(f"ClaudeAIMapper ha fallito ({exc!r}): fallback sull'euristica mock per questo upload.")
+        mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
+        proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"])
     dataset_label = f"{dataset_label} · AI Mapping Service: {mapper_label}"
 
     rows = []

@@ -109,19 +109,35 @@ membro come guardia contro zip bomb).
   una stringa libera) è già pensato per estendersi senza migrazioni quando
   arriveranno.
 
-### AI Mapping Service reale (Claude) invece del mock
+### AI Mapping Service: Claude di default, mock solo come fallback offline
 
-Di default l'app usa `HeuristicAIMapper` (nessuna chiamata esterna). Per
-usare `ClaudeAIMapper` (vera chiamata all'API Anthropic, structured output
-via `client.messages.parse`), crea `backend/.env` (mai committato, è in
-`.gitignore`):
+Di default l'app usa `ClaudeAIMapper` (vera chiamata all'API Anthropic,
+structured output via `client.messages.parse`): ragiona da zero su nomi
+tabella/colonna, tipi, valori di esempio e Process Context Profile, senza
+bisogno di conoscere in anticipo lo schema sorgente. Richiede
+`backend/.env` (mai committato, è in `.gitignore`) con:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-AI_MAPPER=claude
 ```
 
 `ANTHROPIC_MODEL` (opzionale, default `claude-opus-5`) per cambiare modello.
+
+Se `ANTHROPIC_API_KEY` non è impostata, o la chiamata fallisce a runtime
+(rete, chiave non valida, rate limit), l'app fa **fallback automatico e
+trasparente** su `HeuristicAIMapper` — un mock a catalogo fisso di sole 4
+tabelle note (`services/catalog.py`, template `genericfile_p2p_v1`), utile
+solo per sviluppo offline senza costi/latenza di chiamate reali: su
+qualunque altro nome tabella (compresi nomi SAP come `EKKO`/`LFA1`) userà
+un'euristica generica molto più cauta e a bassa confidence. L'etichetta
+"AI Mapping Service" mostrata nella pagina di revisione riflette sempre il
+mapper effettivamente usato per quell'upload, fallback incluso (es. "euristica
+mock (fallback: chiamata Claude fallita)"). Per forzare il mock anche con una
+chiave valida configurata (es. per non consumare crediti in sviluppo):
+
+```
+AI_MAPPER=heuristic
+```
 `ClaudeAIMapper` non ha nessuna conoscenza precodificata delle tabelle P2P
 (a differenza del mock, che usa il template `genericfile_p2p_v1`): ragiona
 da zero su nomi tabella/colonna, tipi, valori di esempio e Process Context

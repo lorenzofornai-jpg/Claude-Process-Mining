@@ -27,7 +27,11 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # auto-accettata in bulk: richiede revisione/decisione esplicita dell'utente.
 AUTO_ACCEPT_CONFIDENCE_THRESHOLD = 0.85
 
-# "heuristic" (default, nessuna chiamata esterna) o "claude" (vera chiamata LLM,
-# richiede ANTHROPIC_API_KEY in ambiente/.env).
-AI_MAPPER = os.environ.get("AI_MAPPER", "heuristic")
+# "claude" (default: vera chiamata LLM, richiede ANTHROPIC_API_KEY in ambiente/.env)
+# o "heuristic" (mock a catalogo fisso di 4 tabelle, nessuna chiamata esterna,
+# utile solo per sviluppo offline). Se AI_MAPPER=claude ma manca la chiave, il
+# router fa fallback automatico su "heuristic" con un avviso nei log e in UI:
+# non e' pensato per l'uso normale, solo per non bloccare chi non ha ancora
+# configurato una chiave.
+AI_MAPPER = os.environ.get("AI_MAPPER", "claude")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
