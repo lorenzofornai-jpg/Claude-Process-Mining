@@ -432,6 +432,17 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
                 r["status"] = "confirmed"
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
+    if action == "bulk_accept_all":
+        # Ignora la soglia di confidence: accetta ogni proposta ancora senza
+        # decisione, comprese quelle a bassa confidence dell'euristica generica.
+        # Da usare quando l'utente ha già verificato le rationale e vuole
+        # sbrigare in blocco (es. su tabelle non nel catalogo ma comunque note
+        # a chi rivede, come tabelle SAP standard).
+        for r in rows:
+            if r["status"] == "proposed":
+                r["status"] = "confirmed"
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+
     if action == "save":
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 

@@ -101,6 +101,9 @@
       <button type="submit" name="action" value="bulk_accept" class="secondary">
         Accetta tutte le proposte ≥ {{ (threshold*100)|round|int }}%
       </button>
+      <button type="submit" name="action" value="bulk_accept_all" class="secondary">
+        Accetta tutte (anche a bassa confidence)
+      </button>
       <button type="submit" name="action" value="save" class="secondary">Salva e resta in revisione</button>
       <button type="submit" name="action" value="finalize" class="primary">
         Conferma mapping e genera log OCEL
@@ -108,6 +111,8 @@
     </div>
     <p class="tiny muted" style="margin-top:8px">
       "Accetta tutte ≥ soglia" promuove in blocco le righe ad alta confidence ancora da decidere.
+      "Accetta tutte (anche a bassa confidence)" fa lo stesso senza guardare la soglia: usalo solo
+      dopo aver letto le rationale, per non generare un log con mapping sbagliati senza accorgertene.
       "Salva e resta in revisione" registra le scelte fatte finora senza generare il log, utile se
       non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Conferma mapping" genera il
       log OCEL solo quando ogni riga ha una decisione.
