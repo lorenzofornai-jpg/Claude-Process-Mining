@@ -56,27 +56,39 @@ def has_process_access(user: User, workspace_id: str) -> bool:
 
 
 def seed_default_admin() -> None:
-    """Crea l'admin iniziale al primo avvio, se non ne esiste gia' uno."""
+    """Garantisce che l'admin ADMIN_EMAIL esista con password ADMIN_PASSWORD.
+
+    Se ADMIN_PASSWORD e' impostata in ambiente/.env, la password dell'utente
+    ADMIN_EMAIL viene allineata ad essa ad OGNI avvio (non solo al primo):
+    per "resettare" l'admin basta cambiare ADMIN_PASSWORD in .env e
+    riavviare, senza mai dover cancellare il database. Se ADMIN_EMAIL non
+    esiste ancora, viene creato ora (che sia il primissimo avvio, o un
+    avvio successivo con una nuova email scelta in .env: non tocca/duplica
+    admin creati in run precedenti con altra email).
+    """
     db = SessionLocal()
     try:
-        if db.query(User).filter_by(is_admin=True).first():
+        email = ADMIN_EMAIL.strip().lower()
+        existing = db.query(User).filter_by(email=email).first()
+
+        if existing is not None:
+            if ADMIN_PASSWORD:
+                existing.password_hash = hash_password(ADMIN_PASSWORD)
+                existing.is_admin = True
+                db.commit()
             return
+
         password = ADMIN_PASSWORD
         generated = password is None
         if generated:
             password = secrets.token_urlsafe(9)
-        user = User(
-            name="Amministratore",
-            email=ADMIN_EMAIL.strip().lower(),
-            password_hash=hash_password(password),
-            is_admin=True,
-        )
+        user = User(name="Amministratore", email=email, password_hash=hash_password(password), is_admin=True)
         db.add(user)
         db.commit()
         if generated:
             print("=" * 72)
             print(f"Admin iniziale creato — email: {ADMIN_EMAIL}  password: {password}")
-            print("Imposta ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env per personalizzare.")
+            print("Imposta ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env per fissarle e poterle 'resettare' cambiandole li'.")
             print("=" * 72)
     finally:
         db.close()
