@@ -18,15 +18,8 @@
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     <div class="option-box">
-      <label class="checkbox">
-        <input type="checkbox" name="use_synthetic" value="1" checked onchange="toggleUpload(this)">
-        Usa il dataset sintetico P2P (per testare il flusso di aggiornamento)
-      </label>
-    </div>
-
-    <div class="option-box" id="upload-box" style="display:none">
       <label>Carica file CSV/TXT aggiornati
-        <input type="file" name="files" multiple accept=".csv,.txt">
+        <input type="file" name="files" multiple accept=".csv,.txt" required>
       </label>
     </div>
 
@@ -37,10 +30,4 @@
     <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Torna al registro strutture</a>
   </p>
 </div>
-
-<script>
-function toggleUpload(checkbox) {
-  document.getElementById('upload-box').style.display = checkbox.checked ? 'none' : 'block';
-}
-</script>
 {% endblock %}

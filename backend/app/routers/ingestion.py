@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.config import AI_MAPPER, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, SYNTHETIC_P2P_DIR
+from app.config import AI_MAPPER, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
 from app.models import (
@@ -254,7 +254,6 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
 async def handle_upload(
     request: Request,
     workspace_id: str = Form(...),
-    use_synthetic: str = Form(""),
     files: list[UploadFile] = File(default_factory=list),
 ):
     user, denied = _require_process_access(request, workspace_id)
@@ -262,21 +261,35 @@ async def handle_upload(
         return denied
     sess = _load_session(workspace_id)
 
-    if use_synthetic:
-        file_paths = sorted(SYNTHETIC_P2P_DIR.glob("*.csv"))
-        dataset_label = "Dataset sintetico P2P"
-    else:
-        workspace_upload_dir = UPLOAD_DIR / workspace_id
-        workspace_upload_dir.mkdir(parents=True, exist_ok=True)
-        file_paths = []
-        for f in files or []:
-            if not f.filename:
-                continue
-            dest = workspace_upload_dir / f.filename
-            with dest.open("wb") as out:
-                shutil.copyfileobj(f.file, out)
-            file_paths.append(dest)
-        dataset_label = f"{len(file_paths)} file caricati"
+    workspace_upload_dir = UPLOAD_DIR / workspace_id
+    workspace_upload_dir.mkdir(parents=True, exist_ok=True)
+    file_paths = []
+    for f in files or []:
+        if not f.filename:
+            continue
+        dest = workspace_upload_dir / f.filename
+        with dest.open("wb") as out:
+            shutil.copyfileobj(f.file, out)
+        file_paths.append(dest)
+
+    if not file_paths:
+        editing_config = None
+        edit_config_id = sess.get("edit_config_id")
+        if edit_config_id:
+            db = SessionLocal()
+            try:
+                editing_config = db.get(IngestionConfig, edit_config_id)
+            finally:
+                db.close()
+        return templates.TemplateResponse(
+            "upload.html", {
+                "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+                "editing_config": editing_config, "step": 2,
+                "error": "Carica almeno un file CSV/TXT prima di continuare.",
+            },
+            status_code=400,
+        )
+    dataset_label = f"{len(file_paths)} file caricati"
 
     connector = FileConnector(file_paths)
     tables_schema = connector.discover_schema()
@@ -646,7 +659,6 @@ async def update_data_submit(
     request: Request,
     config_id: str,
     workspace_id: str = Form(...),
-    use_synthetic: str = Form(""),
     files: list[UploadFile] = File(default_factory=list),
 ):
     user, denied = _require_process_access(request, workspace_id)
@@ -666,19 +678,26 @@ async def update_data_submit(
     finally:
         db.close()
 
-    if use_synthetic:
-        file_paths = sorted(SYNTHETIC_P2P_DIR.glob("*.csv"))
-    else:
-        update_dir = UPLOAD_DIR / f"{config_id}-update"
-        update_dir.mkdir(parents=True, exist_ok=True)
-        file_paths = []
-        for f in files or []:
-            if not f.filename:
-                continue
-            dest = update_dir / f.filename
-            with dest.open("wb") as out:
-                shutil.copyfileobj(f.file, out)
-            file_paths.append(dest)
+    update_dir = UPLOAD_DIR / f"{config_id}-update"
+    update_dir.mkdir(parents=True, exist_ok=True)
+    file_paths = []
+    for f in files or []:
+        if not f.filename:
+            continue
+        dest = update_dir / f.filename
+        with dest.open("wb") as out:
+            shutil.copyfileobj(f.file, out)
+        file_paths.append(dest)
+
+    if not file_paths:
+        return templates.TemplateResponse(
+            "update_data.html",
+            {
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "error": "Carica almeno un file CSV/TXT prima di continuare.",
+            },
+            status_code=400,
+        )
 
     connector = FileConnector(file_paths)
     tables_schema = connector.discover_schema()
