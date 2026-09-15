@@ -80,7 +80,7 @@ def _build_object_id(obj_def: ObjectTypeDefCompiled, row: dict) -> str | None:
 def _parse_time(raw: str | None) -> datetime | None:
     if not raw or str(raw).strip() in ("", "nan"):
         return None
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y%m%d"):
         try:
             return datetime.strptime(str(raw).strip(), fmt).replace(tzinfo=timezone.utc)
         except ValueError:

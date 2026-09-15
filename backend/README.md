@@ -187,3 +187,65 @@ Quality Engine le rilevi davvero.
 Verificato end-to-end (script + browser via Playwright): genera 4 tipi
 oggetto, 4 tipi evento, ~160 oggetti, ~110-120 eventi, e il DQ report
 segnala correttamente le anomalie iniettate.
+
+### Stress test con nomenclatura SAP reale (volume + complessità)
+
+`scripts/generate_sap_p2p.py` genera lo stesso processo P2P ma con nomi di
+tabella/campo SAP reali (`LFA1`, `EKKO`, `EKPO`, `EKBE`, `RBKP`, `RSEG`,
+`BSAK`), date in formato `YYYYMMDD` a 8 cifre, ~100 ordini d'acquisto e
+910 righe totali — pensato per stressare l'app su volume e su una
+nomenclatura senza suffissi inglesi (`EBELN`, `LIFNR`, `BELNR`... invece di
+`order_id`, `vendor_id`...), che il mapper euristico generico non aveva mai
+visto. Include le stesse categorie di anomalie deliberate (BUDAT mancante
+su 2 ricevimenti merce, 2 fatture con data antecedente alla creazione
+dell'ordine, fatture bloccate mai pagate).
+
+Questo stress test ha fatto emergere e corretto 3 bug reali:
+
+1. **Date SAP a 8 cifre scambiate per numeri.** `_infer_column_type()` in
+   `connectors/file_connector.py` faceva il controllo "è un numero?" prima
+   del controllo data, quindi colonne come `AEDAT=20260115` venivano
+   classificate come intero invece che data. Aggiunto `_looks_like_yyyymmdd()`,
+   controllato per primo nella catena di inferenza tipo.
+2. **`_parse_time()` non riconosceva il formato `%Y%m%d`** in
+   `services/transformation.py`: anche dopo la classificazione corretta come
+   "date", il Transformation Engine non riusciva a parsare il timestamp in
+   fase di generazione OCEL. Aggiunto il formato alla lista tentata.
+3. **L'euristica generica di fallback non trovava mai una chiave oggetto su
+   nomi di colonna non in stile inglese.** `_generic_fallback()` in
+   `services/ai_mapping.py` richiedeva un suffisso tipo `_id`/`_no`/`_number`
+   nel nome colonna per considerarla una possibile chiave — nessun campo SAP
+   lo ha mai (`EBELN`, `LIFNR`, `BELNR`...), quindi su questo dataset **non
+   veniva creato nessun oggetto, solo eventi**. Corretto: il segnale
+   primario ora è la quasi-unicità dei valori (`distinct_ratio > 0.95`), con
+   il pattern sul nome usato solo per alzare la confidence quando concorda.
+   Scoperto nel farlo un quarto bug collegato: il controllo intero/float in
+   `_infer_column_type()` usava `Series.astype("Int64", errors="ignore")`
+   per distinguere i due tipi, ma su valori con decimali quel cast fallisce
+   silenziosamente e restituisce la Series originale invariata — quindi il
+   confronto di uguaglianza risultava sempre vero e **nessuna colonna
+   numerica veniva mai classificata "float"**, nemmeno importi come
+   `WRBTR=123.45`. Questo faceva sì che l'esclusione "gli importi non sono
+   mai chiavi naturali" appena aggiunta all'euristica non scattasse mai.
+   Corretto il controllo con `(as_num % 1 == 0).all()`.
+
+Verificato end-to-end dopo i 4 fix: 707 oggetti, 6 tipi oggetto (`Lfa1` →
+`LIFNR`, `Ekko` → `EBELN`, `Rbkp`/`Ekbe`/`Bsak` → `BELNR`, `Ekpo` →
+`MATNR`), 444 eventi, 4 tipi evento, 2 righe scartate (le 2 anomalie
+BUDAT iniettate) — coerente con i dati generati.
+
+**Limite noto rimasto, non risolto**: l'euristica generica non rileva
+chiavi composite. `EKPO` (chiave reale `EBELN`+`EBELP`) e `RSEG` (chiave
+reale `BELNR`+`GJAHR`+`BUZEI`) non hanno una singola colonna quasi-unica
+affidabile — per `EKPO` viene proposta `MATNR` come proxy a bassa
+confidence (funziona in questo dataset per coincidenza, ma non è la vera
+chiave di riga), per `RSEG` non viene proposta nessuna chiave (nessun
+oggetto creato per quella tabella, solo attributi sugli eventi). Entrambe
+le proposte restano a confidence media/bassa con rationale esplicito,
+quindi visibili e correggibili in revisione — un vero `ClaudeAIMapper`
+risolverebbe questo per ragionamento, non per pattern-matching. Sempre per
+lo stesso motivo, l'euristica generica non propone relazioni e2o tra
+tabelle diverse (es. fattura↔ordine): il DQ check "evento antecedente alla
+creazione del case" su questo dataset passa banalmente perché non esiste
+alcun collegamento evento→PO da poter violare, non perché l'anomalia
+iniettata sia stata verificata assente.

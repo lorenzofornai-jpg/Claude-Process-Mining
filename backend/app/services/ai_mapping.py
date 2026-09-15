@@ -186,16 +186,39 @@ class HeuristicAIMapper(AIMapper):
         """
         out = []
         object_type_guess = "".join(part.capitalize() for part in table.name.rstrip("s").split("_"))
-        key_cols = [c for c in table.columns if ID_LIKE_PATTERN.search(c.name) and c.distinct_ratio > 0.95]
+        # La quasi-unicita' dei valori e' il segnale primario di chiave: funziona
+        # anche su convenzioni di naming senza suffissi inglesi (es. campi SAP
+        # come EBELN, LIFNR, BELNR). Il pattern sul nome resta solo un booster
+        # di confidence quando concorda, non un requisito per essere candidato.
+        # Gli importi (float) sono esclusi a priori: quasi mai una chiave naturale,
+        # spesso quasi-unici per caso (es. DMBTR, NETWR). Se nessuna colonna ha un
+        # nome coerente con un pattern chiave, si prende solo la piu' vicina
+        # all'unicita' totale invece di comporre una chiave fragile con piu'
+        # colonne quasi-uniche per caso (es. nome+citta'+via di un'anagrafe).
+        key_candidates = [c for c in table.columns if c.distinct_ratio > 0.95 and c.inferred_type != "float"]
+        name_matched_candidates = [c for c in key_candidates if ID_LIKE_PATTERN.search(c.name)]
+        if name_matched_candidates:
+            key_cols = name_matched_candidates
+        elif key_candidates:
+            key_cols = [max(key_candidates, key=lambda c: c.distinct_ratio)]
+        else:
+            key_cols = []
         date_cols = [c for c in table.columns if c.inferred_type == "date"]
 
         for col in table.columns:
             if col in key_cols:
+                name_matches = bool(ID_LIKE_PATTERN.search(col.name))
+                confidence = 0.72 if name_matches else 0.58
+                rationale = (
+                    f"Nome colonna coerente con pattern chiave e valori pressoche' univoci ({col.distinct_ratio:.0%}), ma tabella non presente nel catalogo: verificare."
+                    if name_matches else
+                    f"Valori pressoche' univoci ({col.distinct_ratio:.0%}) suggeriscono una chiave, anche se il nome colonna non segue un pattern noto: tabella non presente nel catalogo, verificare."
+                )
                 out.append(MappingProposal(
                     source_table=table.name, source_column=col.name, ocel_element="object_type.key",
                     object_type=object_type_guess, event_type=None, attribute_name=None, qualifier=None,
-                    related_object_type=None, confidence=0.72,
-                    rationale=f"Nome colonna coerente con pattern chiave e valori pressoche' univoci ({col.distinct_ratio:.0%}), ma tabella non presente nel catalogo: verificare.",
+                    related_object_type=None, confidence=confidence,
+                    rationale=rationale,
                     based_on_template=None,
                 ))
             elif col in date_cols and not out_has_timestamp(out, table.name):

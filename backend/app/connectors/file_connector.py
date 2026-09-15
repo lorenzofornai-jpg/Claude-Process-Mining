@@ -14,14 +14,34 @@ import pandas as pd
 from app.connectors.base import ColumnSchema, Connector, TableSchema
 
 
+def _looks_like_yyyymmdd(non_null: pd.Series) -> bool:
+    """Molti sistemi legacy/ERP (SAP incluso) salvano le date come interi a
+    8 cifre (es. AEDAT=20260115), che altrimenti verrebbero scambiati per
+    numeri puri dal controllo successivo: vanno riconosciuti come data prima."""
+    as_str = non_null.astype(str).str.strip()
+    if not as_str.str.fullmatch(r"\d{8}").all():
+        return False
+    parsed = pd.to_datetime(as_str, format="%Y%m%d", errors="coerce")
+    if parsed.isna().mean() > 0.1:
+        return False
+    return parsed.dt.year.between(1990, 2100).mean() > 0.9
+
+
 def _infer_column_type(series: pd.Series) -> str:
     non_null = series.dropna()
     if non_null.empty:
         return "string"
 
+    if _looks_like_yyyymmdd(non_null):
+        return "date"
+
     if pd.to_numeric(non_null, errors="coerce").notna().all():
         as_num = pd.to_numeric(non_null, errors="coerce")
-        return "integer" if (as_num == as_num.astype("Int64", errors="ignore")).all() else "float"
+        # NB: non usare Series.astype("Int64", errors="ignore") per questo controllo:
+        # su valori con decimali il cast fallisce silenziosamente e ritorna la
+        # Series originale invariata, facendo risultare l'uguaglianza sempre vera
+        # (ogni colonna numerica verrebbe classificata "integer", mai "float").
+        return "integer" if (as_num % 1 == 0).all() else "float"
 
     parsed_dates = pd.to_datetime(non_null, errors="coerce", format=None)
     if parsed_dates.notna().mean() > 0.9:
