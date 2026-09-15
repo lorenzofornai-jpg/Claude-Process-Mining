@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Aggiorna dati — {{ config.name }} (v{{ config.current_version }})</h1>
+  <p class="muted">
+    Carica una versione aggiornata delle tabelle sorgente, nello stesso formato di prima: verranno
+    riapplicate esattamente le stesse scelte di mapping già confermate, senza rifare AI e
+    revisione. Se il formato non è compatibile (tabelle o colonne mancanti), te lo segnalo prima di
+    generare qualsiasi cosa.
+  </p>
+
+  {% if error %}
+  <div class="banner error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/ingestion/structures/{{ config.id }}/update-data?workspace_id={{ workspace_id }}"
+        enctype="multipart/form-data" class="form">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+
+    <div class="option-box">
+      <label class="checkbox">
+        <input type="checkbox" name="use_synthetic" value="1" checked onchange="toggleUpload(this)">
+        Usa il dataset sintetico P2P (per testare il flusso di aggiornamento)
+      </label>
+    </div>
+
+    <div class="option-box" id="upload-box" style="display:none">
+      <label>Carica file CSV/TXT aggiornati
+        <input type="file" name="files" multiple accept=".csv,.txt">
+      </label>
+    </div>
+
+    <button type="submit" class="primary">Verifica e aggiorna</button>
+  </form>
+
+  <p class="tiny muted" style="margin-top:16px">
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Torna al registro strutture</a>
+  </p>
+</div>
+
+<script>
+function toggleUpload(checkbox) {
+  document.getElementById('upload-box').style.display = checkbox.checked ? 'none' : 'block';
+}
+</script>
+{% endblock %}

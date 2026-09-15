@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Strutture per l'analisi — {{ process_name }}</h1>
+  <p class="muted">
+    Ogni struttura è un insieme di scelte di mapping confermate ("Utilizza log per analisi" dal
+    risultato del wizard). Puoi aggiornarne i dati mantenendo le stesse scelte, modificarle
+    generando una nuova versione, o eliminarla.
+  </p>
+
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Struttura</th><th>Versione</th><th>Ultimo aggiornamento</th>
+        <th>Ultimo run</th><th>Azioni</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in structures %}
+      <tr>
+        <td>{{ s.config.name }}</td>
+        <td>v{{ s.config.current_version }}</td>
+        <td class="tiny muted">
+          {{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") if s.last_run else "—" }}
+        </td>
+        <td class="tiny">
+          {% if s.last_run %}
+          {{ s.last_run.object_count }} oggetti, {{ s.last_run.event_count }} eventi
+          <br><a href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">scarica OCEL</a>
+          {% else %}—{% endif %}
+        </td>
+        <td class="decision">
+          <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">Aggiorna dati</a>
+          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">Modifica struttura</a>
+          <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Eliminare definitivamente questa struttura e tutti i suoi run? Non si può annullare.');">
+            <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+            <button type="submit" class="secondary">Elimina</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Nessuna struttura ancora in uso per l'analisi in questo processo.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">+ Nuova struttura</a>
+    <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
+  </div>
+</div>
+{% endblock %}

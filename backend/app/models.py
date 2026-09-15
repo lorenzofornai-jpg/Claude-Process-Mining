@@ -145,6 +145,9 @@ class IngestionConfig(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft|approved|deprecated
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     owner: Mapped[str] = mapped_column(String(200), default="admin")
+    # {source_table: [colonne]} al momento dell'ultima generazione: usato per verificare
+    # se un nuovo caricamento dati e' compatibile con questa struttura ("Aggiorna dati").
+    schema_fingerprint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     object_types: Mapped[list["ObjectTypeDef"]] = relationship(back_populates="config", cascade="all, delete-orphan")

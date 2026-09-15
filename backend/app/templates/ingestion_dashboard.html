@@ -20,7 +20,10 @@
         <td>{{ ws.process_name }}</td>
         <td>{{ ws.process_type }}</td>
         <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td><a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Apri Modulo 1</a></td>
+        <td>
+          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuova struttura</a>
+          <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="4" class="muted">

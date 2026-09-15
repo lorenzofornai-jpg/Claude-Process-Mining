@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 
@@ -80,6 +81,43 @@ def _load_session(workspace_id: str) -> dict:
             "period_to": ws.period_to or "",
         }
     return sess
+
+
+def _schema_fingerprint(tables_schema: list[dict]) -> dict[str, list[str]]:
+    """{nome_tabella: [colonne]} usato per capire se un nuovo caricamento dati
+    e' compatibile con una struttura di mapping gia' confermata."""
+    return {t["name"]: sorted(c["name"] for c in t["columns"]) for t in tables_schema}
+
+
+def _field_mapping_row_to_dict(r: FieldMapping) -> dict:
+    """Converte una riga FieldMapping persistita nello stesso formato dict
+    usato da build_ocel/compile_defs (lo stesso prodotto dalle proposte AI in
+    sess["mapping_rows"]): permette di riapplicare un mapping gia' confermato
+    a un nuovo caricamento dati senza rifare AI+revisione."""
+    return {
+        "source_table": r.source_table, "source_column": r.source_column,
+        "ocel_element": r.ocel_element, "object_type": r.object_type, "event_type": r.event_type,
+        "attribute_name": r.attribute_name, "qualifier": r.qualifier,
+        "related_object_type": r.related_object_type,
+    }
+
+
+def _check_schema_compatibility(new_fingerprint: dict[str, list[str]], confirmed: list[dict]) -> list[str]:
+    """Ritorna la lista di tabelle/colonne che il mapping confermato richiede
+    ma che non sono presenti nel nuovo caricamento; lista vuota = compatibile.
+    Colonne extra nel nuovo caricamento non sono un problema: contano solo
+    quelle effettivamente usate dal mapping."""
+    needed = {
+        (r["source_table"], r["source_column"])
+        for r in confirmed
+        if r.get("source_table") and r.get("source_column")
+    }
+    missing_tables = {table for table, _ in needed if table not in new_fingerprint}
+    problems = [f"tabella mancante: \"{table}\"" for table in sorted(missing_tables)]
+    for table, column in sorted(needed):
+        if table not in missing_tables and column not in new_fingerprint[table]:
+            problems.append(f"colonna mancante: \"{table}.{column}\"")
+    return problems
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -189,13 +227,26 @@ def _target_label(r: dict) -> str:
 
 
 @router.get("/ingestion/upload", response_class=HTMLResponse)
-def upload_page(request: Request, workspace_id: str):
+def upload_page(request: Request, workspace_id: str, edit_config_id: str | None = None):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    ctx = _load_session(workspace_id)["context"]
+    sess = _load_session(workspace_id)
+    # None resetta la modalita' modifica se si riparte da zero (link "Apri Modulo 1");
+    # valorizzato solo arrivando da "Modifica struttura" nel registro delle strutture.
+    sess["edit_config_id"] = edit_config_id
+    editing_config = None
+    if edit_config_id:
+        db = SessionLocal()
+        try:
+            editing_config = db.get(IngestionConfig, edit_config_id)
+        finally:
+            db.close()
     return templates.TemplateResponse(
-        "upload.html", {"request": request, "user": user, "workspace_id": workspace_id, "context": ctx, "step": 2}
+        "upload.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+            "editing_config": editing_config, "step": 2,
+        }
     )
 
 
@@ -360,47 +411,73 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     ocel, skip_log, stats = build_ocel(sess["tables_data"], confirmed)
     dq_results = run_data_quality_checks(ocel, skip_log)
     object_defs, event_defs = compile_defs(confirmed)
+    schema_fp = _schema_fingerprint(sess["tables_schema"])
+    edit_config_id = sess.get("edit_config_id")
 
-    ocel_path = OUTPUT_DIR / f"{workspace_id}.ocel.json"
+    ocel_path = OUTPUT_DIR / f"{workspace_id}-{uuid.uuid4().hex[:8]}.ocel.json"
     ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")
 
     db = SessionLocal()
     try:
         ctx = sess["context"]
-        system_type = "GenericFile"
-        source_system = db.query(SourceSystem).filter_by(system_type=system_type).first()
-        if source_system is None:
-            source_system = SourceSystem(name="File Upload (CSV/TXT)", system_type=system_type)
-            db.add(source_system)
-            db.flush()
 
-        connector_row = db.query(ConnectorModel).filter_by(
-            source_system_id=source_system.id, plugin_id="file_connector"
-        ).first()
-        if connector_row is None:
-            connector_row = ConnectorModel(
-                source_system_id=source_system.id, plugin_id="file_connector",
-                supports_incremental=False,
+        if edit_config_id:
+            config = db.get(IngestionConfig, edit_config_id)
+            config.current_version += 1
+            config.schema_fingerprint = schema_fp
+            # richiede una nuova promozione esplicita: non torna attiva per l'analisi da sola
+            config.status = "draft"
+            db.add(IngestionConfigVersion(
+                ingestion_config_id=config.id, version=config.current_version,
+                changelog="Struttura rigenerata dal Data Engineer (nuovo mapping su nuovi dati).",
+                approved_by=user.name,
+            ))
+            # sostituisce interamente le definizioni precedenti con quelle appena confermate
+            db.query(ObjectTypeDef).filter_by(ingestion_config_id=config.id).delete()
+            db.query(EventTypeDef).filter_by(ingestion_config_id=config.id).delete()
+            db.query(FieldMapping).filter_by(ingestion_config_id=config.id).delete()
+            db.flush()
+        else:
+            system_type = "GenericFile"
+            source_system = db.query(SourceSystem).filter_by(system_type=system_type).first()
+            if source_system is None:
+                source_system = SourceSystem(name="File Upload (CSV/TXT)", system_type=system_type)
+                db.add(source_system)
+                db.flush()
+
+            connector_row = db.query(ConnectorModel).filter_by(
+                source_system_id=source_system.id, plugin_id="file_connector"
+            ).first()
+            if connector_row is None:
+                connector_row = ConnectorModel(
+                    source_system_id=source_system.id, plugin_id="file_connector",
+                    supports_incremental=False,
+                )
+                db.add(connector_row)
+                db.flush()
+
+            config = IngestionConfig(
+                name=f"{ctx['process_type']} - {source_system.name}",
+                source_system_id=source_system.id,
+                process_type=ctx["process_type"],
+                status="draft",
+                current_version=1,
+                owner=user.name,
+                schema_fingerprint=schema_fp,
             )
-            db.add(connector_row)
+            db.add(config)
             db.flush()
 
-        config = IngestionConfig(
-            name=f"{ctx['process_type']} - {source_system.name}",
-            source_system_id=source_system.id,
-            process_type=ctx["process_type"],
-            status="approved",
-            current_version=1,
-            owner=user.name,
-        )
-        db.add(config)
-        db.flush()
+            db.add(IngestionConfigVersion(
+                ingestion_config_id=config.id, version=1,
+                changelog="Prima versione confermata dal Data Engineer nel wizard di ingestion.",
+                approved_by=user.name,
+            ))
 
-        db.add(IngestionConfigVersion(
-            ingestion_config_id=config.id, version=1,
-            changelog="Prima versione confermata dal Data Engineer nel wizard di ingestion.",
-            approved_by=user.name,
-        ))
+            db.add(ProcessIngestionLink(
+                workspace_id=workspace_id, ingestion_config_id=config.id,
+                pinned_version=1, linked_by=user.name, approved_by=user.name,
+            ))
 
         for od in object_defs.values():
             db.add(ObjectTypeDef(
@@ -427,11 +504,6 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 original_ai_proposal=r["original_ai_proposal"] if overridden else None,
                 status=r["status"], confirmed_by=user.name,
             ))
-
-        db.add(ProcessIngestionLink(
-            workspace_id=workspace_id, ingestion_config_id=config.id,
-            pinned_version=1, linked_by=user.name, approved_by=user.name,
-        ))
 
         run = ExtractionRun(
             workspace_id=workspace_id, ingestion_config_id=config.id,
@@ -469,6 +541,15 @@ def result_page(request: Request, workspace_id: str):
     if denied:
         return denied
     sess = _load_session(workspace_id)
+    result = sess["result"]
+
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, result["ingestion_config_id"])
+        structure_status = config.status
+    finally:
+        db.close()
+
     return templates.TemplateResponse(
         "result.html",
         {
@@ -476,10 +557,226 @@ def result_page(request: Request, workspace_id: str):
             "user": user,
             "workspace_id": workspace_id,
             "context": sess["context"],
-            "result": sess["result"],
+            "result": result,
+            "structure_status": structure_status,
             "step": 4,
         },
     )
+
+
+@router.post("/ingestion/structures/{config_id}/promote")
+def promote_structure(request: Request, config_id: str, workspace_id: str = Form(...)):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+        config.status = "approved"
+        link = db.query(ProcessIngestionLink).filter_by(
+            workspace_id=workspace_id, ingestion_config_id=config_id
+        ).first()
+        if link is None:
+            db.add(ProcessIngestionLink(
+                workspace_id=workspace_id, ingestion_config_id=config_id,
+                pinned_version=config.current_version, linked_by=user.name, approved_by=user.name,
+            ))
+        else:
+            link.approved_by = user.name
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
+
+
+@router.get("/ingestion/structures", response_class=HTMLResponse)
+def list_structures(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+        configs = (
+            db.query(IngestionConfig)
+            .join(ExtractionRun, ExtractionRun.ingestion_config_id == IngestionConfig.id)
+            .filter(ExtractionRun.workspace_id == workspace_id, IngestionConfig.status == "approved")
+            .distinct()
+            .all()
+        )
+        structures = []
+        for config in configs:
+            last_run = (
+                db.query(ExtractionRun)
+                .filter_by(workspace_id=workspace_id, ingestion_config_id=config.id)
+                .order_by(ExtractionRun.started_at.desc())
+                .first()
+            )
+            structures.append({"config": config, "last_run": last_run})
+    finally:
+        db.close()
+
+    return templates.TemplateResponse(
+        "structures.html",
+        {"request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name, "structures": structures},
+    )
+
+
+@router.get("/ingestion/structures/{config_id}/update-data", response_class=HTMLResponse)
+def update_data_form(request: Request, config_id: str, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+    finally:
+        db.close()
+    return templates.TemplateResponse(
+        "update_data.html",
+        {"request": request, "user": user, "workspace_id": workspace_id, "config": config, "error": None},
+    )
+
+
+@router.post("/ingestion/structures/{config_id}/update-data")
+async def update_data_submit(
+    request: Request,
+    config_id: str,
+    workspace_id: str = Form(...),
+    use_synthetic: str = Form(""),
+    files: list[UploadFile] = File(default_factory=list),
+):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+        mapping_rows = (
+            db.query(FieldMapping)
+            .filter_by(ingestion_config_id=config_id)
+            .filter(FieldMapping.status.in_(["confirmed", "overridden"]))
+            .all()
+        )
+        confirmed = [_field_mapping_row_to_dict(r) for r in mapping_rows]
+    finally:
+        db.close()
+
+    if use_synthetic:
+        file_paths = sorted(SYNTHETIC_P2P_DIR.glob("*.csv"))
+    else:
+        update_dir = UPLOAD_DIR / f"{config_id}-update"
+        update_dir.mkdir(parents=True, exist_ok=True)
+        file_paths = []
+        for f in files or []:
+            if not f.filename:
+                continue
+            dest = update_dir / f.filename
+            with dest.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            file_paths.append(dest)
+
+    connector = FileConnector(file_paths)
+    tables_schema = connector.discover_schema()
+    new_fingerprint = _schema_fingerprint([
+        {"name": t.name, "columns": [{"name": c.name} for c in t.columns]} for t in tables_schema
+    ])
+
+    problems = _check_schema_compatibility(new_fingerprint, confirmed)
+    if problems:
+        db = SessionLocal()
+        try:
+            config = db.get(IngestionConfig, config_id)
+        finally:
+            db.close()
+        return templates.TemplateResponse(
+            "update_data.html",
+            {
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "error": (
+                    "I dati caricati non sono compatibili con questa struttura, "
+                    f"mancano: {', '.join(problems)}. Usa \"Modifica struttura\" per rimappare "
+                    "da zero, oppure carica dati nello stesso formato di prima."
+                ),
+            },
+            status_code=400,
+        )
+
+    tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
+    ocel, skip_log, stats = build_ocel(tables_data, confirmed)
+    dq_results = run_data_quality_checks(ocel, skip_log)
+
+    ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"
+    ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    db = SessionLocal()
+    try:
+        run = ExtractionRun(
+            workspace_id=workspace_id, ingestion_config_id=config_id,
+            run_type="incremental", status="completed",
+            object_count=stats["object_count"], event_count=stats["event_count"],
+            ocel_file_path=str(ocel_path),
+        )
+        db.add(run)
+        db.flush()
+        for dq in dq_results:
+            db.add(DataQualityCheckResult(
+                extraction_run_id=run.id, check_name=dq["check_name"], severity=dq["severity"],
+                passed=dq["passed"], details=dq["details"], affected_count=dq["affected_count"],
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    sess = _load_session(workspace_id)
+    sess["result"] = {
+        "ocel_path": str(ocel_path),
+        "stats": stats,
+        "dq_results": dq_results,
+        "ingestion_config_id": config_id,
+        "rejected_count": 0,
+        "overridden_count": 0,
+    }
+    return RedirectResponse(f"/ingestion/result?workspace_id={workspace_id}", status_code=303)
+
+
+@router.post("/ingestion/structures/{config_id}/delete")
+def delete_structure(request: Request, config_id: str, workspace_id: str = Form(...)):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+        if config is None:
+            return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
+
+        run_ids = [r.id for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
+        ocel_paths = [r.ocel_file_path for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
+
+        db.query(DataQualityCheckResult).filter(DataQualityCheckResult.extraction_run_id.in_(run_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.query(ProcessIngestionLink).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.query(FieldMapping).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.query(ObjectTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.query(EventTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.query(IngestionConfigVersion).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
+        db.delete(config)
+        db.commit()
+    finally:
+        db.close()
+
+    for p in ocel_paths:
+        Path(p).unlink(missing_ok=True)
+
+    return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
 
 
 @router.get("/ingestion/download/{workspace_id}")
@@ -490,3 +787,18 @@ def download_ocel(request: Request, workspace_id: str):
     sess = _load_session(workspace_id)
     path = sess["result"]["ocel_path"]
     return FileResponse(path, media_type="application/json", filename="event_log.ocel.json")
+
+
+@router.get("/ingestion/runs/{run_id}/download")
+def download_run(request: Request, run_id: str, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        run = db.get(ExtractionRun, run_id)
+    finally:
+        db.close()
+    if run is None or run.workspace_id != workspace_id:
+        return HTMLResponse("Run non trovato.", status_code=404)
+    return FileResponse(run.ocel_file_path, media_type="application/json", filename="event_log.ocel.json")

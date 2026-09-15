@@ -4,7 +4,9 @@ Prototipo funzionante del Modulo 1 (Ingestion) dell'app di process mining
 AI-native: contestualizzazione del processo, acquisizione dati via
 connettore file, proposte di mapping generate da un "AI Mapping Service"
 verso un modello OCEL 2.0, revisione umana (HITL) con conferma/rifiuto,
-generazione del log OCEL 2.0 e Data Quality report.
+generazione del log OCEL 2.0 e Data Quality report — più un ciclo di vita
+completo delle "strutture" di mapping usate per l'analisi (promozione,
+aggiornamento dati, nuova versione, eliminazione).
 
 ## Come si mappa al disegno concettuale
 
@@ -14,7 +16,40 @@ generazione del log OCEL 2.0 e Data Quality report.
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
 | E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |
-| G. Salvataggio config + run | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
+| G. Salvataggio config + run (come bozza) | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
+| Ciclo di vita struttura (nuovo) | `routers/ingestion.py`: `promote_structure`, `list_structures`, `update_data_*`, `delete_structure` |
+
+### Ciclo di vita di una struttura di mapping
+
+Il risultato di un giro di wizard (upload → revisione → conferma) è sempre
+una **bozza**: `IngestionConfig.status = "draft"`, non ancora tracciata come
+"in uso per l'analisi". Dal risultato, il pulsante **"Utilizza log per
+analisi"** la promuove (`status = "approved"`), rendendola visibile nel
+**registro strutture** del processo (`/ingestion/structures`). Da lì:
+
+- **Aggiorna dati** — ricarica le tabelle sorgente nello stesso formato:
+  riapplica esattamente lo stesso `field_mapping` già confermato (nessuna
+  nuova chiamata AI, nessuna revisione), producendo un nuovo `ExtractionRun`
+  collegato alla stessa struttura. Prima di generare qualunque cosa, verifica
+  che ogni tabella/colonna richiesta dal mapping esistente (`IngestionConfig.
+  schema_fingerprint`) sia presente nel nuovo caricamento; se manca qualcosa,
+  blocca con un messaggio esplicito invece di produrre un log sbagliato.
+- **Modifica struttura** — riapre l'intero wizard (nuova AI mapping +
+  revisione) ma alla conferma aggiorna la struttura esistente invece di
+  crearne una nuova: incrementa `current_version`, sostituisce
+  `ObjectTypeDef`/`EventTypeDef`/`FieldMapping`, e la riporta a `status =
+  "draft"` — richiede una nuova promozione esplicita prima di tornare attiva.
+- **+ Nuova struttura** — il wizard normale da zero, crea un `IngestionConfig`
+  completamente separato (nessuna delle due strade tocca l'altra).
+- **Elimina** — cancellazione a cascata (FieldMapping, ObjectTypeDef,
+  EventTypeDef, ExtractionRun, DataQualityCheckResult, ProcessIngestionLink,
+  IngestionConfigVersion, i file OCEL su disco) e infine la config stessa.
+
+Verificato end-to-end: genera → promuovi → aggiorna con dati compatibili
+(nuovo run, stessa versione) → aggiorna con una tabella mancante (bloccato
+con errore chiaro, nessun run creato) → modifica struttura (stessa config,
+versione+1, torna a bozza) → ripromuovi → elimina (cascata completa
+verificata riga per riga sul DB).
 
 Lo schema dati (`models.py`) implementa esattamente le tabelle discusse in
 fase di design: `source_system`, `connector`, `ingestion_config` (+
@@ -122,9 +157,11 @@ strutturali del disegno:
 - **Stato dell'ingestion in-memory per workspace**: sopravvive finché il
   processo del server resta attivo, non a un riavvio (a differenza di
   utenti/assegnazioni/IngestionConfig, quelli sono su DB).
-- **Riuso della Ingestion Config non automatizzato**: ogni finalizzazione
-  crea una nuova `IngestionConfig` invece di proporre il riuso di una
-  config approvata esistente per lo stesso sistema+processo.
+- **Riuso della Ingestion Config *tra processi diversi* non automatizzato**:
+  aggiornare/modificare una struttura già esistente *dentro lo stesso
+  processo* ora è pieno supporto (vedi sopra); manca ancora un flusso per
+  proporre a un secondo processo di riusare una struttura approvata su un
+  primo processo.
 - **Connettori SAP/Salesforce/ServiceNow non implementati**: solo
   `FileConnector` (CSV/TXT), che è comunque un connettore a pieno titolo
   nell'architettura a plugin — aggiungere un sistema reale significa

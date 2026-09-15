@@ -8,6 +8,19 @@
     previa approvazione del Process Owner).
   </p>
 
+  {% if structure_status == "approved" %}
+  <div class="banner ok">
+    Questa struttura è già <strong>in uso per l'analisi</strong>. La trovi nel
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">registro strutture</a> del processo,
+    da dove potrai aggiornarne i dati più avanti mantenendo le stesse scelte di mapping.
+  </div>
+  {% else %}
+  <div class="banner warning">
+    Questo è ancora un log di prova (bozza): non è ancora tracciato come struttura da usare per
+    l'analisi, e non comparirà nel registro strutture finché non lo confermi esplicitamente.
+  </div>
+  {% endif %}
+
   <div class="stat-row">
     <div class="stat"><span class="stat-value">{{ result.stats.object_count }}</span><span class="stat-label">oggetti</span></div>
     <div class="stat"><span class="stat-value">{{ result.stats.object_types }}</span><span class="stat-label">tipi oggetto</span></div>
@@ -36,7 +49,14 @@
   </table>
 
   <div class="actions">
-    <a class="primary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica log OCEL 2.0 (JSON)</a>
+    <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica log OCEL 2.0 (JSON)</a>
+    {% if structure_status != "approved" %}
+    <form method="post" action="/ingestion/structures/{{ result.ingestion_config_id }}/promote" style="display:inline">
+      <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+      <button type="submit" class="primary">Utilizza log per analisi</button>
+    </form>
+    {% endif %}
+    <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">Vedi tutte le strutture</a>
     <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
   </div>
 </div>

@@ -8,6 +8,15 @@
     oppure carica i tuoi file.
   </p>
 
+  {% if editing_config %}
+  <div class="banner warning">
+    Stai rigenerando la struttura <strong>"{{ editing_config.name }}"</strong> (attualmente versione
+    {{ editing_config.current_version }}): il nuovo mapping che confermerai sostituirà quello
+    esistente come nuova versione, e dovrai ripromuoverlo con "Utilizza log per analisi" prima
+    che torni attivo per l'analisi.
+  </div>
+  {% endif %}
+
   <form method="post" action="/ingestion/upload" enctype="multipart/form-data" class="form">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
