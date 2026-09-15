@@ -1,6 +1,9 @@
 {
   "name": "AI Process Mining - Modulo 1",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
   "postCreateCommand": "cd backend && python -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt && .venv/bin/python scripts/generate_synthetic_p2p.py",
   "forwardPorts": [8000],
   "portsAttributes": {
