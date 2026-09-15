@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import uuid
 import zipfile
@@ -86,12 +85,23 @@ def _save_uploaded_files(files: list[UploadFile], dest_dir: Path) -> list[Path]:
 def _get_ai_mapper() -> tuple[AIMapper, str]:
     """Ritorna (mapper, label). Default: Claude (ragiona da zero, nessun
     catalogo di tabelle note). Fallback automatico sull'euristica mock solo
-    se manca la chiave API: evita di bloccare del tutto chi non l'ha ancora
-    configurata, ma non e' il percorso pensato per l'uso normale."""
+    se il client Anthropic non si inizializza: evita di bloccare del tutto
+    chi non ha ancora configurato credenziali, ma non e' il percorso pensato
+    per l'uso normale.
+
+    Non si controlla ANTHROPIC_API_KEY esplicitamente: l'SDK Anthropic
+    risolve da solo le credenziali (api key, auth token, profilo salvato con
+    `ant auth login`, o Workload Identity Federation via
+    ANTHROPIC_FEDERATION_RULE_ID/ANTHROPIC_ORGANIZATION_ID/
+    ANTHROPIC_SERVICE_ACCOUNT_ID/ANTHROPIC_IDENTITY_TOKEN_FILE) - un controllo
+    hardcoded sulla sola env var API key darebbe un falso fallback su chi usa
+    la federation invece di una chiave statica.
+    """
     if AI_MAPPER == "claude":
-        if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
             return ClaudeAIMapper(), "Claude (LLM reale)"
-        print("AI_MAPPER=claude ma ANTHROPIC_API_KEY non impostata: fallback sull'euristica mock per questo upload.")
+        except Exception as exc:
+            print(f"AI_MAPPER=claude ma il client Anthropic non si inizializza ({exc!r}): fallback sull'euristica mock per questo upload.")
     return HeuristicAIMapper(), "euristica mock"
 
 

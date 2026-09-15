@@ -123,8 +123,35 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 `ANTHROPIC_MODEL` (opzionale, default `claude-opus-5`) per cambiare modello.
 
-Se `ANTHROPIC_API_KEY` non è impostata, o la chiamata fallisce a runtime
-(rete, chiave non valida, rate limit), l'app fa **fallback automatico e
+**In alternativa alla chiave statica, è supportata Workload Identity
+Federation (WIF)** — nessuna modifica al codice: `ClaudeAIMapper` istanzia
+il client Anthropic senza argomenti (`anthropic.Anthropic()`), e l'SDK
+risolve da solo le credenziali disponibili, WIF incluso. Per attivarla, al
+posto di `ANTHROPIC_API_KEY` imposta in `backend/.env`:
+
+```
+ANTHROPIC_FEDERATION_RULE_ID=...
+ANTHROPIC_ORGANIZATION_ID=...
+ANTHROPIC_SERVICE_ACCOUNT_ID=...
+ANTHROPIC_IDENTITY_TOKEN_FILE=...   # oppure ANTHROPIC_IDENTITY_TOKEN con il JWT diretto
+```
+
+più `ANTHROPIC_WORKSPACE_ID` solo se la federation rule copre più workspace.
+Richiede che un admin dell'organizzazione abbia già configurato un Federation
+Issuer + una Rule collegati al proprio identity provider (Anthropic Console
+o Admin API) — è configurazione lato account, non lato app. Importante:
+`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` (anche vuote) hanno priorità su
+WIF, quindi vanno rimosse del tutto da `.env` per farla attivare, non solo
+lasciate vuote.
+
+Il codice non controlla mai esplicitamente quale credenziale sia presente:
+`_get_ai_mapper()` in `routers/ingestion.py` prova a istanziare il client e
+fa fallback sul mock solo se l'inizializzazione o la chiamata falliscono —
+un controllo hardcoded su `ANTHROPIC_API_KEY` avrebbe dato un falso
+fallback a chi usa la federation invece di una chiave statica.
+
+Se nessuna credenziale è valida, o la chiamata fallisce a runtime (rete,
+credenziali non valide, rate limit), l'app fa **fallback automatico e
 trasparente** su `HeuristicAIMapper` — un mock a catalogo fisso di sole 4
 tabelle note (`services/catalog.py`, template `genericfile_p2p_v1`), utile
 solo per sviluppo offline senza costi/latenza di chiamate reali: su
@@ -132,8 +159,8 @@ qualunque altro nome tabella (compresi nomi SAP come `EKKO`/`LFA1`) userà
 un'euristica generica molto più cauta e a bassa confidence. L'etichetta
 "AI Mapping Service" mostrata nella pagina di revisione riflette sempre il
 mapper effettivamente usato per quell'upload, fallback incluso (es. "euristica
-mock (fallback: chiamata Claude fallita)"). Per forzare il mock anche con una
-chiave valida configurata (es. per non consumare crediti in sviluppo):
+mock (fallback: chiamata Claude fallita)"). Per forzare il mock anche con
+credenziali valide configurate (es. per non consumare crediti in sviluppo):
 
 ```
 AI_MAPPER=heuristic
