@@ -7,7 +7,7 @@ import zipfile
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -309,6 +309,7 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
 @router.post("/ingestion/upload")
 async def handle_upload(
     request: Request,
+    background_tasks: BackgroundTasks,
     workspace_id: str = Form(...),
     files: list[UploadFile] = File(default_factory=list),
 ):
@@ -338,47 +339,91 @@ async def handle_upload(
         )
     dataset_label = f"{len(file_paths)} file caricati"
 
+    # Discovery/estrazione via pandas sono rapide anche su dataset grandi: si fanno
+    # subito. La chiamata AI Mapping (specie Claude reale) puo' invece richiedere
+    # decine di secondi su schemi con molte tabelle/colonne - se restasse dentro
+    # questa richiesta, un timeout del tunnel di Codespaces o del browser la
+    # interromperebbe lato client anche se il server la porta comunque a termine
+    # (bug reale osservato in test: la pagina di revisione veniva generata
+    # correttamente lato server, ma il browser mostrava un download vuoto invece
+    # di navigarci). Per questo gira in background: la richiesta ritorna subito
+    # una pagina di attesa che fa polling, invece di restare bloccata ad aspettare.
     connector = FileConnector(file_paths)
     tables_schema = connector.discover_schema()
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
 
-    mapper, mapper_label = _get_ai_mapper()
-    try:
-        proposals = mapper.propose_mapping(tables_schema, sess["context"])
-    except Exception as exc:
-        if mapper_label == "euristica mock":
-            raise
-        # La chiamata Claude puo' fallire per motivi esterni (rete, chiave non
-        # valida, rate limit): meglio un fallback trasparente sull'euristica
-        # mock, con l'errore reale visibile nei log e in etichetta, che un 500.
-        print(f"ClaudeAIMapper ha fallito ({exc!r}): fallback sull'euristica mock per questo upload.")
-        mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
-        proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"])
-    dataset_label = f"{dataset_label} · AI Mapping Service: {mapper_label}"
-
-    rows = []
-    for i, p in enumerate(proposals):
-        d = asdict(p)
-        d["row_id"] = i
-        # Tutto parte come "proposed": e' il pulsante "Accetta tutte >= soglia" a promuovere
-        # le righe ad alta confidence a "confirmed" in un click, esplicitamente. Pre-confermarle
-        # gia' qui renderebbe quel pulsante un no-op silenzioso (bug reale trovato in test).
-        d["status"] = "proposed"
-        # snapshot immutabile di cio' che l'AI ha proposto in origine: sopravvive a
-        # eventuali correzioni manuali successive, per audit trail (FieldMapping.original_ai_proposal)
-        d["original_ai_proposal"] = {
-            "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
-            "attribute_name": p.attribute_name, "qualifier": p.qualifier,
-            "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
-        }
-        rows.append(d)
-
     sess["dataset_label"] = dataset_label
     sess["tables_schema"] = [asdict(t) for t in tables_schema]
     sess["tables_data"] = tables_data
-    sess["mapping_rows"] = rows
+    sess["mapping_rows"] = None
+    sess["mapping_status"] = "pending"
+    sess["mapping_error"] = None
 
-    return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+    background_tasks.add_task(_run_ai_mapping, sess, tables_schema, tables_data, dataset_label)
+
+    return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+
+
+def _run_ai_mapping(sess: dict, tables_schema: list, tables_data: dict, dataset_label: str) -> None:
+    """Gira dopo che la risposta HTTP e' gia' stata inviata (FastAPI BackgroundTasks):
+    scrive l'esito in `sess`, che /ingestion/mapping-status legge via polling."""
+    try:
+        mapper, mapper_label = _get_ai_mapper()
+        try:
+            proposals = mapper.propose_mapping(tables_schema, sess["context"])
+        except Exception as exc:
+            if mapper_label == "euristica mock":
+                raise
+            # La chiamata Claude puo' fallire per motivi esterni (rete, chiave non
+            # valida, rate limit): meglio un fallback trasparente sull'euristica
+            # mock, con l'errore reale visibile nei log e in etichetta, che un 500.
+            print(f"ClaudeAIMapper ha fallito ({exc!r}): fallback sull'euristica mock per questo upload.")
+            mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
+            proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"])
+
+        rows = []
+        for i, p in enumerate(proposals):
+            d = asdict(p)
+            d["row_id"] = i
+            # Tutto parte come "proposed": e' il pulsante "Accetta tutte >= soglia" a promuovere
+            # le righe ad alta confidence a "confirmed" in un click, esplicitamente. Pre-confermarle
+            # gia' qui renderebbe quel pulsante un no-op silenzioso (bug reale trovato in test).
+            d["status"] = "proposed"
+            # snapshot immutabile di cio' che l'AI ha proposto in origine: sopravvive a
+            # eventuali correzioni manuali successive, per audit trail (FieldMapping.original_ai_proposal)
+            d["original_ai_proposal"] = {
+                "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
+                "attribute_name": p.attribute_name, "qualifier": p.qualifier,
+                "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
+            }
+            rows.append(d)
+
+        sess["dataset_label"] = f"{dataset_label} · AI Mapping Service: {mapper_label}"
+        sess["mapping_rows"] = rows
+        sess["mapping_status"] = "done"
+    except Exception as exc:
+        print(f"Generazione mapping fallita del tutto ({exc!r}).")
+        sess["mapping_status"] = "error"
+        sess["mapping_error"] = str(exc)
+
+
+@router.get("/ingestion/mapping-status", response_class=HTMLResponse)
+def mapping_status_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
+    status = sess.get("mapping_status")
+
+    if status == "done":
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+
+    return templates.TemplateResponse(
+        "mapping_status.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+            "error": sess.get("mapping_error") if status == "error" else None, "step": 2,
+        }
+    )
 
 
 @router.get("/ingestion/review", response_class=HTMLResponse)
@@ -387,7 +432,11 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
     if denied:
         return denied
     sess = _load_session(workspace_id)
-    rows = sess["mapping_rows"]
+    rows = sess.get("mapping_rows")
+    if rows is None:
+        # Non ancora pronto (o mai partito, es. link diretto): manda alla pagina
+        # di attesa invece di un errore, e' quella che sa cosa fare in ogni stato.
+        return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     for r in rows:
         r["target_label"] = _target_label(r)
 

@@ -14,7 +14,7 @@ aggiornamento dati, nuova versione, eliminazione).
 |---|---|
 | A. Contestualizzazione | `templates/context.html`, `POST /ingestion/new` |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
-| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`) |
+| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); gira in background dopo l'upload (`templates/mapping_status.html`, polling) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |
 | G. Salvataggio config + run (come bozza) | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
 | Ciclo di vita struttura (nuovo) | `routers/ingestion.py`: `promote_structure`, `list_structures`, `update_data_*`, `delete_structure` |
@@ -165,6 +165,19 @@ credenziali valide configurate (es. per non consumare crediti in sviluppo):
 ```
 AI_MAPPER=heuristic
 ```
+
+**La chiamata AI Mapping gira in background**, non dentro la richiesta HTTP
+dell'upload: su dataset con molte tabelle/colonne (specie con Claude reale)
+può richiedere fino a un minuto, e tenerla dentro la richiesta esponeva a un
+bug reale trovato in test — il tunnel di Codespaces o il browser interrompono
+una richiesta troppo lunga lato client, mostrando un errore (o un "download"
+vuoto su Safari) anche se il server la porta comunque a termine. Ora
+`POST /ingestion/upload` ritorna subito una pagina di attesa
+(`/ingestion/mapping-status`, `templates/mapping_status.html`) che fa polling
+ogni 3 secondi finché il mapping non è pronto, poi passa da sola alla
+revisione — verificato end-to-end (redirect immediato, pagina di attesa,
+completamento in background, arrivo automatico a `/ingestion/review`).
+
 `ClaudeAIMapper` non ha nessuna conoscenza precodificata delle tabelle P2P
 (a differenza del mock, che usa il template `genericfile_p2p_v1`): ragiona
 da zero su nomi tabella/colonna, tipi, valori di esempio e Process Context

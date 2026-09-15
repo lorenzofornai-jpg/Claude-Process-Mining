@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not error %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+<div class="card">
+  {% if error %}
+  <h1>Generazione mapping non riuscita</h1>
+  <div class="banner error">{{ error }}</div>
+  <p class="tiny muted" style="margin-top:16px">
+    <a href="/ingestion/upload?workspace_id={{ workspace_id }}">← Torna al caricamento file</a>
+  </p>
+  {% else %}
+  <h1>Fase E — Sto generando le proposte di mapping AI…</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong>. Su dataset con molte tabelle/colonne
+    (specie con Claude reale) può richiedere fino a un minuto: questa pagina si aggiorna da sola
+    ogni pochi secondi, non serve ricaricarla o tornare indietro.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}
