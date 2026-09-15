@@ -76,6 +76,9 @@ def seed_default_admin() -> None:
                 existing.password_hash = hash_password(ADMIN_PASSWORD)
                 existing.is_admin = True
                 db.commit()
+                print("=" * 72)
+                print(f"Admin sincronizzato da .env — email: {email}  password: quella in ADMIN_PASSWORD")
+                print("=" * 72)
             return
 
         password = ADMIN_PASSWORD
@@ -85,10 +88,12 @@ def seed_default_admin() -> None:
         user = User(name="Amministratore", email=email, password_hash=hash_password(password), is_admin=True)
         db.add(user)
         db.commit()
+        print("=" * 72)
         if generated:
-            print("=" * 72)
             print(f"Admin iniziale creato — email: {ADMIN_EMAIL}  password: {password}")
             print("Imposta ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env per fissarle e poterle 'resettare' cambiandole li'.")
-            print("=" * 72)
+        else:
+            print(f"Admin creato da .env — email: {email}  password: quella in ADMIN_PASSWORD")
+        print("=" * 72)
     finally:
         db.close()
