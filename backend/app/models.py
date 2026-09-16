@@ -148,6 +148,13 @@ class IngestionConfig(Base):
     # {source_table: [colonne]} al momento dell'ultima generazione: usato per verificare
     # se un nuovo caricamento dati e' compatibile con questa struttura ("Aggiorna dati").
     schema_fingerprint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Se True, il mapping confermato di questa struttura (le sue FieldMapping) e'
+    # riusabile come pattern di riferimento per tabelle con lo stesso nome in futuri
+    # upload - sia per il mock (HeuristicAIMapper, vedi services/catalog.py) sia come
+    # "wiki" di riferimento passato a ClaudeAIMapper. Eliminare la struttura elimina
+    # anche questo: non e' un'entita' separata, e' un flag su un IngestionConfig che
+    # ha gia' cascade completo (vedi delete_structure in routers/ingestion.py).
+    in_catalog: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     object_types: Mapped[list["ObjectTypeDef"]] = relationship(back_populates="config", cascade="all, delete-orphan")

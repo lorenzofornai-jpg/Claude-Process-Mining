@@ -5,7 +5,10 @@
   <p class="muted">
     Ogni struttura è un insieme di scelte di mapping confermate ("Utilizza log per analisi" dal
     risultato del wizard). Puoi aggiornarne i dati mantenendo le stesse scelte, modificarle
-    generando una nuova versione, o eliminarla.
+    generando una nuova versione, o eliminarla. "Aggiungi al catalogo" rende il mapping di questa
+    struttura un pattern di riferimento riusabile per future tabelle con lo stesso nome (sia per
+    l'euristica mock sia come contesto per Claude): eliminare la struttura lo rimuove anche dal
+    catalogo, non è un'entità separata.
   </p>
 
   <table class="admin-table">
@@ -18,7 +21,10 @@
     <tbody>
       {% for s in structures %}
       <tr>
-        <td>{{ s.config.name }}</td>
+        <td>
+          {{ s.config.name }}
+          {% if s.config.in_catalog %}<div class="tiny"><span class="badge badge-overridden">in catalogo</span></div>{% endif %}
+        </td>
         <td>v{{ s.config.current_version }}</td>
         <td class="tiny muted">
           {{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") if s.last_run else "—" }}
@@ -32,6 +38,10 @@
         <td class="decision">
           <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">Aggiorna dati</a>
           <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">Modifica struttura</a>
+          <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog" style="display:inline">
+            <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+            <button type="submit" class="secondary">{{ "Rimuovi dal catalogo" if s.config.in_catalog else "Aggiungi al catalogo" }}</button>
+          </form>
           <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete" style="display:inline"
                 onsubmit="return confirm('Eliminare definitivamente questa struttura e tutti i suoi run? Non si può annullare.');">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">

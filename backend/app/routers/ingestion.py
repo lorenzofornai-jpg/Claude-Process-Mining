@@ -767,6 +767,28 @@ def promote_structure(request: Request, config_id: str, workspace_id: str = Form
     return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
 
 
+@router.post("/ingestion/structures/{config_id}/toggle-catalog")
+def toggle_catalog(request: Request, config_id: str, workspace_id: str = Form(...)):
+    """Aggiunge/rimuove questa struttura dal catalogo di pattern riusabili
+    (services/catalog.dynamic_lookup): non e' un'entita' separata, solo un
+    flag su IngestionConfig - eliminare la struttura elimina anche questo."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+        if config is None:
+            return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
+        config.in_catalog = not config.in_catalog
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
+
+
 @router.get("/ingestion/structures", response_class=HTMLResponse)
 def list_structures(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)

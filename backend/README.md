@@ -199,6 +199,43 @@ solo nomi/tipi/statistiche/5 valori di esempio, mai i dati grezzi delle
 tabelle (quelli servono solo dopo, al Transformation Engine, mai all'AI
 Mapping Service).
 
+### Catalogo vivo: riusare i mapping già confermati
+
+Oltre al catalogo statico seed (`GENERIC_FILE_P2P_CATALOG` in
+`services/catalog.py`, le 4 tabelle del dataset sintetico), il catalogo si
+arricchisce con l'uso: nel **registro strutture** (`/ingestion/structures`)
+ogni struttura ha un pulsante **"Aggiungi al catalogo"** (diventa "Rimuovi
+dal catalogo" una volta attivo, con badge "in catalogo" accanto al nome).
+Non è un'entità separata — solo `IngestionConfig.in_catalog`, un flag — quindi
+**eliminare la struttura la rimuove anche dal catalogo automaticamente**
+(cascata già esistente su `IngestionConfig`, nessuna logica in più da
+mantenere).
+
+`services/catalog.dynamic_lookup(table_name)` cerca, tra le strutture in
+catalogo, un mapping già confermato per una tabella con lo **stesso nome
+esatto** (stessa semplificazione già in uso nel catalogo statico: non
+verifica che le colonne coincidano) e lo riusa in due modi:
+
+- **`HeuristicAIMapper`**: se una tabella in ingresso combacia per nome con
+  un pattern in catalogo, lo applica con `_from_template()` (stesso
+  meccanismo del catalogo statico, `based_on_template="catalog:learned"`)
+  invece di cadere sull'euristica generica a bassa confidence.
+- **`ClaudeAIMapper`**: il pattern (colonna → ocel_element/object_type/
+  event_type/qualifier) entra nel payload per quella tabella come
+  `known_pattern` — una "wiki" di mapping già validati da un umano. Il
+  system prompt istruisce Claude a trattarlo come priore forte per le
+  colonne che coincidono, adattandolo solo se il contesto della nuova
+  tabella è chiaramente diverso.
+
+Verificato end-to-end: struttura A (LFA1+EKKO, mappate con l'euristica
+generica) promossa e aggiunta al catalogo → struttura B in un **processo
+diverso** con le stesse tabelle riusa il pattern (`catalog:learned`) invece
+di ricalcolare da zero → eliminando la struttura A il pattern sparisce e una
+struttura C successiva torna a usare l'euristica generica. Verificato anche
+che `known_pattern` compaia nel payload Claude solo per le tabelle
+effettivamente in catalogo (`null` per le altre, via client Anthropic
+mockato).
+
 **Testato con una vera chiamata**: su questo dataset, Claude ha coperto
 tutte le 29 colonne, riconosciuto correttamente chiavi/timestamp/relazioni,
 ed è arrivato persino a proporre un 5° tipo oggetto (`Vendor`, separato da

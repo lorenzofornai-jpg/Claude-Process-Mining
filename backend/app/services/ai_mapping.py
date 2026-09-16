@@ -166,14 +166,19 @@ class HeuristicAIMapper(AIMapper):
         for table in tables:
             hint = catalog.lookup(table.name)
             if hint and table.name in _TEMPLATE_RULES:
-                proposals.extend(self._from_template(table))
-            else:
-                proposals.extend(self._generic_fallback(table))
+                proposals.extend(self._from_template(table, _TEMPLATE_RULES[table.name], catalog.TEMPLATE_ID))
+                continue
+            dynamic = catalog.dynamic_lookup(table.name)
+            if dynamic:
+                _, rules = dynamic
+                proposals.extend(self._from_template(table, rules, catalog.LEARNED_TEMPLATE_ID))
+                continue
+            proposals.extend(self._generic_fallback(table))
         return proposals
 
-    def _from_template(self, table: TableSchema) -> list[MappingProposal]:
+    def _from_template(self, table: TableSchema, rules: list[dict], based_on_template: str) -> list[MappingProposal]:
         out = []
-        for rule in _TEMPLATE_RULES[table.name]:
+        for rule in rules:
             out.append(
                 MappingProposal(
                     source_table=table.name,
@@ -186,7 +191,7 @@ class HeuristicAIMapper(AIMapper):
                     related_object_type=rule.get("related_object_type"),
                     confidence=rule["conf"],
                     rationale=rule["rationale"],
-                    based_on_template=catalog.TEMPLATE_ID,
+                    based_on_template=based_on_template,
                 )
             )
         return out
@@ -300,6 +305,16 @@ rispetto a un'inferenza fatta solo da nomi/valori - specialmente su schemi con n
 tabella anagrafica da una transazionale. Se assente per una tabella, ragiona come faresti senza:
 non e' un requisito, e' un aiuto quando c'e'.
 
+Ogni tabella puo' includere anche "known_pattern": una lista di mapping gia' proposti da un umano
+in una struttura precedente confermata per una tabella con questo stesso nome esatto (una "wiki" di
+pattern gia' validati, alimentata dal catalogo dell'app). Quando presente, trattalo come un priore
+forte per default (confidence alta), non come un semplice suggerimento: usa lo stesso ocel_element/
+object_type/event_type/qualifier per le colonne che coincidono. Adattalo (o scostatene con una
+confidence piu' bassa e la rationale che spiega perche') solo se le colonne o i valori di questa
+tabella mostrano chiaramente che il contesto e' diverso da quello della struttura precedente. Se
+"known_pattern" copre solo alcune colonne della tabella attuale, ragiona normalmente sulle restanti.
+Se assente, ragiona come faresti senza: e' un aiuto opzionale, non un requisito.
+
 Per ciascuna colonna scegli una o piu' di queste categorie (ocel_element) - piu' di una riga per la
 stessa colonna e' corretto quando contribuisce a piu' aspetti del modello (es. componente di chiave
 composita E relazione verso un altro oggetto):
@@ -338,6 +353,27 @@ class ClaudeAIMapper(AIMapper):
         self._client = anthropic.Anthropic()
         self._model = model or ANTHROPIC_MODEL
 
+    @staticmethod
+    def _known_pattern_for(table_name: str) -> list[dict] | None:
+        """Traduce il catalogo dinamico (services/catalog.py) in un formato compatto
+        per il prompt: solo cio' che serve a Claude per riconoscere e riusare il
+        pattern, non i metadati interni (confidence/based_on_template)."""
+        dynamic = catalog.dynamic_lookup(table_name)
+        if dynamic is None:
+            return None
+        _, rules = dynamic
+        return [
+            {
+                "column": r["col"],
+                "ocel_element": r["el"],
+                "object_type": r.get("object_type"),
+                "event_type": r.get("event_type"),
+                "qualifier": r.get("qualifier"),
+                "related_object_type": r.get("related_object_type"),
+            }
+            for r in rules
+        ]
+
     def propose_mapping(
         self,
         tables: list[TableSchema],
@@ -355,6 +391,11 @@ class ClaudeAIMapper(AIMapper):
                     # passo "Descrivi le tabelle" prima di questa chiamata: opzionale,
                     # presente solo se l'utente l'ha compilata (vedi system prompt).
                     "user_description": table_descriptions.get(t.name),
+                    # "Wiki" di mapping gia' confermati dall'utente in strutture precedenti
+                    # (pulsante "Aggiungi al catalogo" nel registro strutture), per una
+                    # tabella con questo stesso nome esatto: null se non c'e' niente in
+                    # catalogo per questo nome (vedi system prompt su come usarlo).
+                    "known_pattern": self._known_pattern_for(t.name),
                     "columns": [
                         {
                             "name": c.name,
