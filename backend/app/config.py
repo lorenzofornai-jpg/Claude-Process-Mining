@@ -35,3 +35,13 @@ AUTO_ACCEPT_CONFIDENCE_THRESHOLD = 0.85
 # configurato una chiave.
 AI_MAPPER = os.environ.get("AI_MAPPER", "claude")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
+
+# Cache-busting per gli asset statici (style.css): senza una query string che
+# cambia, il browser puo' continuare a servire una versione in cache anche
+# dopo un git pull con CSS aggiornato - visto succedere davvero in test
+# (l'utente vedeva l'interfaccia "vecchia" nonostante il codice fosse
+# aggiornato). L'mtime del file cambia ad ogni modifica (e tipicamente anche
+# ad ogni checkout git), quindi basta come versione senza dover incrementare
+# un numero a mano.
+_STYLE_CSS_PATH = BASE_DIR / "app" / "static" / "style.css"
+STATIC_VERSION = str(int(_STYLE_CSS_PATH.stat().st_mtime)) if _STYLE_CSS_PATH.exists() else "0"

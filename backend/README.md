@@ -293,6 +293,16 @@ badge/testo verificato via lettura pixel diretta (non solo a occhio, per
 evitare falsi negativi dovuti a come uno screenshot viene renderizzato in
 anteprima).
 
+**Cache-busting su `style.css`**: il tag `<link>` include `?v={{
+static_version }}` (`app/config.py`, mtime del file), non solo un URL fisso
+— senza, un browser può continuare a servire una versione di `style.css` in
+cache anche dopo un `git pull` con CSS aggiornato (successo davvero in
+test: l'utente vedeva l'interfaccia "vecchia" nonostante il codice fosse
+aggiornato). Ad ogni modifica del CSS (o ad ogni checkout git, che
+tipicamente aggiorna l'mtime dei file) il numero di versione cambia da solo,
+senza doverlo incrementare a mano. Impostato sia in `base.html` sia in
+`login.html`, che non estende `base.html` ed ha un proprio `<head>`.
+
 ## Semplificazioni deliberate di questo prototipo
 
 Sono scelte fatte per avere qualcosa di testabile subito, non limiti

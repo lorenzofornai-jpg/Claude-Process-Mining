@@ -7,11 +7,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, verify_password
+from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import User
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+templates.env.globals["static_version"] = STATIC_VERSION
 
 
 @router.get("/login", response_class=HTMLResponse)
