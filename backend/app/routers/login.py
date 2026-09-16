@@ -45,10 +45,11 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
 @router.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    response = RedirectResponse("/login", status_code=303)
-    # SessionMiddleware cancella gia' il cookie da solo quando la sessione
-    # diventa vuota (verificato: funziona correttamente in test diretti).
-    # Cancellazione esplicita aggiuntiva solo come difesa in profondita' contro
-    # un browser/proxy che non onorasse per qualche motivo quel Set-Cookie.
-    response.delete_cookie("session", path="/")
-    return response
+    # NON aggiungere qui un secondo Set-Cookie esplicito (es. response.delete_cookie):
+    # SessionMiddleware ne manda gia' uno da solo quando la sessione diventa vuota, e
+    # avere DUE Set-Cookie per lo stesso nome cookie in una risposta e' un caso limite
+    # che un proxy che traduce HTTP/2<->HTTP/1.1 (come l'inoltro porte di Codespaces)
+    # puo' gestire in modo incoerente - bug reale visto in test: il logout tornava a
+    # "I miei processi" in modo incostante invece che al login, perche' il cookie non
+    # veniva davvero cancellato lato client prima della richiesta successiva.
+    return RedirectResponse("/login", status_code=303)
