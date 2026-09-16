@@ -262,6 +262,37 @@ al collegamento evento→oggetto nativo) invece che sul nome dell'event type
 — i check ora sono indipendenti da come l'AI Mapping Service, mock o reale,
 decide di chiamare gli eventi.
 
+## UI: design tokens, dark mode automatico, responsive
+
+`app/static/style.css` è stato rivisto per un look più curato senza cambiare
+stack (resta CSS puro, nessun framework/build step): variabili di colore su
+`:root` con controparte automatica per `prefers-color-scheme: dark` (si
+adatta al tema di sistema, come farebbe un'app nativa — nessun toggle
+manuale, nessun JS), elevazioni (`--shadow-sm/md`) e raggi (`--radius-sm/md/
+lg`) coerenti su card/bottoni/badge, header sticky con blur "da toolbar OS".
+
+Responsive: header con `flex-wrap` (gli step del wizard non si accavallano
+più su schermi stretti, bug reale visto su iPad — vedi sotto), touch target
+≥44px su dispositivi coarse-pointer, font-size 16px sui form per evitare lo
+zoom automatico di Safari iOS al focus, breakpoint a 640px per padding/
+layout mobile.
+
+**Bug reale trovato e corretto in test** (screenshot Playwright a 390px e
+834px di viewport): le tabelle (`mapping-table`, `dq-table`, `admin-table`)
+con `width: 100%` si restringevano fino a incastrarsi nel viewport stretto
+invece di scorrere in orizzontale, mandando il testo della rationale a capo
+una parola per riga (una pagina di revisione arrivava a 11259px di altezza
+invece di ~5500px). Aggiunto un `min-width` alle tabelle: ora il contenitore
+(`.table-block`/`.card`, già con `overflow-x: auto`) scorre orizzontalmente
+invece di schiacciare le colonne.
+
+Verificato con Playwright/Chromium headless: dashboard, "Descrivi le
+tabelle" e "Revisione mapping" a 1280px (desktop), 834px (iPad) e 390px
+(iPhone), sia in light che in dark — nessuna regressione visiva, contrasto
+badge/testo verificato via lettura pixel diretta (non solo a occhio, per
+evitare falsi negativi dovuti a come uno screenshot viene renderizzato in
+anteprima).
+
 ## Semplificazioni deliberate di questo prototipo
 
 Sono scelte fatte per avere qualcosa di testabile subito, non limiti

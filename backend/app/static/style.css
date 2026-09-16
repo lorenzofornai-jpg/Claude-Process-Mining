@@ -1,169 +1,270 @@
 :root {
-  --bg: #f5f6f8;
+  --bg: #f4f5f8;
   --card-bg: #ffffff;
-  --border: #e0e3e8;
+  --card-bg-soft: #f8f9fb;
+  --border: #e3e6ec;
   --text: #1c2230;
-  --muted: #6b7280;
-  --brand: #2f5fd6;
-  --brand-dark: #1f3f9e;
+  --muted: #68707e;
+  --brand: #3b63e0;
+  --brand-dark: #2a4bc0;
+  --brand-soft: #eef1fd;
   --ok: #1b8a5a;
-  --warn: #b8860b;
+  --ok-soft: #e6f6ee;
+  --warn: #a6720a;
+  --warn-soft: #fdf3de;
   --error: #c23b3b;
+  --error-soft: #fbeaea;
   --high: #1b8a5a;
-  --mid: #b8860b;
+  --mid: #a6720a;
   --low: #c23b3b;
+
+  --radius-sm: 7px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(20, 24, 38, 0.06);
+  --shadow-md: 0 6px 20px -4px rgba(20, 24, 38, 0.12), 0 2px 6px -1px rgba(20, 24, 38, 0.06);
+  --header-bg: rgba(255, 255, 255, 0.78);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181d;
+    --card-bg: #1e2128;
+    --card-bg-soft: #262a33;
+    --border: #33373f;
+    --text: #eceef2;
+    --muted: #9aa1ad;
+    --brand: #6d8bf5;
+    --brand-dark: #90a8f7;
+    --brand-soft: #232a44;
+    --ok: #3ecf8e;
+    --ok-soft: #163529;
+    --warn: #e0ab3d;
+    --warn-soft: #3a2f14;
+    --error: #f0685f;
+    --error-soft: #3a1e1e;
+    --high: #3ecf8e;
+    --mid: #e0ab3d;
+    --low: #f0685f;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 10px 28px -6px rgba(0, 0, 0, 0.55), 0 2px 8px -1px rgba(0, 0, 0, 0.35);
+    --header-bg: rgba(30, 33, 40, 0.72);
+  }
 }
 
 * { box-sizing: border-box; }
 
+html { -webkit-text-size-adjust: 100%; }
+
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
   background: var(--bg);
   color: var(--text);
+  line-height: 1.45;
 }
 
+a { color: var(--brand); }
+
+/* Header sticky + traslucido con blur, in stile "toolbar" OS: resta leggibile
+   sopra il contenuto che scorre invece di occupare spazio fisso. */
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 32px;
-  background: var(--card-bg);
+  padding: 12px 24px;
+  background: var(--header-bg);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--border);
 }
 
-.brand { font-weight: 700; font-size: 16px; }
+.brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; }
 .brand span { font-weight: 400; color: var(--muted); margin-left: 6px; }
 
-.steps { display: flex; gap: 18px; font-size: 13px; color: var(--muted); }
+/* Su schermi stretti gli step scorrono in orizzontale invece di accavallarsi
+   o andare a capo in mezzo a una parola (visto succedere su iPad in test). */
+.steps {
+  display: flex;
+  gap: 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.steps::-webkit-scrollbar { display: none; }
+.steps .step { flex-shrink: 0; white-space: nowrap; }
 .steps .step.active { color: var(--brand); font-weight: 600; }
 
-.user-box { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+.user-box { display: flex; align-items: center; gap: 14px; font-size: 12.5px; flex-shrink: 0; }
 .user-box .nav-link { color: var(--brand); text-decoration: none; font-weight: 600; }
 .user-box .user-name { color: var(--muted); }
 .link-button {
   background: none; border: none; padding: 0; margin: 0;
-  color: var(--brand); font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--brand); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
 }
 .link-button:hover { text-decoration: underline; }
 
-table.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; background: white; margin-top: 16px; }
+table.admin-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px; background: var(--card-bg); margin-top: 16px; }
 table.admin-table th, table.admin-table td {
-  text-align: left; padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle;
+  text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle;
 }
-table.admin-table th { color: var(--muted); font-size: 12px; text-transform: uppercase; background: #f8f9fb; }
-.assign-form { display: flex; gap: 6px; align-items: center; }
-.assign-form select { padding: 5px 7px; border: 1px solid var(--border); border-radius: 4px; font-size: 12.5px; }
-.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; background: #eef0f4; color: var(--text); }
-.pill-unassigned { background: #fff6e5; color: #7a5700; }
+table.admin-table th { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; background: var(--card-bg-soft); }
+table.admin-table tbody tr { transition: background 0.12s ease; }
+table.admin-table tbody tr:hover { background: var(--card-bg-soft); }
+.assign-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.assign-form select { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; background: var(--card-bg); color: var(--text); }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--card-bg-soft); color: var(--text); }
+.pill-unassigned { background: var(--warn-soft); color: var(--warn); }
 
-.content { padding: 32px; max-width: 1100px; margin: 0 auto; }
+.content { padding: 28px 24px 64px; max-width: 1100px; margin: 0 auto; }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 28px 32px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: clamp(20px, 4vw, 32px);
   max-width: 560px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .card.wide { max-width: 100%; }
 
-h1 { font-size: 20px; margin-top: 0; }
-h2 { font-size: 15px; color: var(--text); margin: 24px 0 8px; }
-.muted { color: var(--muted); font-size: 14px; line-height: 1.5; }
+h1 { font-size: 19px; margin-top: 0; letter-spacing: -0.01em; }
+h2 { font-size: 14.5px; color: var(--text); margin: 24px 0 8px; letter-spacing: -0.005em; }
+.muted { color: var(--muted); font-size: 14px; line-height: 1.55; }
 .tiny { font-size: 11px; }
 
 .form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
 .form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text); }
 .form input, .form select, .form textarea {
-  padding: 9px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  font-size: 16px; /* >=16px evita lo zoom automatico di Safari iOS al focus */
   font-family: inherit;
+  background: var(--card-bg);
+  color: var(--text);
   resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.row { display: flex; gap: 16px; }
-.row label { flex: 1; }
+.form input:focus, .form select:focus, .form textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.row { display: flex; gap: 16px; flex-wrap: wrap; }
+.row label { flex: 1; min-width: 160px; }
 
 .option-box {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 14px;
+  background: var(--card-bg-soft);
 }
 .checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 
 button, .button-link {
   cursor: pointer;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 10px 18px;
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
   display: inline-block;
+  font-family: inherit;
+  transition: background 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
 }
-.primary { background: var(--brand); color: white; }
+button:active, .button-link:active { transform: scale(0.97); }
+button:focus-visible, .button-link:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.primary { background: var(--brand); color: white; box-shadow: var(--shadow-sm); }
 .primary:hover { background: var(--brand-dark); }
-.secondary { background: #eef0f4; color: var(--text); margin-right: 8px; }
-.secondary:hover { background: #e2e5ec; }
+.secondary { background: var(--card-bg-soft); color: var(--text); margin-right: 8px; border: 1px solid var(--border); }
+.secondary:hover { background: var(--border); }
+
+/* Tap target comodo su touch (linea guida ~44px), non solo su hover/desktop. */
+@media (pointer: coarse) {
+  button, .button-link { padding: 12px 18px; min-height: 44px; }
+}
 
 .banner {
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   margin: 16px 0;
+  border-left: 3px solid transparent;
 }
-.banner.warning { background: #fff6e5; color: #7a5700; border: 1px solid #f0d999; }
-.banner.ok { background: #e9f8f0; color: #0f6a41; border: 1px solid #a9e4c6; }
-.banner.error { background: #fdecec; color: #8a2727; border: 1px solid #f0b8b8; }
+.banner.warning { background: var(--warn-soft); color: var(--warn); border-left-color: var(--warn); }
+.banner.ok { background: var(--ok-soft); color: var(--ok); border-left-color: var(--ok); }
+.banner.error { background: var(--error-soft); color: var(--error); border-left-color: var(--error); }
 
-.table-block { margin-bottom: 28px; }
+.table-block { margin-bottom: 28px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .mapping-table, .dq-table {
   width: 100%;
+  /* Senza un minimo, "width: 100%" fa restringere la tabella fino a incastrarsi
+     nel viewport stretto, con celle che vanno a capo parola per parola invece
+     di scorrere in orizzontale (bug reale visto su mobile). */
+  min-width: 720px;
   border-collapse: collapse;
   font-size: 13px;
-  background: white;
+  background: var(--card-bg);
 }
 .mapping-table th, .dq-table th {
   text-align: left;
-  padding: 8px 10px;
-  background: #f8f9fb;
+  padding: 9px 10px;
+  background: var(--card-bg-soft);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11.5px;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
 }
 .mapping-table td, .dq-table td {
   padding: 10px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 12.5px; }
 .rationale { color: var(--muted); max-width: 420px; }
-tr.row-pending { background: #fffaf0; }
+tr.row-pending { background: var(--warn-soft); }
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   color: white;
+  letter-spacing: 0.01em;
 }
 .badge-high { background: var(--high); }
 .badge-mid { background: var(--mid); }
 .badge-low { background: var(--low); }
-.badge-info { background: #6b7280; }
+.badge-info { background: var(--muted); }
 .badge-warning { background: var(--warn); }
 .badge-error { background: var(--error); }
 .badge-overridden { background: var(--brand); }
 
 .decision { white-space: nowrap; }
 .radio { font-size: 12.5px; margin-right: 10px; display: inline-flex; align-items: center; gap: 4px; }
-tr.row-overridden { background: #eef2fc; }
+tr.row-overridden { background: var(--brand-soft); }
 
 .edit-mapping { margin-top: 8px; white-space: normal; }
 .edit-mapping summary {
@@ -178,9 +279,9 @@ tr.row-overridden { background: #eef2fc; }
   gap: 8px;
   margin-top: 8px;
   padding: 10px;
-  background: #f8f9fb;
+  background: var(--card-bg-soft);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .edit-fields label {
   display: flex;
@@ -190,15 +291,34 @@ tr.row-overridden { background: #eef2fc; }
   color: var(--muted);
 }
 .edit-fields input, .edit-fields select {
-  padding: 5px 7px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--card-bg);
+  color: var(--text);
 }
 
-.actions { margin-top: 24px; display: flex; align-items: center; }
+.actions { margin-top: 24px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.stat-row { display: flex; gap: 24px; margin: 20px 0 28px; flex-wrap: wrap; }
-.stat { background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; min-width: 100px; }
-.stat-value { display: block; font-size: 22px; font-weight: 700; }
+.stat-row { display: flex; gap: 16px; margin: 20px 0 28px; flex-wrap: wrap; }
+.stat {
+  background: var(--card-bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 20px;
+  min-width: 100px;
+  flex: 1 1 auto;
+}
+.stat-value { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .stat-label { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+@media (max-width: 640px) {
+  .app-header { padding: 10px 16px; }
+  .content { padding: 20px 16px 48px; }
+  .card { padding: 18px; border-radius: var(--radius-md); }
+  h1 { font-size: 17px; }
+  .edit-fields { grid-template-columns: 1fr; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .button-link, .actions button { text-align: center; }
+}
