@@ -29,7 +29,13 @@ async def _no_store_dynamic_pages(request, call_next):
     essendo il cookie di sessione cancellato correttamente lato server)."""
     response = await call_next(request)
     if not request.url.path.startswith("/static/"):
-        response.headers["Cache-Control"] = "no-store"
+        # no-store da solo basta per i browser moderni, ma un proxy/CDN
+        # intermedio (es. l'inoltro porte di Codespaces) potrebbe rispettare
+        # solo le direttive piu' vecchie: aggiunte tutte per non lasciare
+        # scappatoie a nessun livello della catena.
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 
