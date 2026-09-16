@@ -20,7 +20,7 @@
     <div class="user-box">
       {% if user.is_admin %}<a href="/admin" class="nav-link">Admin</a>{% endif %}
       <a href="/ingestion/dashboard" class="nav-link">I miei processi</a>
-      <span class="user-name">{{ user.name }} {{ '(admin)' if user.is_admin else '(data engineer)' }}</span>
+      <span class="user-name">{{ user.name }}{{ ' (admin)' if user.is_admin else '' }}</span>
       <form method="post" action="/logout" style="display:inline">
         <button type="submit" class="link-button">Esci</button>
       </form>
