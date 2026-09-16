@@ -339,38 +339,81 @@ async def handle_upload(
         )
     dataset_label = f"{len(file_paths)} file caricati"
 
-    # Discovery/estrazione via pandas sono rapide anche su dataset grandi: si fanno
-    # subito. La chiamata AI Mapping (specie Claude reale) puo' invece richiedere
-    # decine di secondi su schemi con molte tabelle/colonne - se restasse dentro
-    # questa richiesta, un timeout del tunnel di Codespaces o del browser la
-    # interromperebbe lato client anche se il server la porta comunque a termine
-    # (bug reale osservato in test: la pagina di revisione veniva generata
-    # correttamente lato server, ma il browser mostrava un download vuoto invece
-    # di navigarci). Per questo gira in background: la richiesta ritorna subito
-    # una pagina di attesa che fa polling, invece di restare bloccata ad aspettare.
     connector = FileConnector(file_paths)
     tables_schema = connector.discover_schema()
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
 
     sess["dataset_label"] = dataset_label
     sess["tables_schema"] = [asdict(t) for t in tables_schema]
+    # Oggetti live (non solo i dict serializzati sopra, che servono altrove es.
+    # schema_fingerprint): servono intatti al passo successivo (descrizione
+    # tabelle) e da li' alla chiamata AI Mapping, senza doverli ricostruire.
+    sess["tables_schema_objs"] = tables_schema
     sess["tables_data"] = tables_data
+    sess["mapping_rows"] = None
+    sess["mapping_status"] = None
+    sess["mapping_error"] = None
+    sess["table_descriptions"] = {}
+
+    return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
+
+
+@router.get("/ingestion/describe-tables", response_class=HTMLResponse)
+def describe_tables_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
+    tables_schema = sess.get("tables_schema_objs")
+    if not tables_schema:
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    descriptions = sess.get("table_descriptions", {})
+    return templates.TemplateResponse(
+        "describe_tables.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+            "tables": tables_schema, "descriptions": descriptions, "step": 2,
+        }
+    )
+
+
+@router.post("/ingestion/describe-tables")
+async def submit_table_descriptions(request: Request, background_tasks: BackgroundTasks, workspace_id: str = Form(...)):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(workspace_id)
+    tables_schema = sess.get("tables_schema_objs")
+    if not tables_schema:
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+
+    form = await request.form()
+    descriptions = {}
+    for t in tables_schema:
+        raw = form.get(f"desc_{t.name}")
+        if raw and raw.strip():
+            descriptions[t.name] = raw.strip()
+    sess["table_descriptions"] = descriptions
+
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"
     sess["mapping_error"] = None
 
-    background_tasks.add_task(_run_ai_mapping, sess, tables_schema, tables_data, dataset_label)
+    background_tasks.add_task(
+        _run_ai_mapping, sess, tables_schema, sess["tables_data"], sess["dataset_label"], descriptions
+    )
 
     return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
 
 
-def _run_ai_mapping(sess: dict, tables_schema: list, tables_data: dict, dataset_label: str) -> None:
+def _run_ai_mapping(
+    sess: dict, tables_schema: list, tables_data: dict, dataset_label: str, table_descriptions: dict[str, str]
+) -> None:
     """Gira dopo che la risposta HTTP e' gia' stata inviata (FastAPI BackgroundTasks):
     scrive l'esito in `sess`, che /ingestion/mapping-status legge via polling."""
     try:
         mapper, mapper_label = _get_ai_mapper()
         try:
-            proposals = mapper.propose_mapping(tables_schema, sess["context"])
+            proposals = mapper.propose_mapping(tables_schema, sess["context"], table_descriptions)
         except Exception as exc:
             if mapper_label == "euristica mock":
                 raise
@@ -379,7 +422,7 @@ def _run_ai_mapping(sess: dict, tables_schema: list, tables_data: dict, dataset_
             # mock, con l'errore reale visibile nei log e in etichetta, che un 500.
             print(f"ClaudeAIMapper ha fallito ({exc!r}): fallback sull'euristica mock per questo upload.")
             mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
-            proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"])
+            proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"], table_descriptions)
 
         rows = []
         for i, p in enumerate(proposals):
@@ -417,6 +460,10 @@ def mapping_status_page(request: Request, workspace_id: str):
 
     if status == "done":
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+    if status is None:
+        # Non ancora avviato (es. link diretto senza passare da descrizione tabelle):
+        # non c'e' nessun background task che lo portera' mai a "done".
+        return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
 
     return templates.TemplateResponse(
         "mapping_status.html", {

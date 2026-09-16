@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Fase D/E — Descrivi le tabelle (opzionale)</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong>. Se conosci il contenuto di una tabella,
+    descriverlo qui in poche parole aiuta l'AI Mapping Service a proporre un mapping più preciso —
+    specialmente su nomi poco leggibili (es. tabelle SAP). È del tutto facoltativo: puoi lasciare
+    vuoto e procedere, l'AI ragionerà comunque da nomi colonna, tipi e valori di esempio.
+  </p>
+
+  <form method="post" action="/ingestion/describe-tables" class="form">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+
+    {% for t in tables %}
+    <section class="table-block">
+      <h2 class="mono">{{ t.name }}</h2>
+      <p class="tiny muted">{{ t.row_count }} righe · {{ t.columns|length }} colonne</p>
+      <label>Cosa contiene questa tabella? (opzionale)
+        <textarea name="desc_{{ t.name }}" rows="2"
+                  placeholder="es. Testata ordine d'acquisto: un ordine per riga, con stato di rilascio e fornitore.">{{ descriptions.get(t.name, "") }}</textarea>
+      </label>
+    </section>
+    {% endfor %}
+
+    <div class="actions">
+      <button type="submit" class="primary">Avanti: genera proposte di mapping AI</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

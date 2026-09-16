@@ -52,7 +52,17 @@ class MappingProposal:
 
 class AIMapper(ABC):
     @abstractmethod
-    def propose_mapping(self, tables: list[TableSchema], context_profile: dict) -> list[MappingProposal]:
+    def propose_mapping(
+        self,
+        tables: list[TableSchema],
+        context_profile: dict,
+        table_descriptions: dict[str, str] | None = None,
+    ) -> list[MappingProposal]:
+        """table_descriptions: note libere opzionali dell'utente per tabella
+        (nome tabella -> testo), raccolte nel passo 'Descrivi le tabelle' prima
+        della chiamata. Solo ClaudeAIMapper le usa davvero (le passa nel
+        payload perche' il LLM ci ragioni sopra); HeuristicAIMapper le ignora,
+        dato che non fa reasoning testuale libero."""
         ...
 
 
@@ -146,7 +156,12 @@ _TEMPLATE_RULES: dict[str, list[dict]] = {
 class HeuristicAIMapper(AIMapper):
     """Mock dell'AI Mapping Service: stessa interfaccia di un futuro ClaudeAIMapper."""
 
-    def propose_mapping(self, tables: list[TableSchema], context_profile: dict) -> list[MappingProposal]:
+    def propose_mapping(
+        self,
+        tables: list[TableSchema],
+        context_profile: dict,
+        table_descriptions: dict[str, str] | None = None,
+    ) -> list[MappingProposal]:
         proposals: list[MappingProposal] = []
         for table in tables:
             hint = catalog.lookup(table.name)
@@ -277,7 +292,13 @@ Sei l'AI Mapping Service di una piattaforma enterprise di process mining.
 Il tuo compito e' proporre, per OGNI colonna di OGNI tabella sorgente ricevuta, un mapping verso un
 log OCEL 2.0 (object-centric event log). Non hai accesso a documentazione esterna: ragiona solo dai
 nomi di tabella/colonna, dai tipi inferiti, dai valori di esempio, dalle statistiche (null_ratio,
-distinct_ratio) e dal contesto di processo fornito.
+distinct_ratio), dal contesto di processo fornito e, quando presente, dalla nota utente per tabella
+(campo "user_description": testo libero scritto da un data engineer che conosce il sistema sorgente,
+raccolto apposta prima di questa chiamata). Trattala come informazione affidabile e prioritaria
+rispetto a un'inferenza fatta solo da nomi/valori - specialmente su schemi con nomenclatura opaca
+(es. tabelle SAP come EKKO/EBELN) dove il nome da solo non basta a distinguere, ad esempio, una
+tabella anagrafica da una transazionale. Se assente per una tabella, ragiona come faresti senza:
+non e' un requisito, e' un aiuto quando c'e'.
 
 Per ciascuna colonna scegli una o piu' di queste categorie (ocel_element) - piu' di una riga per la
 stessa colonna e' corretto quando contribuisce a piu' aspetti del modello (es. componente di chiave
@@ -317,13 +338,23 @@ class ClaudeAIMapper(AIMapper):
         self._client = anthropic.Anthropic()
         self._model = model or ANTHROPIC_MODEL
 
-    def propose_mapping(self, tables: list[TableSchema], context_profile: dict) -> list[MappingProposal]:
+    def propose_mapping(
+        self,
+        tables: list[TableSchema],
+        context_profile: dict,
+        table_descriptions: dict[str, str] | None = None,
+    ) -> list[MappingProposal]:
+        table_descriptions = table_descriptions or {}
         payload = {
             "process_context": context_profile,
             "tables": [
                 {
                     "name": t.name,
                     "row_count": t.row_count,
+                    # Nota libera dell'utente sul contenuto della tabella, raccolta nel
+                    # passo "Descrivi le tabelle" prima di questa chiamata: opzionale,
+                    # presente solo se l'utente l'ha compilata (vedi system prompt).
+                    "user_description": table_descriptions.get(t.name),
                     "columns": [
                         {
                             "name": c.name,

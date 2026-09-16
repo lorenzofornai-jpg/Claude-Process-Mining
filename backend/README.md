@@ -14,7 +14,7 @@ aggiornamento dati, nuova versione, eliminazione).
 |---|---|
 | A. Contestualizzazione | `templates/context.html`, `POST /ingestion/new` |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
-| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); gira in background dopo l'upload (`templates/mapping_status.html`, polling) |
+| E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); prima, descrizione tabelle opzionale (`templates/describe_tables.html`); poi gira in background (`templates/mapping_status.html`, polling) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |
 | G. Salvataggio config + run (come bozza) | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
 | Ciclo di vita struttura (nuovo) | `routers/ingestion.py`: `promote_structure`, `list_structures`, `update_data_*`, `delete_structure` |
@@ -182,6 +182,22 @@ completamento in background, arrivo automatico a `/ingestion/review`).
 (a differenza del mock, che usa il template `genericfile_p2p_v1`): ragiona
 da zero su nomi tabella/colonna, tipi, valori di esempio e Process Context
 Profile — lo stesso materiale che avrebbe un revisore umano.
+
+**Descrizione tabelle (opzionale) prima della chiamata AI**: tra upload e
+mapping, `/ingestion/describe-tables` (`templates/describe_tables.html`)
+mostra una tabella per volta con una textarea facoltativa dove chi carica i
+file può scrivere in una frase cosa contiene (es. "testata ordine
+d'acquisto SAP: un ordine per riga, con fornitore e data creazione"). Non è
+un requisito — si può lasciare tutto vuoto e proseguire — ma quando compilata
+la nota entra nel payload mandato a Claude (`user_description` per tabella,
+`services/ai_mapping.py`) e il system prompt la tratta come informazione
+affidabile e prioritaria rispetto a dedurre tutto da nomi/valori, utile
+proprio sugli schemi più opachi (tabelle SAP). `HeuristicAIMapper` accetta lo
+stesso parametro ma lo ignora, dato che non fa reasoning testuale libero.
+Non incide sui tempi della chiamata: il payload per colonna resta comunque
+solo nomi/tipi/statistiche/5 valori di esempio, mai i dati grezzi delle
+tabelle (quelli servono solo dopo, al Transformation Engine, mai all'AI
+Mapping Service).
 
 **Testato con una vera chiamata**: su questo dataset, Claude ha coperto
 tutte le 29 colonne, riconosciuto correttamente chiavi/timestamp/relazioni,

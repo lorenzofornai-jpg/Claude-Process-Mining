@@ -75,11 +75,13 @@ h2 { font-size: 15px; color: var(--text); margin: 24px 0 8px; }
 
 .form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
 .form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text); }
-.form input, .form select {
+.form input, .form select, .form textarea {
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
 }
 .row { display: flex; gap: 16px; }
 .row label { flex: 1; }
