@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Nuovo utente (Data Engineer)</h1>
-  <p class="muted">Crea un utente a cui potrai poi assegnare uno o più processi.</p>
+  <h1>Nuovo utente</h1>
+  <p class="muted">
+    Crea un utente a cui potrai poi assegnare uno o più processi (Data Engineer/Data Analyst), oppure
+    un altro amministratore con i tuoi stessi privilegi.
+  </p>
   {% if error %}
   <div class="banner warning">{{ error }}</div>
   {% endif %}
@@ -15,6 +18,10 @@
     </label>
     <label>Password iniziale
       <input type="password" name="password" required minlength="8">
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="is_admin" value="1">
+      Crea come amministratore (accesso illimitato a tutti i processi ed entrambi i moduli, come il tuo)
     </label>
     <button type="submit" class="primary">Crea utente</button>
   </form>

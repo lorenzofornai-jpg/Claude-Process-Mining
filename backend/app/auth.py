@@ -7,11 +7,9 @@ manuale gia' usato nel resto del router di ingestion.
 """
 from __future__ import annotations
 
-import secrets
-
 import bcrypt
 
-from app.config import ADMIN_EMAIL, ADMIN_PASSWORD
+from app.config import ADMIN_CREDENTIALS_FROM_ENV, ADMIN_EMAIL, ADMIN_PASSWORD
 from app.db import SessionLocal
 from app.models import ProcessAssignment, User
 
@@ -62,42 +60,43 @@ def has_process_access(user: User, workspace_id: str, required_role: str = "data
 def seed_default_admin() -> None:
     """Garantisce che l'admin ADMIN_EMAIL esista con password ADMIN_PASSWORD.
 
-    Se ADMIN_PASSWORD e' impostata in ambiente/.env, la password dell'utente
-    ADMIN_EMAIL viene allineata ad essa ad OGNI avvio (non solo al primo):
-    per "resettare" l'admin basta cambiare ADMIN_PASSWORD in .env e
-    riavviare, senza mai dover cancellare il database. Se ADMIN_EMAIL non
-    esiste ancora, viene creato ora (che sia il primissimo avvio, o un
-    avvio successivo con una nuova email scelta in .env: non tocca/duplica
-    admin creati in run precedenti con altra email).
+    Di default (nessun .env): "superuser"/"superuser" - le uniche credenziali
+    che esistono al primissimo avvio dell'app per un nuovo cliente, pensate
+    per essere sostituite subito creando admin/utenti veri da li'.
+
+    La password dell'utente ADMIN_EMAIL viene allineata ad ADMIN_PASSWORD ad
+    OGNI avvio (non solo al primo): per "resettare" l'admin (o cambiare le
+    credenziali di bootstrap) basta impostare ADMIN_EMAIL/ADMIN_PASSWORD in
+    backend/.env e riavviare, senza mai dover cancellare il database. Se
+    ADMIN_EMAIL non esiste ancora, viene creato ora (che sia il primissimo
+    avvio, o un avvio successivo con una nuova email scelta in .env: non
+    tocca/duplica admin creati in run precedenti con altra email - inclusi
+    quelli creati a mano dall'admin via "Amministrazione", che restano
+    intatti perche' hanno un'email diversa da ADMIN_EMAIL).
     """
     db = SessionLocal()
     try:
         email = ADMIN_EMAIL.strip().lower()
         existing = db.query(User).filter_by(email=email).first()
+        source = "da .env" if ADMIN_CREDENTIALS_FROM_ENV else "default (nessun .env)"
 
         if existing is not None:
-            if ADMIN_PASSWORD:
-                existing.password_hash = hash_password(ADMIN_PASSWORD)
-                existing.is_admin = True
-                db.commit()
-                print("=" * 72)
-                print(f"Admin sincronizzato da .env — email: {email}  password: quella in ADMIN_PASSWORD")
-                print("=" * 72)
+            existing.password_hash = hash_password(ADMIN_PASSWORD)
+            existing.is_admin = True
+            db.commit()
+            print("=" * 72)
+            print(f"Admin sincronizzato ({source}) — email: {email}  password: quella in ADMIN_PASSWORD")
+            print("=" * 72)
             return
 
-        password = ADMIN_PASSWORD
-        generated = password is None
-        if generated:
-            password = secrets.token_urlsafe(9)
-        user = User(name="Amministratore", email=email, password_hash=hash_password(password), is_admin=True)
+        user = User(name="Amministratore", email=email, password_hash=hash_password(ADMIN_PASSWORD), is_admin=True)
         db.add(user)
         db.commit()
         print("=" * 72)
-        if generated:
-            print(f"Admin iniziale creato — email: {ADMIN_EMAIL}  password: {password}")
-            print("Imposta ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env per fissarle e poterle 'resettare' cambiandole li'.")
-        else:
-            print(f"Admin creato da .env — email: {email}  password: quella in ADMIN_PASSWORD")
+        print(f"Admin iniziale creato ({source}) — email: {email}  password: quella in ADMIN_PASSWORD")
+        if not ADMIN_CREDENTIALS_FROM_ENV:
+            print("Sta usando le credenziali di bootstrap superuser/superuser: crea un admin vero da")
+            print("Amministrazione appena entri, oppure fissa ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env.")
         print("=" * 72)
     finally:
         db.close()

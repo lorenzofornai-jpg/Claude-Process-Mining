@@ -77,13 +77,18 @@ python scripts/generate_synthetic_p2p.py   # genera il dataset di test in data/s
 uvicorn app.main:app --reload
 ```
 
-Apri `http://127.0.0.1:8000`: al primo avvio viene creato un utente
-**admin** iniziale, con email/password stampate nei log di avvio (o
-personalizzabili impostando `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env`).
-Login come admin → **Amministrazione** → crea un utente Data Engineer e un
-nuovo processo → assegna il Data Engineer al processo. Poi accedi come quel
-Data Engineer (o resta admin, che ha accesso a tutto) e da **I miei
-processi** apri il Modulo 1: Dati sorgente → Revisione mapping → Risultato.
+Apri `http://127.0.0.1:8000`: al primissimo avvio per un cliente nuovo
+(nessun utente ancora nel database) esiste un solo utente amministratore di
+bootstrap, credenziali **`superuser` / `superuser`** — personalizzabili
+impostando `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env` per chi non
+vuole usare il default. Login come superuser → **Amministrazione** → da lì
+puoi creare altri amministratori con i tuoi stessi privilegi (spunta "Crea
+come amministratore" nel form nuovo utente — pensato per sostituire subito
+il superuser di bootstrap con utenze reali), utenti Data Engineer/Data
+Analyst, e nuovi processi, assegnando poi i ruoli per processo dalla stessa
+pagina. Poi accedi come quell'utente (o resta admin, che ha accesso
+illimitato a tutto) e da **I miei processi** apri il Modulo 1: Dati
+sorgente → Revisione mapping → Risultato.
 
 L'unico modo di acquisire dati è caricare file CSV/TXT (nessuna scorciatoia
 "dataset sintetico" nell'interfaccia): usa i CSV in `data/synthetic_p2p/`
@@ -98,7 +103,17 @@ membro come guardia contro zip bomb).
 
 - **Admin**: crea utenti e processi, assegna **Data Engineer**/**Data
   Analyst** per processo (`/admin`), accesso illimitato a tutto (entrambi i
-  moduli, su ogni processo).
+  moduli, su ogni processo). Può creare **altri admin** con i propri stessi
+  privilegi (checkbox "Crea come amministratore" in "Nuovo utente") — non è
+  un ruolo per processo come gli altri due, è un flag sull'utente
+  (`User.is_admin`) che vale ovunque a prescindere da qualunque assegnazione.
+  Al primissimo avvio per un cliente nuovo esiste **un solo utente**, admin
+  di bootstrap `superuser`/`superuser` (`ADMIN_EMAIL`/`ADMIN_PASSWORD` in
+  `.env` per personalizzarlo): la password viene ri-sincronizzata da lì ad
+  ogni riavvio, quindi se in futuro si aggiunge un cambio-password
+  self-service, va anche fissato `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`
+  per quell'utente specifico, altrimenti il riavvio del server
+  la resetterebbe al default.
 - **Data Engineer**: accede solo al Modulo 1 (Ingestion) dei processi a cui è
   stato assegnato (`ProcessAssignment.role = "data_engineer"`); tentare di
   aprire un processo non assegnato risponde 403. Chi conferma/corregge un

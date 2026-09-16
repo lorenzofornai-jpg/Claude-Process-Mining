@@ -12,11 +12,18 @@ load_dotenv(BASE_DIR / ".env")  # solo per sviluppo locale; mai committato (vedi
 # prototipo; in produzione va fissata via env/secret manager).
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or secrets.token_urlsafe(32)
 
-# Credenziali dell'admin iniziale, creato al primo avvio se non esiste gia'
-# un utente admin. Se ADMIN_PASSWORD non e' impostata, viene generata a
-# caso e stampata una sola volta nei log di avvio.
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+# Credenziali dell'unico utente che esiste al primissimo avvio dell'app per
+# un nuovo cliente (nessun altro utente ancora creato): di default
+# superuser/superuser, da cambiare come primissima cosa dopo il primo
+# accesso (nessun cambio forzato lato app per ora: e' una scelta operativa,
+# non un limite tecnico). Personalizzabili via ADMIN_EMAIL/ADMIN_PASSWORD in
+# backend/.env per chi preferisce non usare il default.
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "superuser")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "superuser")
+# Solo per distinguere nei log "sto usando superuser/superuser di default"
+# da "queste credenziali arrivano da un .env vero" - non cambia il
+# comportamento, solo il messaggio stampato all'avvio.
+ADMIN_CREDENTIALS_FROM_ENV = "ADMIN_EMAIL" in os.environ or "ADMIN_PASSWORD" in os.environ
 
 DATA_DIR = BASE_DIR / "data"
 SYNTHETIC_P2P_DIR = DATA_DIR / "synthetic_p2p"

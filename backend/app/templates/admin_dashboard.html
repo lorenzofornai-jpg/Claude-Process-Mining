@@ -58,14 +58,21 @@
   </table>
 
   <h2>Utenti</h2>
-  <p class="tiny muted">Non hanno un ruolo fisso: quello assegnato sopra vale per processo.</p>
+  <p class="tiny muted">
+    Gli amministratori hanno accesso illimitato a tutto e non compaiono nelle assegnazioni sopra
+    (sarebbero ridondanti). Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
+  </p>
   <table class="admin-table">
-    <thead><tr><th>Nome</th><th>Email</th></tr></thead>
+    <thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>
     <tbody>
-      {% for u in assignable_users %}
-      <tr><td>{{ u.name }}</td><td>{{ u.email }}</td></tr>
+      {% for u in all_users %}
+      <tr>
+        <td>{{ u.name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{% if u.is_admin %}<span class="badge badge-overridden">amministratore</span>{% endif %}</td>
+      </tr>
       {% else %}
-      <tr><td colspan="2" class="muted">Nessun utente ancora creato.</td></tr>
+      <tr><td colspan="3" class="muted">Nessun utente ancora creato.</td></tr>
       {% endfor %}
     </tbody>
   </table>

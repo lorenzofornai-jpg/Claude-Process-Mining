@@ -59,6 +59,7 @@ def admin_dashboard(request: Request):
             for ws in workspaces
         ]
         assignable_users = [u for u in users_by_id.values() if not u.is_admin]
+        all_users = sorted(users_by_id.values(), key=lambda u: u.name)
     finally:
         db.close()
 
@@ -66,7 +67,7 @@ def admin_dashboard(request: Request):
         "admin_dashboard.html",
         {
             "request": request, "user": user, "rows": rows, "assignable_users": assignable_users,
-            "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
+            "all_users": all_users, "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
         },
     )
 
@@ -80,7 +81,13 @@ def new_user_form(request: Request):
 
 
 @router.post("/users/new")
-def create_user(request: Request, name: str = Form(...), email: str = Form(...), password: str = Form(...)):
+def create_user(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    is_admin: bool = Form(False),
+):
     user, denied = _require_admin(request)
     if denied:
         return denied
@@ -94,7 +101,11 @@ def create_user(request: Request, name: str = Form(...), email: str = Form(...),
                 {"request": request, "user": user, "error": f"Esiste già un utente con email {email_norm}."},
                 status_code=400,
             )
-        db.add(User(name=name, email=email_norm, password_hash=hash_password(password), is_admin=False))
+        # Qualunque admin puo' crearne un altro con gli stessi privilegi: non
+        # e' un ruolo per processo (quelli sono ASSIGNABLE_ROLES via
+        # ProcessAssignment), e' un flag sull'utente che da' accesso
+        # illimitato a tutto, a prescindere da qualunque assegnazione.
+        db.add(User(name=name, email=email_norm, password_hash=hash_password(password), is_admin=is_admin))
         db.commit()
     finally:
         db.close()
