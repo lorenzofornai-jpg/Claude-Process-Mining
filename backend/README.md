@@ -96,18 +96,34 @@ membro come guardia contro zip bomb).
 
 ### Ruoli e permessi
 
-- **Admin**: crea utenti e processi, assegna un **Data Engineer** per
-  processo, accesso illimitato a tutto.
+- **Admin**: crea utenti e processi, assegna **Data Engineer**/**Data
+  Analyst** per processo (`/admin`), accesso illimitato a tutto (entrambi i
+  moduli, su ogni processo).
 - **Data Engineer**: accede solo al Modulo 1 (Ingestion) dei processi a cui è
   stato assegnato (`ProcessAssignment.role = "data_engineer"`); tentare di
   aprire un processo non assegnato risponde 403. Chi conferma/corregge un
   mapping viene registrato per nome in `IngestionConfig.owner` e
   `FieldMapping.confirmed_by` — audit trail reale, non un placeholder.
+- **Data Analyst**: accede solo al Modulo 2 (Analisi, `/analysis/...`) dei
+  processi a cui è stato assegnato (`ProcessAssignment.role =
+  "data_analyst"`), stessa logica di accesso/403 del Data Engineer ma
+  modulo diverso. Il Modulo 2 è per ora solo il punto d'accesso
+  (`routers/analysis.py`): verifica del ruolo + elenco dei log OCEL 2.0 già
+  prodotti dal Modulo 1 per quel processo — il resto (definizione
+  dashboard, process discovery) è da disegnare.
+- **Uno stesso utente può avere più ruoli**, anche sullo stesso processo
+  (es. Data Engineer *e* Data Analyst sul P2P): non è un attributo fisso
+  sull'utente, sono righe distinte in `ProcessAssignment` — `has_process_
+  access(user, workspace_id, required_role=...)` in `auth.py` controlla un
+  ruolo alla volta, `/ingestion/dashboard` ("I miei processi") mostra per
+  ogni processo solo i link ai moduli per cui l'utente ha il ruolo giusto.
+  Verificato end-to-end: Data Engineer non accede a `/analysis/...` (403) e
+  viceversa, entrambi assegnati alla stessa persona sullo stesso processo →
+  accede a entrambi.
 - Password con bcrypt, sessione via cookie firmato (Starlette
-  `SessionMiddleware`). I ruoli Process Owner/Analyst/Viewer per gli altri
-  moduli restano concettuali per ora: lo schema (`ProcessAssignment.role` è
-  una stringa libera) è già pensato per estendersi senza migrazioni quando
-  arriveranno.
+  `SessionMiddleware`). I ruoli Process Owner/Viewer restano concettuali per
+  ora: lo schema (`ProcessAssignment.role` è una stringa libera) è già
+  pensato per estendersi senza migrazioni quando arriveranno.
 
 ### AI Mapping Service: Claude di default, mock solo come fallback offline
 

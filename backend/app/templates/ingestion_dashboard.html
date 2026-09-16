@@ -4,9 +4,10 @@
   <h1>I miei processi</h1>
   <p class="muted">
     {% if user.is_admin %}
-    Vista amministratore: tutti i processi. Per crearne uno nuovo o assegnare un Data Engineer vai in <a href="/admin">Amministrazione</a>.
+    Vista amministratore: tutti i processi, accesso completo a entrambi i moduli. Per crearne uno
+    nuovo o assegnare Data Engineer/Data Analyst vai in <a href="/admin">Amministrazione</a>.
     {% else %}
-    Processi su cui sei stato assegnato come Data Engineer per il Modulo 1 (Ingestion).
+    Processi su cui sei stato assegnato, con i moduli a cui hai accesso in base al ruolo.
     {% endif %}
   </p>
 
@@ -16,13 +17,19 @@
     </thead>
     <tbody>
       {% for ws in workspaces %}
+      {% set roles = roles_by_workspace.get(ws.id, []) %}
       <tr>
         <td>{{ ws.process_name }}</td>
         <td>{{ ws.process_type }}</td>
         <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>
+          {% if 'data_engineer' in roles %}
           <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuova struttura</a>
           <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
+          {% endif %}
+          {% if 'data_analyst' in roles %}
+          <a class="secondary button-link" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri Modulo 2 (Analisi)</a>
+          {% endif %}
         </td>
       </tr>
       {% else %}

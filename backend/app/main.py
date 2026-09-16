@@ -7,7 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.auth import seed_default_admin
 from app.config import SESSION_SECRET_KEY
 from app.db import init_db
-from app.routers import admin, ingestion, login
+from app.routers import admin, analysis, ingestion, login
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -17,6 +17,7 @@ app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 app.include_router(login.router)
 app.include_router(admin.router)
 app.include_router(ingestion.router)
+app.include_router(analysis.router)
 
 
 @app.on_event("startup")

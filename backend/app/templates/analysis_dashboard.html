@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Modulo 2 — Analisi</h1>
+  <p class="muted">
+    Processo: <strong>{{ process_name }}</strong>. Qui in futuro sceglierai un log OCEL 2.0 e
+    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei log già disponibili,
+    prodotti dal Modulo 1.
+  </p>
+  <div class="banner warning">Modulo 2 in costruzione: questa è solo la pagina d'ingresso, per verificare l'accesso Data Analyst.</div>
+
+  <table class="admin-table">
+    <thead>
+      <tr><th>Struttura</th><th>Versione</th><th>Ultimo run</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in structures %}
+      <tr>
+        <td>{{ s.config.name }}</td>
+        <td>v{{ s.config.current_version }}</td>
+        <td class="tiny">
+          {% if s.last_run %}
+          {{ s.last_run.object_count }} oggetti, {{ s.last_run.event_count }} eventi
+          <br class="tiny muted">{{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if s.last_run %}
+          <a class="secondary button-link" href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">Scarica OCEL</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">Nessun log disponibile ancora per questo processo (serve prima il Modulo 1).</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="tiny muted" style="margin-top:16px">
+    <a href="/ingestion/dashboard">← Torna a "I miei processi"</a>
+  </p>
+</div>
+{% endblock %}

@@ -107,12 +107,12 @@ def _get_ai_mapper() -> tuple[AIMapper, str]:
 
 
 def _require_process_access(request: Request, workspace_id: str):
-    """Ritorna (user, None) se autorizzato al Modulo 1 di questo processo,
-    altrimenti (None, redirect_o_403)."""
+    """Ritorna (user, None) se autorizzato al Modulo 1 (Ingestion) di questo
+    processo, altrimenti (None, redirect_o_403)."""
     user = current_user(request)
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
-    if not has_process_access(user, workspace_id):
+    if not has_process_access(user, workspace_id, required_role="data_engineer"):
         return None, HTMLResponse(
             "Accesso negato: non sei assegnato come Data Engineer a questo processo.",
             status_code=403,
@@ -194,24 +194,27 @@ def ingestion_dashboard(request: Request):
     try:
         if user.is_admin:
             workspaces = db.query(ProcessWorkspace).order_by(ProcessWorkspace.created_at.desc()).all()
+            # l'admin ha accesso illimitato a tutto: mostra entrambi i moduli ovunque
+            roles_by_workspace = {ws.id: {"data_engineer", "data_analyst"} for ws in workspaces}
         else:
-            assigned_ids = [
-                a.workspace_id
-                for a in db.query(ProcessAssignment).filter_by(user_id=user.id, role="data_engineer").all()
-            ]
+            assignments = db.query(ProcessAssignment).filter_by(user_id=user.id).all()
+            roles_by_workspace: dict[str, set] = {}
+            for a in assignments:
+                roles_by_workspace.setdefault(a.workspace_id, set()).add(a.role)
             workspaces = (
                 db.query(ProcessWorkspace)
-                .filter(ProcessWorkspace.id.in_(assigned_ids))
+                .filter(ProcessWorkspace.id.in_(roles_by_workspace.keys()))
                 .order_by(ProcessWorkspace.created_at.desc())
                 .all()
-                if assigned_ids
+                if roles_by_workspace
                 else []
             )
     finally:
         db.close()
 
     return templates.TemplateResponse(
-        "ingestion_dashboard.html", {"request": request, "user": user, "workspaces": workspaces}
+        "ingestion_dashboard.html",
+        {"request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace},
     )
 
 
@@ -987,9 +990,20 @@ def download_ocel(request: Request, workspace_id: str):
 
 @router.get("/ingestion/runs/{run_id}/download")
 def download_run(request: Request, run_id: str, workspace_id: str):
-    user, denied = _require_process_access(request, workspace_id)
-    if denied:
-        return denied
+    # Scaricare un log OCEL gia' generato serve sia a chi lo produce (Data
+    # Engineer, Modulo 1) sia a chi lo consuma (Data Analyst, Modulo 2):
+    # a differenza delle altre rotte di ingestion.py, qui basta uno dei due ruoli.
+    user = current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if not (
+        has_process_access(user, workspace_id, required_role="data_engineer")
+        or has_process_access(user, workspace_id, required_role="data_analyst")
+    ):
+        return HTMLResponse(
+            "Accesso negato: non sei assegnato come Data Engineer o Data Analyst a questo processo.",
+            status_code=403,
+        )
     db = SessionLocal()
     try:
         run = db.get(ExtractionRun, run_id)

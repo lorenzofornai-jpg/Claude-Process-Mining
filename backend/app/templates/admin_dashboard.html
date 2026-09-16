@@ -2,7 +2,11 @@
 {% block content %}
 <div class="card wide">
   <h1>Amministrazione</h1>
-  <p class="muted">Crea nuovi processi, crea utenti Data Engineer e assegnali ai processi.</p>
+  <p class="muted">
+    Crea nuovi processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
+    Modulo 1 - Ingestion, Data Analyst per il Modulo 2 - Analisi). Uno stesso utente può avere più
+    ruoli, anche sullo stesso processo.
+  </p>
 
   <div class="actions" style="margin-top:0">
     <a class="primary button-link" href="/ingestion/new">+ Nuovo processo</a>
@@ -12,7 +16,10 @@
   <h2>Processi</h2>
   <table class="admin-table">
     <thead>
-      <tr><th>Processo</th><th>Tipo</th><th>Creato il</th><th>Data Engineer assegnato</th><th>Assegna / riassegna</th></tr>
+      <tr>
+        <th>Processo</th><th>Tipo</th><th>Creato il</th>
+        {% for role in assignable_roles %}<th>{{ role_labels[role] }}</th>{% endfor %}
+      </tr>
     </thead>
     <tbody>
       {% for row in rows %}
@@ -20,19 +27,20 @@
         <td>{{ row.workspace.process_name }}</td>
         <td>{{ row.workspace.process_type }}</td>
         <td class="tiny muted">{{ row.workspace.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        {% for role in assignable_roles %}
         <td>
-          {% if row.assigned_user %}
-          <span class="pill">{{ row.assigned_user.name }}</span>
+          {% set assigned = row.assignments[role] %}
+          {% if assigned %}
+          <div class="tiny"><span class="pill">{{ assigned.name }}</span></div>
           {% else %}
-          <span class="pill pill-unassigned">non assegnato</span>
+          <div class="tiny"><span class="pill pill-unassigned">non assegnato</span></div>
           {% endif %}
-        </td>
-        <td>
-          {% if data_engineers %}
-          <form method="post" action="/admin/processes/{{ row.workspace.id }}/assign" class="assign-form">
+          {% if assignable_users %}
+          <form method="post" action="/admin/processes/{{ row.workspace.id }}/assign" class="assign-form" style="margin-top:6px">
+            <input type="hidden" name="role" value="{{ role }}">
             <select name="user_id">
-              {% for de in data_engineers %}
-              <option value="{{ de.id }}" {{ 'selected' if row.assigned_user and row.assigned_user.id == de.id else '' }}>{{ de.name }} ({{ de.email }})</option>
+              {% for u in assignable_users %}
+              <option value="{{ u.id }}" {{ 'selected' if assigned and assigned.id == u.id else '' }}>{{ u.name }} ({{ u.email }})</option>
               {% endfor %}
             </select>
             <button type="submit" class="secondary">Assegna</button>
@@ -41,21 +49,23 @@
           <span class="tiny muted">crea prima un utente</span>
           {% endif %}
         </td>
+        {% endfor %}
       </tr>
       {% else %}
-      <tr><td colspan="5" class="muted">Nessun processo ancora creato.</td></tr>
+      <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <h2>Utenti Data Engineer</h2>
+  <h2>Utenti</h2>
+  <p class="tiny muted">Non hanno un ruolo fisso: quello assegnato sopra vale per processo.</p>
   <table class="admin-table">
     <thead><tr><th>Nome</th><th>Email</th></tr></thead>
     <tbody>
-      {% for de in data_engineers %}
-      <tr><td>{{ de.name }}</td><td>{{ de.email }}</td></tr>
+      {% for u in assignable_users %}
+      <tr><td>{{ u.name }}</td><td>{{ u.email }}</td></tr>
       {% else %}
-      <tr><td colspan="2" class="muted">Nessun Data Engineer ancora creato.</td></tr>
+      <tr><td colspan="2" class="muted">Nessun utente ancora creato.</td></tr>
       {% endfor %}
     </tbody>
   </table>
