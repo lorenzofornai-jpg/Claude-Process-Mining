@@ -45,4 +45,10 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
 @router.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+    response = RedirectResponse("/login", status_code=303)
+    # SessionMiddleware cancella gia' il cookie da solo quando la sessione
+    # diventa vuota (verificato: funziona correttamente in test diretti).
+    # Cancellazione esplicita aggiuntiva solo come difesa in profondita' contro
+    # un browser/proxy che non onorasse per qualche motivo quel Set-Cookie.
+    response.delete_cookie("session", path="/")
+    return response

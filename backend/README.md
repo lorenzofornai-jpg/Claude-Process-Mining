@@ -319,6 +319,18 @@ tipicamente aggiorna l'mtime dei file) il numero di versione cambia da solo,
 senza doverlo incrementare a mano. Impostato sia in `base.html` sia in
 `login.html`, che non estende `base.html` ed ha un proprio `<head>`.
 
+**Le pagine dinamiche non vanno mai in cache** (`Cache-Control: no-store`,
+middleware in `app/main.py`, applicato a tutto tranne `/static/*`): stessa
+famiglia di bug della cache su `style.css` sopra, stavolta sul logout —
+l'utente segnalava che "Esci" non funzionava, restando su "I miei processi".
+Verificato via richieste dirette che lato server il logout è corretto (il
+cookie di sessione viene cancellato, `/ingestion/dashboard` dopo il logout
+redirige a `/login`, che mostra davvero il form): il sospetto è quindi che
+un browser mostrasse una pagina autenticata già in cache invece di
+richiederla di nuovo al server. `POST /logout` cancella anche esplicitamente
+il cookie (`response.delete_cookie`) in aggiunta a quanto già fa da solo
+`SessionMiddleware` sulla sessione svuotata, come difesa in profondità.
+
 ## Semplificazioni deliberate di questo prototipo
 
 Sono scelte fatte per avere qualcosa di testabile subito, non limiti

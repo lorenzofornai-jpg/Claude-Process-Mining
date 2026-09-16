@@ -20,6 +20,19 @@ app.include_router(ingestion.router)
 app.include_router(analysis.router)
 
 
+@app.middleware("http")
+async def _no_store_dynamic_pages(request, call_next):
+    """Le pagine dinamiche (tutto tranne /static/*) non vanno mai in cache:
+    un browser che tenesse in cache una pagina autenticata potrebbe
+    rimostrarla dopo il logout invece di richiedere davvero /login al
+    server (bug reale visto in test: "Esci" sembrava non funzionare, pur
+    essendo il cookie di sessione cancellato correttamente lato server)."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
