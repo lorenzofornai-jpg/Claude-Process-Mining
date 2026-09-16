@@ -7,10 +7,18 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")  # solo per sviluppo locale; mai committato (vedi .gitignore)
 
-# Firma i cookie di sessione. Se non impostata in .env, generata ad ogni avvio:
-# le sessioni non sopravvivono a un riavvio del server (accettabile per il
-# prototipo; in produzione va fissata via env/secret manager).
-SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or secrets.token_urlsafe(32)
+# Firma i cookie di sessione. Se manca in .env, generata UNA VOLA SOLA e
+# scritta subito in .env (non solo tenuta in memoria): una chiave rigenerata
+# ad ogni riavvio invaliderebbe silenziosamente tutti i cookie di sessione
+# gia' emessi (chi era loggato si ritroverebbe con un cookie che fallisce la
+# verifica della firma ad ogni riavvio del processo - scenario plausibile
+# durante lo sviluppo, con reload automatico o riavvii frequenti).
+SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY")
+if not SESSION_SECRET_KEY:
+    SESSION_SECRET_KEY = secrets.token_urlsafe(32)
+    _env_path = BASE_DIR / ".env"
+    with open(_env_path, "a", encoding="utf-8") as _f:
+        _f.write(f"\nSESSION_SECRET_KEY={SESSION_SECRET_KEY}\n")
 
 # Credenziali dell'unico utente che esiste al primissimo avvio dell'app per
 # un nuovo cliente (nessun altro admin ancora esistente nel DB): sempre e
