@@ -13,17 +13,15 @@ load_dotenv(BASE_DIR / ".env")  # solo per sviluppo locale; mai committato (vedi
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or secrets.token_urlsafe(32)
 
 # Credenziali dell'unico utente che esiste al primissimo avvio dell'app per
-# un nuovo cliente (nessun altro utente ancora creato): di default
-# superuser/superuser, da cambiare come primissima cosa dopo il primo
-# accesso (nessun cambio forzato lato app per ora: e' una scelta operativa,
-# non un limite tecnico). Personalizzabili via ADMIN_EMAIL/ADMIN_PASSWORD in
-# backend/.env per chi preferisce non usare il default.
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "superuser")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "superuser")
-# Solo per distinguere nei log "sto usando superuser/superuser di default"
-# da "queste credenziali arrivano da un .env vero" - non cambia il
-# comportamento, solo il messaggio stampato all'avvio.
-ADMIN_CREDENTIALS_FROM_ENV = "ADMIN_EMAIL" in os.environ or "ADMIN_PASSWORD" in os.environ
+# un nuovo cliente (nessun altro admin ancora esistente nel DB): sempre e
+# solo superuser/superuser, da cambiare come primissima cosa dopo il primo
+# accesso creando admin/utenti veri dall'app. Deliberatamente NON
+# configurabili via ambiente/.env: un cliente non deve poter finire con un
+# admin "fantasma" diverso da quello visto nell'interfaccia solo perche' una
+# variabile d'ambiente era rimasta impostata (bug reale visto in test) - la
+# sola fonte di verita' per chi e' amministratore e' il database, mai l'.env.
+BOOTSTRAP_ADMIN_EMAIL = "superuser"
+BOOTSTRAP_ADMIN_PASSWORD = "superuser"
 
 DATA_DIR = BASE_DIR / "data"
 SYNTHETIC_P2P_DIR = DATA_DIR / "synthetic_p2p"

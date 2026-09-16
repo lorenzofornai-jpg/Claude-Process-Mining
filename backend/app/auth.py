@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import bcrypt
 
-from app.config import ADMIN_CREDENTIALS_FROM_ENV, ADMIN_EMAIL, ADMIN_PASSWORD
+from app.config import BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD
 from app.db import SessionLocal
 from app.models import ProcessAssignment, User
 
@@ -58,45 +58,34 @@ def has_process_access(user: User, workspace_id: str, required_role: str = "data
 
 
 def seed_default_admin() -> None:
-    """Garantisce che l'admin ADMIN_EMAIL esista con password ADMIN_PASSWORD.
+    """Se non esiste ancora NESSUN amministratore nel database, crea l'unico
+    utente di bootstrap superuser/superuser.
 
-    Di default (nessun .env): "superuser"/"superuser" - le uniche credenziali
-    che esistono al primissimo avvio dell'app per un nuovo cliente, pensate
-    per essere sostituite subito creando admin/utenti veri da li'.
-
-    La password dell'utente ADMIN_EMAIL viene allineata ad ADMIN_PASSWORD ad
-    OGNI avvio (non solo al primo): per "resettare" l'admin (o cambiare le
-    credenziali di bootstrap) basta impostare ADMIN_EMAIL/ADMIN_PASSWORD in
-    backend/.env e riavviare, senza mai dover cancellare il database. Se
-    ADMIN_EMAIL non esiste ancora, viene creato ora (che sia il primissimo
-    avvio, o un avvio successivo con una nuova email scelta in .env: non
-    tocca/duplica admin creati in run precedenti con altra email - inclusi
-    quelli creati a mano dall'admin via "Amministrazione", che restano
-    intatti perche' hanno un'email diversa da ADMIN_EMAIL).
+    Deliberatamente ignora qualunque variabile d'ambiente: la sola fonte di
+    verita' su chi e' amministratore e' il database, mai l'.env (bug reale
+    visto in test - un ADMIN_EMAIL rimasto impostato in .env da una sessione
+    precedente creava un secondo admin "fantasma" accanto a superuser invece
+    di sostituirlo). Se un admin esiste gia' (bootstrap o creato a mano da
+    "Amministrazione"), questa funzione non fa nulla: niente sync automatico
+    della password ad ogni avvio come prima - per cambiarla si passa
+    dall'app, creando un nuovo admin o (quando ci sara') da un cambio
+    password self-service.
     """
     db = SessionLocal()
     try:
-        email = ADMIN_EMAIL.strip().lower()
-        existing = db.query(User).filter_by(email=email).first()
-        source = "da .env" if ADMIN_CREDENTIALS_FROM_ENV else "default (nessun .env)"
-
-        if existing is not None:
-            existing.password_hash = hash_password(ADMIN_PASSWORD)
-            existing.is_admin = True
-            db.commit()
-            print("=" * 72)
-            print(f"Admin sincronizzato ({source}) — email: {email}  password: quella in ADMIN_PASSWORD")
-            print("=" * 72)
+        if db.query(User).filter_by(is_admin=True).first() is not None:
             return
 
-        user = User(name="Amministratore", email=email, password_hash=hash_password(ADMIN_PASSWORD), is_admin=True)
+        email = BOOTSTRAP_ADMIN_EMAIL.strip().lower()
+        user = User(
+            name="Amministratore", email=email,
+            password_hash=hash_password(BOOTSTRAP_ADMIN_PASSWORD), is_admin=True,
+        )
         db.add(user)
         db.commit()
         print("=" * 72)
-        print(f"Admin iniziale creato ({source}) — email: {email}  password: quella in ADMIN_PASSWORD")
-        if not ADMIN_CREDENTIALS_FROM_ENV:
-            print("Sta usando le credenziali di bootstrap superuser/superuser: crea un admin vero da")
-            print("Amministrazione appena entri, oppure fissa ADMIN_EMAIL/ADMIN_PASSWORD in backend/.env.")
+        print(f"Admin di bootstrap creato — utente: {email}  password: {BOOTSTRAP_ADMIN_PASSWORD}")
+        print("Crea un admin vero da Amministrazione appena entri.")
         print("=" * 72)
     finally:
         db.close()

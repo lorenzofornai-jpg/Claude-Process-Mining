@@ -78,10 +78,13 @@ uvicorn app.main:app --reload
 ```
 
 Apri `http://127.0.0.1:8000`: al primissimo avvio per un cliente nuovo
-(nessun utente ancora nel database) esiste un solo utente amministratore di
-bootstrap, credenziali **`superuser` / `superuser`** — personalizzabili
-impostando `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env` per chi non
-vuole usare il default. Login come superuser → **Amministrazione** → da lì
+(nessun amministratore ancora nel database) esiste un solo utente, credenziali
+fisse **`superuser` / `superuser`** — non configurabili via ambiente/.env
+apposta: la sola fonte di verità su chi è amministratore è il database, mai
+una variabile d'ambiente rimasta impostata per sbaglio da una sessione
+precedente (bug reale visto in test: un `ADMIN_EMAIL` dimenticato in `.env`
+creava un secondo admin invece di sostituire quello di bootstrap). Login
+come superuser → **Amministrazione** → da lì
 puoi creare altri amministratori con i tuoi stessi privilegi (spunta "Crea
 come amministratore" nel form nuovo utente — pensato per sostituire subito
 il superuser di bootstrap con utenze reali), utenti Data Engineer/Data
@@ -107,13 +110,18 @@ membro come guardia contro zip bomb).
   privilegi (checkbox "Crea come amministratore" in "Nuovo utente") — non è
   un ruolo per processo come gli altri due, è un flag sull'utente
   (`User.is_admin`) che vale ovunque a prescindere da qualunque assegnazione.
-  Al primissimo avvio per un cliente nuovo esiste **un solo utente**, admin
-  di bootstrap `superuser`/`superuser` (`ADMIN_EMAIL`/`ADMIN_PASSWORD` in
-  `.env` per personalizzarlo): la password viene ri-sincronizzata da lì ad
-  ogni riavvio, quindi se in futuro si aggiunge un cambio-password
-  self-service, va anche fissato `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`
-  per quell'utente specifico, altrimenti il riavvio del server
-  la resetterebbe al default.
+  Al primissimo avvio per un cliente nuovo (nessun admin ancora nel
+  database) esiste **un solo utente**, di bootstrap: `superuser`/`superuser`,
+  credenziali fisse nel codice (`BOOTSTRAP_ADMIN_EMAIL`/`_PASSWORD` in
+  `config.py`), non configurabili via `.env`. `seed_default_admin()` in
+  `auth.py` lo crea *solo* se non esiste già nessun amministratore — non
+  tocca né sincronizza nulla ad ogni riavvio come nella prima versione:
+  quel comportamento faceva sì che un `ADMIN_EMAIL` rimasto impostato in
+  `.env` da una sessione precedente creasse un secondo admin "fantasma"
+  invece di sostituire il bootstrap (bug reale visto in test). Per cambiare
+  le credenziali del superuser di bootstrap ora si passa dall'app: si crea
+  un admin vero da "Amministrazione" con la spunta "Crea come
+  amministratore", non da una variabile d'ambiente.
 - **Data Engineer**: accede solo al Modulo 1 (Ingestion) dei processi a cui è
   stato assegnato (`ProcessAssignment.role = "data_engineer"`); tentare di
   aprire un processo non assegnato risponde 403. Chi conferma/corregge un
