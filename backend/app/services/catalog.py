@@ -73,7 +73,10 @@ def lookup(table_name: str) -> CatalogHint | None:
     return GENERIC_FILE_P2P_CATALOG.get(table_name)
 
 
-def dynamic_lookup(table_name: str) -> tuple[CatalogHint, list[dict]] | None:
+MIN_COLUMN_OVERLAP_RATIO = 0.5
+
+
+def dynamic_lookup(table_name: str, current_columns: list[str] | None = None) -> tuple[CatalogHint, list[dict]] | None:
     """Catalogo "vivo", alimentato dall'utente: cerca un mapping gia' confermato
     in una struttura che l'utente ha esplicitamente aggiunto al catalogo
     (IngestionConfig.in_catalog=True, pulsante "Aggiungi al catalogo" nel
@@ -84,10 +87,16 @@ def dynamic_lookup(table_name: str) -> tuple[CatalogHint, list[dict]] | None:
     anche da ClaudeAIMapper per dare a Claude un pattern di riferimento gia'
     validato da un umano, come una "wiki" di mapping precedenti.
 
-    Semplificazione: match solo per nome tabella esatto, non per struttura
-    colonne - stessa assunzione gia' fatta dal catalogo statico sopra. Se piu'
-    strutture in catalogo hanno usato lo stesso nome tabella, vince la piu'
-    recente.
+    Il nome tabella da solo non basta: due tabelle chiamate per coincidenza
+    allo stesso modo (es. "CUSTOMERS" anagrafica clienti vs. "CUSTOMERS" letture
+    sensori in un contesto diverso) avrebbero colonne completamente diverse.
+    Se `current_columns` e' passato, il pattern viene proposto solo se almeno
+    META' delle sue colonne esistono davvero nella tabella corrente
+    (MIN_COLUMN_OVERLAP_RATIO) - altrimenti si tratta la tabella come non
+    catalogata, senza contare su un LLM per accorgersene (HeuristicAIMapper
+    non ragiona affatto, quindi applicherebbe il pattern alla cieca).
+    Se `current_columns` non e' passato, il controllo e' saltato (compatibilita'
+    con chi chiama senza questa informazione).
     """
     from app.db import SessionLocal
     from app.models import FieldMapping, IngestionConfig
@@ -130,6 +139,13 @@ def dynamic_lookup(table_name: str) -> tuple[CatalogHint, list[dict]] | None:
             )
             for r in rows
         ]
+
+        if current_columns is not None:
+            rule_cols = {r["col"] for r in rules if r["col"]}
+            overlap = len(rule_cols & set(current_columns)) / len(rule_cols) if rule_cols else 0.0
+            if overlap < MIN_COLUMN_OVERLAP_RATIO:
+                return None
+
         object_type = next((r.object_type for r in rows if r.object_type), None)
         event_type = next((r.event_type for r in rows if r.event_type), None)
         timestamp_column = next(

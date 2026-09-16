@@ -168,7 +168,7 @@ class HeuristicAIMapper(AIMapper):
             if hint and table.name in _TEMPLATE_RULES:
                 proposals.extend(self._from_template(table, _TEMPLATE_RULES[table.name], catalog.TEMPLATE_ID))
                 continue
-            dynamic = catalog.dynamic_lookup(table.name)
+            dynamic = catalog.dynamic_lookup(table.name, [c.name for c in table.columns])
             if dynamic:
                 _, rules = dynamic
                 proposals.extend(self._from_template(table, rules, catalog.LEARNED_TEMPLATE_ID))
@@ -354,11 +354,17 @@ class ClaudeAIMapper(AIMapper):
         self._model = model or ANTHROPIC_MODEL
 
     @staticmethod
-    def _known_pattern_for(table_name: str) -> list[dict] | None:
+    def _known_pattern_for(table_name: str, current_columns: list[str]) -> list[dict] | None:
         """Traduce il catalogo dinamico (services/catalog.py) in un formato compatto
         per il prompt: solo cio' che serve a Claude per riconoscere e riusare il
-        pattern, non i metadati interni (confidence/based_on_template)."""
-        dynamic = catalog.dynamic_lookup(table_name)
+        pattern, non i metadati interni (confidence/based_on_template).
+
+        current_columns filtra a monte i falsi positivi da coincidenza di nome
+        (dynamic_lookup ritorna None se le colonne non si sovrappongono a
+        sufficienza): non ci si affida solo al giudizio di Claude nel prompt
+        per accorgersi che una tabella con lo stesso nome ha in realta' un
+        contenuto diverso."""
+        dynamic = catalog.dynamic_lookup(table_name, current_columns)
         if dynamic is None:
             return None
         _, rules = dynamic
@@ -395,7 +401,7 @@ class ClaudeAIMapper(AIMapper):
                     # (pulsante "Aggiungi al catalogo" nel registro strutture), per una
                     # tabella con questo stesso nome esatto: null se non c'e' niente in
                     # catalogo per questo nome (vedi system prompt su come usarlo).
-                    "known_pattern": self._known_pattern_for(t.name),
+                    "known_pattern": self._known_pattern_for(t.name, [c.name for c in t.columns]),
                     "columns": [
                         {
                             "name": c.name,

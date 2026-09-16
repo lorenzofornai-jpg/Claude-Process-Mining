@@ -211,10 +211,18 @@ Non è un'entità separata — solo `IngestionConfig.in_catalog`, un flag — qu
 (cascata già esistente su `IngestionConfig`, nessuna logica in più da
 mantenere).
 
-`services/catalog.dynamic_lookup(table_name)` cerca, tra le strutture in
-catalogo, un mapping già confermato per una tabella con lo **stesso nome
-esatto** (stessa semplificazione già in uso nel catalogo statico: non
-verifica che le colonne coincidano) e lo riusa in due modi:
+`services/catalog.dynamic_lookup(table_name, current_columns)` cerca, tra le
+strutture in catalogo, un mapping già confermato per una tabella con lo
+**stesso nome esatto**, ma il nome da solo non basta a fidarsi: due tabelle
+chiamate per coincidenza allo stesso modo (es. "CUSTOMERS" anagrafica clienti
+in un processo, "CUSTOMERS" letture sensori in un altro) avrebbero colonne
+completamente diverse. Per questo il pattern viene proposto solo se almeno
+metà delle sue colonne esistono davvero nella tabella corrente
+(`MIN_COLUMN_OVERLAP_RATIO = 0.5`) — sotto soglia, la tabella è trattata come
+non catalogata, **senza contare sul giudizio di un LLM per accorgersene**:
+`HeuristicAIMapper` non ragiona affatto, quindi applicherebbe il pattern
+sbagliato alla cieca se non ci fosse questo controllo a monte. Una volta
+superata la soglia, il pattern si riusa in due modi:
 
 - **`HeuristicAIMapper`**: se una tabella in ingresso combacia per nome con
   un pattern in catalogo, lo applica con `_from_template()` (stesso
@@ -234,7 +242,12 @@ di ricalcolare da zero → eliminando la struttura A il pattern sparisce e una
 struttura C successiva torna a usare l'euristica generica. Verificato anche
 che `known_pattern` compaia nel payload Claude solo per le tabelle
 effettivamente in catalogo (`null` per le altre, via client Anthropic
-mockato).
+mockato), e che il controllo di sovrapposizione colonne funzioni: una
+tabella "CUSTOMERS" con colonne di sensori IoT (0% di sovrapposizione con un
+pattern "CUSTOMERS" anagrafica clienti simulato in catalogo) cade
+correttamente sull'euristica generica invece di ereditare il mapping
+sbagliato, mentre una vera tabella clienti con le stesse colonne del pattern
+lo riusa normalmente.
 
 **Testato con una vera chiamata**: su questo dataset, Claude ha coperto
 tutte le 29 colonne, riconosciuto correttamente chiavi/timestamp/relazioni,
