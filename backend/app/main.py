@@ -36,6 +36,11 @@ async def _no_store_dynamic_pages(request, call_next):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        # Difesa in profondita': anche se qualcosa a monte ignorasse no-store,
+        # Vary: Cookie impedisce che una cache condivisa (proxy, CDN) associ
+        # la risposta alla sola URL e la riservi a un utente diverso da
+        # quello il cui cookie di sessione l'ha generata.
+        response.headers["Vary"] = "Cookie"
     return response
 
 
