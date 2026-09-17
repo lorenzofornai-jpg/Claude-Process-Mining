@@ -41,6 +41,17 @@ async def _no_store_dynamic_pages(request, call_next):
         # la risposta alla sola URL e la riservi a un utente diverso da
         # quello il cui cookie di sessione l'ha generata.
         response.headers["Vary"] = "Cookie"
+        # I redirect (es. dopo login/logout) hanno corpo vuoto, quindi
+        # Starlette non imposta Content-Type da solo. Bug reale visto in
+        # test: aperta via il forwarding porte di Codespaces su Safari
+        # (iPadOS), un redirect senza Content-Type veniva interpretato dal
+        # proxy intermedio come un file binario sconosciuto e Safari
+        # proponeva di "scaricare" la pagina invece di seguire il redirect -
+        # con il nome del file preso dall'ultimo segmento del path (es.
+        # "login"). Un Content-Type esplicito, anche su corpo vuoto, evita
+        # l'ambiguita' a qualunque livello della catena.
+        if "content-type" not in response.headers:
+            response.headers["Content-Type"] = "text/html; charset=utf-8"
     return response
 
 
