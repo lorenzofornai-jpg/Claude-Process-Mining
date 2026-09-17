@@ -120,10 +120,10 @@ def _require_process_access(request: Request, workspace_id: str):
     return user, None
 
 
-def _load_session(workspace_id: str) -> dict:
-    """Stato in-memory per il workspace, inizializzato al volo dal DB se e' la
-    prima visita di questa run del server (vedi state.py)."""
-    sess = state.ensure(workspace_id)
+def _load_session(user_id: str, workspace_id: str) -> dict:
+    """Stato in-memory per (utente, workspace), inizializzato al volo dal DB
+    se e' la prima visita di questa run del server (vedi state.py)."""
+    sess = state.ensure(user_id, workspace_id)
     if "context" not in sess:
         db = SessionLocal()
         try:
@@ -291,7 +291,7 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     # None resetta la modalita' modifica se si riparte da zero (link "Apri Modulo 1");
     # valorizzato solo arrivando da "Modifica struttura" nel registro delle strutture.
     sess["edit_config_id"] = edit_config_id
@@ -320,7 +320,7 @@ async def handle_upload(
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
 
     file_paths = _save_uploaded_files(files, UPLOAD_DIR / workspace_id)
 
@@ -367,7 +367,7 @@ def describe_tables_page(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     tables_schema = sess.get("tables_schema_objs")
     if not tables_schema:
         return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
@@ -385,7 +385,7 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     tables_schema = sess.get("tables_schema_objs")
     if not tables_schema:
         return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
@@ -459,7 +459,7 @@ def mapping_status_page(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     status = sess.get("mapping_status")
 
     if status == "done":
@@ -482,7 +482,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     rows = sess.get("mapping_rows")
     if rows is None:
         # Non ancora pronto (o mai partito, es. link diretto): manda alla pagina
@@ -529,7 +529,7 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     rows = sess["mapping_rows"]
     form = await request.form()
 
@@ -720,7 +720,7 @@ def result_page(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     result = sess["result"]
 
     db = SessionLocal()
@@ -931,7 +931,7 @@ async def update_data_submit(
     finally:
         db.close()
 
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     sess["result"] = {
         "ocel_path": str(ocel_path),
         "stats": stats,
@@ -983,7 +983,7 @@ def download_ocel(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
-    sess = _load_session(workspace_id)
+    sess = _load_session(user.id, workspace_id)
     path = sess["result"]["ocel_path"]
     return FileResponse(path, media_type="application/json", filename="event_log.ocel.json")
 

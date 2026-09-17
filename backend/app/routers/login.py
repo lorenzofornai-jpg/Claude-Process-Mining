@@ -18,7 +18,16 @@ templates.env.globals["static_version"] = STATIC_VERSION
 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
-    if current_user(request) is not None:
+    # Il redirect da /logout passa ?logged_out=1: in quel caso NON si torna
+    # alla dashboard neanche se current_user() trova ancora un utente valido.
+    # Bug reale visto in test: subito dopo il logout, il cookie di sessione a
+    # volte non risultava ancora scaduto per questa richiesta immediatamente
+    # successiva (race condition intermittente, es. con il proxy dell'inoltro
+    # porte di Codespaces) e l'utente veniva rimbalzato alla dashboard come se
+    # "Esci" non avesse funzionato - serviva un secondo click per uscire
+    # davvero. Qui si rispetta sempre l'azione esplicita dell'utente.
+    just_logged_out = request.query_params.get("logged_out") == "1"
+    if not just_logged_out and current_user(request) is not None:
         return RedirectResponse("/ingestion/dashboard", status_code=303)
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
 
@@ -52,4 +61,7 @@ def logout(request: Request):
     # puo' gestire in modo incoerente - bug reale visto in test: il logout tornava a
     # "I miei processi" in modo incostante invece che al login, perche' il cookie non
     # veniva davvero cancellato lato client prima della richiesta successiva.
-    return RedirectResponse("/login", status_code=303)
+    # ?logged_out=1 dice a login_form() di non rimbalzare alla dashboard anche
+    # se, per lo stesso motivo di timing, current_user() vedesse ancora un
+    # utente valido su QUESTA richiesta immediatamente successiva.
+    return RedirectResponse("/login?logged_out=1", status_code=303)
