@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -16,6 +17,19 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent
 templates.env.globals["static_version"] = STATIC_VERSION
 
 
+def _cache_bust() -> str:
+    """Token casuale per rendere ogni redirect post-login un URL mai visto
+    prima. Cache-Control: no-store impedisce a un browser aggiornato di
+    salvare in cache la dashboard, ma non recupera una copia GIA' salvata da
+    prima che questi header anti-cache esistessero (o da un proxy che li ha
+    ignorati una volta) - bug reale visto in test: dopo login/logout/login
+    con un altro utente, Safari mostrava ancora la dashboard dell'utente
+    precedente senza nemmeno ricontattare il server. Con un parametro mai
+    riutilizzato nell'URL, quella vecchia voce di cache (chiavata per URL)
+    semplicemente non puo' mai fare match."""
+    return uuid.uuid4().hex[:10]
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     # Il redirect da /logout passa ?logged_out=1: in quel caso NON si torna
@@ -28,7 +42,7 @@ def login_form(request: Request):
     # davvero. Qui si rispetta sempre l'azione esplicita dell'utente.
     just_logged_out = request.query_params.get("logged_out") == "1"
     if not just_logged_out and current_user(request) is not None:
-        return RedirectResponse("/ingestion/dashboard", status_code=303)
+        return RedirectResponse(f"/ingestion/dashboard?_s={_cache_bust()}", status_code=303)
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
 
 
@@ -48,7 +62,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
         )
 
     request.session["user_id"] = user.id
-    return RedirectResponse("/ingestion/dashboard", status_code=303)
+    return RedirectResponse(f"/ingestion/dashboard?_s={_cache_bust()}", status_code=303)
 
 
 @router.post("/logout")
@@ -64,4 +78,4 @@ def logout(request: Request):
     # ?logged_out=1 dice a login_form() di non rimbalzare alla dashboard anche
     # se, per lo stesso motivo di timing, current_user() vedesse ancora un
     # utente valido su QUESTA richiesta immediatamente successiva.
-    return RedirectResponse("/login?logged_out=1", status_code=303)
+    return RedirectResponse(f"/login?logged_out=1&_s={_cache_bust()}", status_code=303)
