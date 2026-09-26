@@ -148,7 +148,9 @@ membro come guardia contro zip bomb).
   viceversa, entrambi assegnati alla stessa persona sullo stesso processo →
   accede a entrambi.
 - Password con bcrypt, sessione via cookie firmato (Starlette
-  `SessionMiddleware`). I ruoli Process Owner/Viewer restano concettuali per
+  `SessionMiddleware`). Il cookie è di sessione del browser (sparisce alla
+  chiusura) e la sessione scade dopo `SESSION_IDLE_MINUTES` (30) minuti di
+  inattività, con avviso "Sessione scaduta" nella pagina di login. I ruoli Process Owner/Viewer restano concettuali per
   ora: lo schema (`ProcessAssignment.role` è una stringa libera) è già
   pensato per estendersi senza migrazioni quando arriveranno.
 

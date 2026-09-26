@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import current_user, verify_password
+from app.auth import current_user, start_session, verify_password
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import User
@@ -50,7 +50,10 @@ def login_form(request: Request):
     user = None if just_logged_out else current_user(request)
     if user is not None:
         return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    error = None
+    if request.session.pop("expired", False):
+        error = "Sessione scaduta per inattività: accedi di nuovo."
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 
 @router.post("/login")
@@ -68,7 +71,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
             status_code=401,
         )
 
-    request.session["user_id"] = user.id
+    start_session(request, user)
     return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
 
 

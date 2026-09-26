@@ -20,6 +20,11 @@ if not SESSION_SECRET_KEY:
     with open(_env_path, "a", encoding="utf-8") as _f:
         _f.write(f"\nSESSION_SECRET_KEY={SESSION_SECRET_KEY}\n")
 
+# Dopo quanti minuti senza richieste la sessione scade e si torna al login.
+# Il cookie e' inoltre "di sessione" (senza scadenza, vedi main.py): sparisce
+# anche alla chiusura del browser.
+SESSION_IDLE_MINUTES = 30
+
 # Credenziali dell'unico utente che esiste al primissimo avvio dell'app per
 # un nuovo cliente (nessun altro admin ancora esistente nel DB): sempre e
 # solo superuser/superuser, da cambiare come primissima cosa dopo il primo
