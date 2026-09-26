@@ -32,6 +32,7 @@ from app.models import (
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
+from app.services.structures import delete_structures, remove_files
 from app.services.transformation import build_ocel, compile_defs
 from app.services.validation import run_data_quality_checks
 
@@ -952,29 +953,13 @@ def delete_structure(request: Request, config_id: str, workspace_id: str = Form(
 
     db = SessionLocal()
     try:
-        config = db.get(IngestionConfig, config_id)
-        if config is None:
+        if db.get(IngestionConfig, config_id) is None:
             return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
-
-        run_ids = [r.id for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
-        ocel_paths = [r.ocel_file_path for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
-
-        db.query(DataQualityCheckResult).filter(DataQualityCheckResult.extraction_run_id.in_(run_ids)).delete(
-            synchronize_session=False
-        )
-        db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(ProcessIngestionLink).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(FieldMapping).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(ObjectTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(EventTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(IngestionConfigVersion).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.delete(config)
+        files = delete_structures(db, [config_id])
         db.commit()
     finally:
         db.close()
-
-    for p in ocel_paths:
-        Path(p).unlink(missing_ok=True)
+    remove_files(files)
 
     return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
 

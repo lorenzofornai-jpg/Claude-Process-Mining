@@ -53,8 +53,9 @@
         </td>
         {% endfor %}
         <td>
+          {% set n_struct = row.structures|length %}{% set n_cat = row.structures|selectattr("in_catalog")|list|length %}
           <form method="post" action="/admin/processes/{{ row.workspace.id }}/delete" style="display:inline"
-                onsubmit="return confirm('Eliminare definitivamente questo processo con assegnazioni, strutture e run? Non si può annullare.');">
+                onsubmit="return confirm('Eliminare definitivamente questo processo? Verranno eliminate anche le sue {{ n_struct }} strutture{% if n_cat %} ({{ n_cat }} nel catalogo, che verranno rimosse dal catalogo){% endif %}, i run e le assegnazioni. Non si può annullare.');">
             <button type="submit" class="secondary">Elimina</button>
           </form>
         </td>

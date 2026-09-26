@@ -108,8 +108,9 @@ membro come guardia contro zip bomb).
   Engineer**/**Data Analyst** per processo (`/admin`). **Non** accede ai
   moduli (niente strutture né analisi) né a "I miei processi": dopo il
   login atterra direttamente su Amministrazione. Eliminare un processo
-  rimuove assegnazioni, run/file OCEL e le strutture usate solo da quel
-  processo. Può creare **altri admin** con i propri stessi
+  rimuove assegnazioni, run/file OCEL e tutte le strutture del processo;
+  quelle aggiunte al catalogo spariscono anche dal catalogo (che è solo il
+  flag `in_catalog` sulle strutture, letto dal DB a ogni mapping). Può creare **altri admin** con i propri stessi
   privilegi (checkbox "Crea come amministratore" in "Nuovo utente") — non è
   un ruolo per processo come gli altri due, è un flag sull'utente
   (`User.is_admin`) che dà accesso ad Amministrazione, non ai moduli.
