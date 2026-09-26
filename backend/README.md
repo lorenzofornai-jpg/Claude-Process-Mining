@@ -12,7 +12,7 @@ aggiornamento dati, nuova versione, eliminazione).
 
 | Fase disegnata | Dove nel codice |
 |---|---|
-| A. Contestualizzazione | `templates/context.html`, `POST /ingestion/new` |
+| A. Creazione processo (admin) | `templates/admin_new_process.html`, `POST /admin/processes/new`: solo il nome, più Data Engineer/Data Analyst opzionali |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
 | E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); prima, descrizione tabelle opzionale (`templates/describe_tables.html`); poi gira in background (`templates/mapping_status.html`, polling) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |

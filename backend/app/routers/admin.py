@@ -86,6 +86,71 @@ def admin_dashboard(request: Request):
     )
 
 
+def _assignable_users(db) -> list[User]:
+    return sorted(db.query(User).filter_by(is_admin=False).all(), key=lambda u: u.name)
+
+
+def _new_process_page(request: Request, user: User, error: str | None = None, status_code: int = 200):
+    db = SessionLocal()
+    try:
+        assignable_users = _assignable_users(db)
+    finally:
+        db.close()
+    return templates.TemplateResponse(
+        "admin_new_process.html",
+        {
+            "request": request, "user": user, "error": error, "assignable_users": assignable_users,
+            "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/processes/new", response_class=HTMLResponse)
+def new_process_form(request: Request):
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    return _new_process_page(request, user)
+
+
+@router.post("/processes/new")
+def create_process(
+    request: Request,
+    process_name: str = Form(...),
+    data_engineer: str = Form(""),
+    data_analyst: str = Form(""),
+):
+    """Crea il processo (solo il nome) e, se scelti, assegna subito Data
+    Engineer e Data Analyst; le assegnazioni restano modificabili dalla
+    dashboard di Amministrazione."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    process_name = process_name.strip()
+    if not process_name:
+        return _new_process_page(request, user, "Il nome del processo è obbligatorio.", 400)
+
+    chosen = {"data_engineer": data_engineer, "data_analyst": data_analyst}
+    db = SessionLocal()
+    try:
+        valid_ids = {u.id for u in _assignable_users(db)}
+        if any(uid and uid not in valid_ids for uid in chosen.values()):
+            return _new_process_page(request, user, "Utente selezionato non valido.", 400)
+        # process_type e' NOT NULL nel modello: resta vuoto, non si chiede piu'
+        ws = ProcessWorkspace(process_name=process_name, process_type="", created_by=user.name)
+        db.add(ws)
+        db.flush()
+        for role, uid in chosen.items():
+            if uid:
+                db.add(ProcessAssignment(workspace_id=ws.id, user_id=uid, role=role, assigned_by=user.name))
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse("/admin", status_code=303)
+
+
 @router.get("/users/new", response_class=HTMLResponse)
 def new_user_form(request: Request):
     user, denied = _require_admin(request)

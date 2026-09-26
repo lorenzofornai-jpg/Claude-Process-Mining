@@ -10,7 +10,7 @@
   </p>
 
   <div class="actions" style="margin-top:0">
-    <a class="primary button-link" href="/ingestion/new">+ Nuovo processo</a>
+    <a class="primary button-link" href="/admin/processes/new">+ Nuovo processo</a>
     <a class="secondary button-link" href="/admin/users/new">+ Nuovo utente</a>
   </div>
 
@@ -18,7 +18,7 @@
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Processo</th><th>Tipo</th><th>Creato il</th>
+        <th>Processo</th><th>Creato il</th>
         {% for role in assignable_roles %}<th>{{ role_labels[role] }}</th>{% endfor %}
         <th></th>
       </tr>
@@ -27,7 +27,6 @@
       {% for row in rows %}
       <tr>
         <td>{{ row.workspace.process_name }}</td>
-        <td>{{ row.workspace.process_type }}</td>
         <td class="tiny muted">{{ row.workspace.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         {% for role in assignable_roles %}
         <td>
@@ -61,7 +60,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="{{ 4 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
+      <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
       {% endfor %}
     </tbody>
   </table>

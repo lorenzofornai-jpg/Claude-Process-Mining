@@ -131,13 +131,9 @@ def _load_session(user_id: str, workspace_id: str) -> dict:
             ws = db.get(ProcessWorkspace, workspace_id)
         finally:
             db.close()
-        sess["context"] = {
-            "process_name": ws.process_name,
-            "process_type": ws.process_type,
-            "business_unit": ws.business_unit or "",
-            "period_from": ws.period_from or "",
-            "period_to": ws.period_to or "",
-        }
+        # Solo il nome: tipo, business unit e periodo non si chiedono piu' alla
+        # creazione (colonne rimaste nel modello per i processi gia' esistenti).
+        sess["context"] = {"process_name": ws.process_name}
     return sess
 
 
@@ -218,51 +214,6 @@ def ingestion_dashboard(request: Request):
         "ingestion_dashboard.html",
         {"request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace},
     )
-
-
-@router.get("/ingestion/new", response_class=HTMLResponse)
-def new_context_form(request: Request):
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    if not user.is_admin:
-        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
-    return templates.TemplateResponse("context.html", {"request": request, "user": user, "step": 1})
-
-
-@router.post("/ingestion/new")
-def create_workspace(
-    request: Request,
-    process_name: str = Form(...),
-    process_type: str = Form(...),
-    business_unit: str = Form(""),
-    period_from: str = Form(""),
-    period_to: str = Form(""),
-):
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    if not user.is_admin:
-        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
-
-    db = SessionLocal()
-    try:
-        ws = ProcessWorkspace(
-            process_name=process_name,
-            process_type=process_type,
-            business_unit=business_unit or None,
-            period_from=period_from or None,
-            period_to=period_to or None,
-            created_by=user.name,
-        )
-        db.add(ws)
-        db.commit()
-    finally:
-        db.close()
-
-    # Il wizard di Ingestion (Fasi B-G) lo porta avanti il Data Engineer assegnato,
-    # non l'admin: si torna alla dashboard admin per fare l'assegnazione.
-    return RedirectResponse(url="/admin", status_code=303)
 
 
 EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
@@ -639,9 +590,9 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 db.flush()
 
             config = IngestionConfig(
-                name=f"{ctx['process_type']} - {source_system.name}",
+                name=f"{ctx['process_name']} - {source_system.name}",
                 source_system_id=source_system.id,
-                process_type=ctx["process_type"],
+                process_type=ctx.get("process_type", ""),
                 status="draft",
                 current_version=1,
                 owner=user.name,

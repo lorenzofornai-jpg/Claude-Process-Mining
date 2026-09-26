@@ -8,14 +8,13 @@
 
   <table class="admin-table">
     <thead>
-      <tr><th>Processo</th><th>Tipo</th><th>Creato il</th><th></th></tr>
+      <tr><th>Processo</th><th>Creato il</th><th></th></tr>
     </thead>
     <tbody>
       {% for ws in workspaces %}
       {% set roles = roles_by_workspace.get(ws.id, []) %}
       <tr>
         <td>{{ ws.process_name }}</td>
-        <td>{{ ws.process_type }}</td>
         <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>
           {% if 'data_engineer' in roles %}
@@ -28,7 +27,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">Nessun processo assegnato ancora.</td></tr>
+      <tr><td colspan="3" class="muted">Nessun processo assegnato ancora.</td></tr>
       {% endfor %}
     </tbody>
   </table>
