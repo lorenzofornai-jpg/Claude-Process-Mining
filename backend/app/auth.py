@@ -38,13 +38,14 @@ def current_user(request) -> User | None:
 
 def has_process_access(user: User, workspace_id: str, required_role: str = "data_engineer") -> bool:
     """True se l'utente puo' lavorare su un dato modulo per questo processo:
-    admin (accesso illimitato a tutto), oppure un utente con quel ruolo
-    specifico assegnato a questo workspace. Uno stesso utente puo' avere piu'
-    ruoli, anche sullo stesso processo (es. data_engineer per il Modulo 1 e
-    data_analyst per il Modulo 2): sono righe distinte in ProcessAssignment,
-    non un attributo fisso sull'utente."""
+    solo un utente con quel ruolo specifico assegnato a questo workspace.
+    L'admin NON ha accesso ai moduli: gestisce utenti, processi e
+    assegnazioni da Amministrazione, ma non crea strutture ne' analisi.
+    Uno stesso utente puo' avere piu' ruoli, anche sullo stesso processo (es.
+    data_engineer per il Modulo 1 e data_analyst per il Modulo 2): sono righe
+    distinte in ProcessAssignment, non un attributo fisso sull'utente."""
     if user.is_admin:
-        return True
+        return False
     db = SessionLocal()
     try:
         return (

@@ -3,12 +3,7 @@
 <div class="card wide">
   <h1>I miei processi</h1>
   <p class="muted">
-    {% if user.is_admin %}
-    Vista amministratore: tutti i processi, accesso completo a entrambi i moduli. Per crearne uno
-    nuovo o assegnare Data Engineer/Data Analyst vai in <a href="/admin">Amministrazione</a>.
-    {% else %}
     Processi su cui sei stato assegnato, con i moduli a cui hai accesso in base al ruolo.
-    {% endif %}
   </p>
 
   <table class="admin-table">
@@ -33,10 +28,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">
-        Nessun processo assegnato ancora.
-        {% if user.is_admin %}Creane uno da <a href="/admin">Amministrazione</a>.{% endif %}
-      </td></tr>
+      <tr><td colspan="4" class="muted">Nessun processo assegnato ancora.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -3,9 +3,10 @@
 <div class="card wide">
   <h1>Amministrazione</h1>
   <p class="muted">
-    Crea nuovi processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
+    Crea ed elimina processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
     Modulo 1 - Ingestion, Data Analyst per il Modulo 2 - Analisi). Uno stesso utente può avere più
-    ruoli, anche sullo stesso processo.
+    ruoli, anche sullo stesso processo. L'amministratore non lavora sui moduli: strutture e analisi
+    le creano gli utenti assegnati.
   </p>
 
   <div class="actions" style="margin-top:0">
@@ -19,6 +20,7 @@
       <tr>
         <th>Processo</th><th>Tipo</th><th>Creato il</th>
         {% for role in assignable_roles %}<th>{{ role_labels[role] }}</th>{% endfor %}
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -50,17 +52,23 @@
           {% endif %}
         </td>
         {% endfor %}
+        <td>
+          <form method="post" action="/admin/processes/{{ row.workspace.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Eliminare definitivamente questo processo con assegnazioni, strutture e run? Non si può annullare.');">
+            <button type="submit" class="secondary">Elimina</button>
+          </form>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
+      <tr><td colspan="{{ 4 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <h2>Utenti</h2>
   <p class="tiny muted">
-    Gli amministratori hanno accesso illimitato a tutto e non compaiono nelle assegnazioni sopra
-    (sarebbero ridondanti). Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
+    Gli amministratori gestiscono solo utenti, processi e assegnazioni: non accedono ai moduli e
+    non compaiono nelle assegnazioni sopra. Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
   </p>
   <table class="admin-table">
     <thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>

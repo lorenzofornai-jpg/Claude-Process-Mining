@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import state
 from app.auth import current_user, hash_password
-from app.config import STATIC_VERSION
+from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
-from app.models import ProcessAssignment, ProcessWorkspace, User
+from app.models import (
+    DataQualityCheckResult,
+    EventTypeDef,
+    ExtractionRun,
+    FieldMapping,
+    IngestionConfig,
+    IngestionConfigVersion,
+    ObjectTypeDef,
+    ProcessAssignment,
+    ProcessIngestionLink,
+    ProcessWorkspace,
+    User,
+)
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -103,8 +117,8 @@ def create_user(
             )
         # Qualunque admin puo' crearne un altro con gli stessi privilegi: non
         # e' un ruolo per processo (quelli sono ASSIGNABLE_ROLES via
-        # ProcessAssignment), e' un flag sull'utente che da' accesso
-        # illimitato a tutto, a prescindere da qualunque assegnazione.
+        # ProcessAssignment), e' un flag sull'utente che da' accesso ad
+        # Amministrazione (non ai moduli, che restano ai ruoli assegnati).
         db.add(User(name=name, email=email_norm, password_hash=hash_password(password), is_admin=is_admin))
         db.commit()
     finally:
@@ -134,5 +148,65 @@ def assign_role(request: Request, workspace_id: str, user_id: str = Form(...), r
         db.commit()
     finally:
         db.close()
+
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/processes/{workspace_id}/delete")
+def delete_process(request: Request, workspace_id: str):
+    """Elimina definitivamente un processo: assegnazioni, run di estrazione
+    (con i file OCEL prodotti) e le strutture usate solo da questo processo.
+    Le strutture condivise con altri processi restano, perdono solo il
+    collegamento a questo."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+        if ws is None:
+            return RedirectResponse("/admin", status_code=303)
+
+        runs = db.query(ExtractionRun).filter_by(workspace_id=workspace_id).all()
+        run_ids = [r.id for r in runs]
+        file_paths = [Path(r.ocel_file_path) for r in runs]
+        config_ids = {r.ingestion_config_id for r in runs} | {
+            link.ingestion_config_id
+            for link in db.query(ProcessIngestionLink).filter_by(workspace_id=workspace_id).all()
+        }
+
+        db.query(DataQualityCheckResult).filter(DataQualityCheckResult.extraction_run_id.in_(run_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(ExtractionRun).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessIngestionLink).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessAssignment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+
+        # Solo le strutture non piu' usate da nessun altro processo
+        orphan_config_ids = [
+            cid for cid in config_ids
+            if db.query(ExtractionRun).filter_by(ingestion_config_id=cid).first() is None
+            and db.query(ProcessIngestionLink).filter_by(ingestion_config_id=cid).first() is None
+        ]
+        for model in (FieldMapping, ObjectTypeDef, EventTypeDef, IngestionConfigVersion):
+            db.query(model).filter(model.ingestion_config_id.in_(orphan_config_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(IngestionConfig).filter(IngestionConfig.id.in_(orphan_config_ids)).delete(
+            synchronize_session=False
+        )
+
+        db.delete(ws)
+        db.commit()
+    finally:
+        db.close()
+
+    for p in file_paths:
+        p.unlink(missing_ok=True)
+    upload_dir = DATA_DIR / "uploads"
+    for d in [upload_dir / workspace_id, *(upload_dir / f"{cid}-update" for cid in orphan_config_ids)]:
+        shutil.rmtree(d, ignore_errors=True)
+    state.drop_workspace(workspace_id)
 
     return RedirectResponse("/admin", status_code=303)

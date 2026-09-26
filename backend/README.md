@@ -89,9 +89,9 @@ puoi creare altri amministratori con i tuoi stessi privilegi (spunta "Crea
 come amministratore" nel form nuovo utente — pensato per sostituire subito
 il superuser di bootstrap con utenze reali), utenti Data Engineer/Data
 Analyst, e nuovi processi, assegnando poi i ruoli per processo dalla stessa
-pagina. Poi accedi come quell'utente (o resta admin, che ha accesso
-illimitato a tutto) e da **I miei processi** apri il Modulo 1: Dati
-sorgente → Revisione mapping → Risultato.
+pagina. Poi accedi come quell'utente (l'admin non ha accesso ai moduli)
+e da **I miei processi** apri il Modulo 1: Dati sorgente → Revisione
+mapping → Risultato.
 
 L'unico modo di acquisire dati è caricare file CSV/TXT (nessuna scorciatoia
 "dataset sintetico" nell'interfaccia): usa i CSV in `data/synthetic_p2p/`
@@ -104,12 +104,15 @@ membro come guardia contro zip bomb).
 
 ### Ruoli e permessi
 
-- **Admin**: crea utenti e processi, assegna **Data Engineer**/**Data
-  Analyst** per processo (`/admin`), accesso illimitato a tutto (entrambi i
-  moduli, su ogni processo). Può creare **altri admin** con i propri stessi
+- **Admin**: crea utenti, crea ed elimina processi, assegna **Data
+  Engineer**/**Data Analyst** per processo (`/admin`). **Non** accede ai
+  moduli (niente strutture né analisi) né a "I miei processi": dopo il
+  login atterra direttamente su Amministrazione. Eliminare un processo
+  rimuove assegnazioni, run/file OCEL e le strutture usate solo da quel
+  processo. Può creare **altri admin** con i propri stessi
   privilegi (checkbox "Crea come amministratore" in "Nuovo utente") — non è
   un ruolo per processo come gli altri due, è un flag sull'utente
-  (`User.is_admin`) che vale ovunque a prescindere da qualunque assegnazione.
+  (`User.is_admin`) che dà accesso ad Amministrazione, non ai moduli.
   Al primissimo avvio per un cliente nuovo (nessun admin ancora nel
   database) esiste **un solo utente**, di bootstrap: `superuser`/`superuser`,
   credenziali fisse nel codice (`BOOTSTRAP_ADMIN_EMAIL`/`_PASSWORD` in

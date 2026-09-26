@@ -179,9 +179,10 @@ def _check_schema_compatibility(new_fingerprint: dict[str, list[str]], confirmed
 
 @router.get("/", response_class=HTMLResponse)
 def root(request: Request):
-    if current_user(request) is None:
+    user = current_user(request)
+    if user is None:
         return RedirectResponse(url="/login")
-    return RedirectResponse(url="/ingestion/dashboard")
+    return RedirectResponse(url="/admin" if user.is_admin else "/ingestion/dashboard")
 
 
 @router.get("/ingestion/dashboard", response_class=HTMLResponse)
@@ -190,25 +191,25 @@ def ingestion_dashboard(request: Request):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    # L'admin non lavora sui moduli (niente strutture ne' analisi): la sua
+    # "home" e' Amministrazione, "I miei processi" non ha senso per lui.
+    if user.is_admin:
+        return RedirectResponse("/admin", status_code=303)
+
     db = SessionLocal()
     try:
-        if user.is_admin:
-            workspaces = db.query(ProcessWorkspace).order_by(ProcessWorkspace.created_at.desc()).all()
-            # l'admin ha accesso illimitato a tutto: mostra entrambi i moduli ovunque
-            roles_by_workspace = {ws.id: {"data_engineer", "data_analyst"} for ws in workspaces}
-        else:
-            assignments = db.query(ProcessAssignment).filter_by(user_id=user.id).all()
-            roles_by_workspace: dict[str, set] = {}
-            for a in assignments:
-                roles_by_workspace.setdefault(a.workspace_id, set()).add(a.role)
-            workspaces = (
-                db.query(ProcessWorkspace)
-                .filter(ProcessWorkspace.id.in_(roles_by_workspace.keys()))
-                .order_by(ProcessWorkspace.created_at.desc())
-                .all()
-                if roles_by_workspace
-                else []
-            )
+        assignments = db.query(ProcessAssignment).filter_by(user_id=user.id).all()
+        roles_by_workspace: dict[str, set] = {}
+        for a in assignments:
+            roles_by_workspace.setdefault(a.workspace_id, set()).add(a.role)
+        workspaces = (
+            db.query(ProcessWorkspace)
+            .filter(ProcessWorkspace.id.in_(roles_by_workspace.keys()))
+            .order_by(ProcessWorkspace.created_at.desc())
+            .all()
+            if roles_by_workspace
+            else []
+        )
     finally:
         db.close()
 
