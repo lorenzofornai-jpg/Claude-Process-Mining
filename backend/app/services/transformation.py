@@ -198,3 +198,51 @@ def build_ocel(
         "skipped_count": len(skip_log),
     }
     return ocel, skip_log, stats
+
+
+def _event_key(e: dict) -> tuple:
+    """Identita' di un evento indipendente dall'id: gli id (e1, e2, ...) sono
+    progressivi per singola generazione, quindi non servono a riconoscere lo
+    stesso evento in due caricamenti diversi."""
+    return (
+        e["type"], e["time"],
+        tuple(sorted((r["objectId"], r["qualifier"]) for r in e["relationships"])),
+        tuple(sorted((a["name"], a["value"]) for a in e["attributes"])),
+    )
+
+
+def merge_ocel(previous: dict, new: dict) -> tuple[dict, dict]:
+    """Aggiornamento incrementale: unisce il log precedente con quello appena
+    generato dai nuovi dati.
+
+    - oggetti: per id; se un oggetto c'e' in entrambi vincono gli attributi
+      del nuovo caricamento (dati piu' recenti)
+    - eventi: aggiunti solo quelli non gia' presenti (stesso tipo, istante,
+      oggetti collegati e attributi), poi riordinati e rinumerati
+    Ritorna (ocel_unito, {"added_objects", "updated_objects", "added_events"}).
+    """
+    objects = {o["id"]: o for o in previous.get("objects", [])}
+    added_objects = sum(1 for o in new["objects"] if o["id"] not in objects)
+    updated_objects = sum(1 for o in new["objects"] if o["id"] in objects and objects[o["id"]] != o)
+    for o in new["objects"]:
+        objects[o["id"]] = o
+
+    seen = {_event_key(e) for e in previous.get("events", [])}
+    events = list(previous.get("events", []))
+    added_events = 0
+    for e in new["events"]:
+        key = _event_key(e)
+        if key not in seen:
+            seen.add(key)
+            events.append(e)
+            added_events += 1
+    events.sort(key=lambda e: e["time"])
+    events = [{**e, "id": f"e{i}"} for i, e in enumerate(events, start=1)]
+
+    merged = {
+        "objectTypes": new["objectTypes"],
+        "eventTypes": new["eventTypes"],
+        "objects": list(objects.values()),
+        "events": events,
+    }
+    return merged, {"added_objects": added_objects, "updated_objects": updated_objects, "added_events": added_events}

@@ -33,7 +33,7 @@ from app.models import (
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.services.structures import delete_structures, remove_files
-from app.services.transformation import build_ocel, compile_defs
+from app.services.transformation import build_ocel, compile_defs, merge_ocel
 from app.services.validation import run_data_quality_checks
 
 router = APIRouter()
@@ -792,7 +792,7 @@ def update_data_form(request: Request, config_id: str, workspace_id: str):
         db.close()
     return templates.TemplateResponse(
         "update_data.html",
-        {"request": request, "user": user, "workspace_id": workspace_id, "config": config, "error": None},
+        {"request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": "replace", "error": None},
     )
 
 
@@ -801,15 +801,28 @@ async def update_data_submit(
     request: Request,
     config_id: str,
     workspace_id: str = Form(...),
+    mode: str = Form("replace"),
     files: list[UploadFile] = File(default_factory=list),
 ):
+    """mode="replace": il nuovo log contiene solo i dati appena caricati (sostituisce
+    quelli pregressi). mode="append": i nuovi dati si aggiungono al log dell'ultimo
+    run di questa struttura (vedi transformation.merge_ocel)."""
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
+    if mode not in ("replace", "append"):
+        mode = "replace"
 
     db = SessionLocal()
     try:
         config = db.get(IngestionConfig, config_id)
+        last_run = (
+            db.query(ExtractionRun)
+            .filter_by(workspace_id=workspace_id, ingestion_config_id=config_id)
+            .order_by(ExtractionRun.started_at.desc())
+            .first()
+        )
+        previous_ocel_path = Path(last_run.ocel_file_path) if last_run else None
         mapping_rows = (
             db.query(FieldMapping)
             .filter_by(ingestion_config_id=config_id)
@@ -826,7 +839,7 @@ async def update_data_submit(
         return templates.TemplateResponse(
             "update_data.html",
             {
-                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": "Carica almeno un file CSV/TXT (o uno ZIP che li contenga) prima di continuare.",
             },
             status_code=400,
@@ -848,7 +861,7 @@ async def update_data_submit(
         return templates.TemplateResponse(
             "update_data.html",
             {
-                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": (
                     "I dati caricati non sono compatibili con questa struttura, "
                     f"mancano: {', '.join(problems)}. Usa \"Modifica struttura\" per rimappare "
@@ -860,6 +873,24 @@ async def update_data_submit(
 
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
     ocel, skip_log, stats = build_ocel(tables_data, confirmed)
+    if mode == "append":
+        if previous_ocel_path is None or not previous_ocel_path.exists():
+            return templates.TemplateResponse(
+                "update_data.html",
+                {
+                    "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
+                    "error": "Non trovo il log precedente di questa struttura a cui aggiungere i dati: usa \"Sostituisci\".",
+                },
+                status_code=400,
+            )
+        previous = json.loads(previous_ocel_path.read_text(encoding="utf-8"))
+        ocel, delta = merge_ocel(previous, ocel)
+        stats = {
+            **stats, **delta,
+            "object_count": len(ocel["objects"]),
+            "event_count": len(ocel["events"]),
+        }
+    stats["update_mode"] = mode
     dq_results = run_data_quality_checks(ocel, skip_log)
 
     ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"
@@ -869,7 +900,7 @@ async def update_data_submit(
     try:
         run = ExtractionRun(
             workspace_id=workspace_id, ingestion_config_id=config_id,
-            run_type="incremental", status="completed",
+            run_type="incremental" if mode == "append" else "snapshot", status="completed",
             object_count=stats["object_count"], event_count=stats["event_count"],
             ocel_file_path=str(ocel_path),
         )

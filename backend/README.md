@@ -34,6 +34,12 @@ analisi"** la promuove (`status = "approved"`), rendendola visibile nel
   che ogni tabella/colonna richiesta dal mapping esistente (`IngestionConfig.
   schema_fingerprint`) sia presente nel nuovo caricamento; se manca qualcosa,
   blocca con un messaggio esplicito invece di produrre un log sbagliato.
+  Due modalità: **Sostituisci** (il nuovo log contiene solo i dati appena
+  caricati, run `snapshot`) o **Incrementa** (i nuovi dati si uniscono al log
+  dell'ultimo run, run `incremental`, vedi `merge_ocel()` in
+  `services/transformation.py`): oggetti per id con i valori nuovi che
+  vincono, eventi aggiunti solo se non già presenti (stesso tipo, istante,
+  oggetti collegati e attributi), poi riordinati e rinumerati.
 - **Modifica struttura** — riapre l'intero wizard (nuova AI mapping +
   revisione) ma alla conferma aggiorna la struttura esistente invece di
   crearne una nuova: incrementa `current_version`, sostituisce

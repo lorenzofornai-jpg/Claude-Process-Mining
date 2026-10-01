@@ -21,6 +21,18 @@
   </div>
   {% endif %}
 
+  {% if result.stats.update_mode == "append" %}
+  <div class="banner ok">
+    Aggiornamento <strong>incrementale</strong>: aggiunti {{ result.stats.added_events }} eventi e
+    {{ result.stats.added_objects }} oggetti nuovi, {{ result.stats.updated_objects }} oggetti
+    aggiornati. I totali qui sotto includono i dati già presenti.
+  </div>
+  {% elif result.stats.update_mode == "replace" %}
+  <div class="banner ok">
+    Dati <strong>sostituiti</strong>: il log contiene solo i dati appena caricati.
+  </div>
+  {% endif %}
+
   <div class="stat-row">
     <div class="stat"><span class="stat-value">{{ result.stats.object_count }}</span><span class="stat-label">oggetti</span></div>
     <div class="stat"><span class="stat-value">{{ result.stats.object_types }}</span><span class="stat-label">tipi oggetto</span></div>
