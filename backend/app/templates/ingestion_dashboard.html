@@ -3,7 +3,7 @@
 <div class="card wide">
   <h1>I miei processi</h1>
   <p class="muted">
-    Processi su cui sei stato assegnato, con i moduli a cui hai accesso in base al ruolo.
+    Processi a cui sei assegnato, con le attività abilitate dal tuo ruolo.
   </p>
 
   <table class="admin-table">
@@ -22,7 +22,7 @@
           <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
           {% endif %}
           {% if 'data_analyst' in roles %}
-          <a class="secondary button-link" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri Modulo 2 (Analisi)</a>
+          <a class="secondary button-link" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri analisi</a>
           {% endif %}
         </td>
       </tr>

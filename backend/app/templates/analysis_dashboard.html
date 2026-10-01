@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Modulo 2 — Analisi</h1>
+  <h1>Analisi</h1>
   <p class="muted">
     Processo: <strong>{{ process_name }}</strong>. Qui in futuro sceglierai un log OCEL 2.0 e
-    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei log già disponibili,
-    prodotti dal Modulo 1.
+    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei log già disponibili
+    per l'analisi.
   </p>
-  <div class="banner warning">Modulo 2 in costruzione: questa è solo la pagina d'ingresso, per verificare l'accesso Data Analyst.</div>
+  <div class="banner warning">Analisi in costruzione: questa è solo la pagina d'ingresso.</div>
 
   <table class="admin-table">
     <thead>
@@ -31,7 +31,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">Nessun log disponibile ancora per questo processo (serve prima il Modulo 1).</td></tr>
+      <tr><td colspan="4" class="muted">Nessun log disponibile ancora per questo processo (il Data Engineer deve prima preparare una struttura).</td></tr>
       {% endfor %}
     </tbody>
   </table>
