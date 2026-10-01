@@ -31,8 +31,8 @@
           {% if 'data_engineer' in roles %}
           {% set st = assessments[ws.id] %}
           <a class="{{ 'secondary' if st.percent == 100 else 'primary' }} button-link" href="/ingestion/assessment?workspace_id={{ ws.id }}">Assessment ({{ st.done }}/{{ st.total }})</a>
-          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuova struttura dati</a>
-          <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
+          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuovo dataset</a>
+          <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Dataset per l'analisi</a>
           {% endif %}
           {% if 'data_analyst' in roles %}
           <a class="secondary button-link" style="grid-column: {{ cols }}" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri analisi</a>

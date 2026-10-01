@@ -10,14 +10,14 @@
 
   {% if structure_status == "approved" %}
   <div class="banner ok">
-    Questa struttura è già <strong>in uso per l'analisi</strong>. La trovi nel
-    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">registro strutture</a> del processo,
-    da dove potrai aggiornarne i dati più avanti mantenendo le stesse scelte di mapping.
+    Questo dataset è già <strong>in uso per l'analisi</strong>. Lo trovi in
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">Dataset per l'analisi</a>,
+    da dove potrai aggiornarne i dati più avanti mantenendo lo stesso mapping.
   </div>
   {% else %}
   <div class="banner warning">
-    Questo è ancora un dataset di prova (bozza): non è ancora tracciato come struttura da usare per
-    l'analisi, e non comparirà nel registro strutture finché non lo confermi esplicitamente.
+    Questo è ancora un dataset di prova (bozza): non è ancora disponibile per l'analisi e non
+    comparirà in "Dataset per l'analisi" finché non lo confermi con "Utilizza per l'analisi".
   </div>
   {% endif %}
 
@@ -68,7 +68,7 @@
       <button type="submit" class="primary">Utilizza per l'analisi</button>
     </form>
     {% endif %}
-    <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">Vedi tutte le strutture</a>
+    <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">Vedi tutti i dataset</a>
     <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
   </div>
 </div>

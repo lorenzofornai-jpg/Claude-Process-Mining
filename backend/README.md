@@ -8,6 +8,21 @@ generazione del log OCEL 2.0 e Data Quality report — più un ciclo di vita
 completo delle "strutture" di mapping usate per l'analisi (promozione,
 aggiornamento dati, nuova versione, eliminazione).
 
+## Glossario: nomi nell'interfaccia e nomi nel codice
+
+L'interfaccia usa termini per l'utente; codice e database mantengono i nomi
+tecnici originali (rinominarli richiederebbe migrare tabelle e URL senza
+benefici per chi usa l'app).
+
+| Nell'interfaccia | Nel codice / database |
+|---|---|
+| Dataset (per l'analisi) | `IngestionConfig` (tabella `ingestion_config`), "struttura", pagine `/ingestion/structures` |
+| Mapping (regole del dataset) | `FieldMapping`, `ObjectTypeDef`, `EventTypeDef` di un `IngestionConfig` |
+| Aggiornamento dati di un dataset | `ExtractionRun` (con il file OCEL 2.0 prodotto) |
+| Dataset per l'analisi (pagina) | `list_structures`, `templates/structures.html` |
+| Processo | `ProcessWorkspace` |
+| Assessment | `ProcessAssessment`, `ProcessDocument` |
+
 ## Come si mappa al disegno concettuale
 
 | Fase disegnata | Dove nel codice |
@@ -27,9 +42,9 @@ aggiornamento dati, nuova versione, eliminazione).
 
 Il risultato di un giro di wizard (upload → revisione → conferma) è sempre
 una **bozza**: `IngestionConfig.status = "draft"`, non ancora tracciata come
-"in uso per l'analisi". Dal risultato, il pulsante **"Utilizza log per
+"in uso per l'analisi". Dal risultato, il pulsante **"Utilizza per l
 analisi"** la promuove (`status = "approved"`), rendendola visibile nel
-**registro strutture** del processo (`/ingestion/structures`). Da lì:
+pagina **Dataset per l'analisi** del processo (`/ingestion/structures`). Da lì:
 
 - **Aggiorna dati** — ricarica le tabelle sorgente nello stesso formato:
   riapplica esattamente lo stesso `field_mapping` già confermato (nessuna
@@ -44,12 +59,12 @@ analisi"** la promuove (`status = "approved"`), rendendola visibile nel
   `services/transformation.py`): oggetti per id con i valori nuovi che
   vincono, eventi aggiunti solo se non già presenti (stesso tipo, istante,
   oggetti collegati e attributi), poi riordinati e rinumerati.
-- **Modifica struttura** — riapre l'intero wizard (nuova AI mapping +
+- **Modifica mapping** — riapre l'intero wizard (nuova AI mapping +
   revisione) ma alla conferma aggiorna la struttura esistente invece di
   crearne una nuova: incrementa `current_version`, sostituisce
   `ObjectTypeDef`/`EventTypeDef`/`FieldMapping`, e la riporta a `status =
   "draft"` — richiede una nuova promozione esplicita prima di tornare attiva.
-- **+ Nuova struttura** — il wizard normale da zero, crea un `IngestionConfig`
+- **+ Nuovo dataset** — il wizard normale da zero, crea un `IngestionConfig`
   completamente separato (nessuna delle due strade tocca l'altra).
 - **Elimina** — cancellazione a cascata (FieldMapping, ObjectTypeDef,
   EventTypeDef, ExtractionRun, DataQualityCheckResult, ProcessIngestionLink,
@@ -258,7 +273,7 @@ Mapping Service).
 
 Oltre al catalogo statico seed (`GENERIC_FILE_P2P_CATALOG` in
 `services/catalog.py`, le 4 tabelle del dataset sintetico), il catalogo si
-arricchisce con l'uso: nel **registro strutture** (`/ingestion/structures`)
+arricchisce con l'uso: in **Dataset per l'analisi** (`/ingestion/structures`)
 ogni struttura ha un pulsante **"Aggiungi al catalogo"** (diventa "Rimuovi
 dal catalogo" una volta attivo, con badge "in catalogo" accanto al nome).
 Non è un'entità separata — solo `IngestionConfig.in_catalog`, un flag — quindi

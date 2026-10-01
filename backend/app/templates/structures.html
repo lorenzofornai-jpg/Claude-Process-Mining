@@ -1,19 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Strutture per l'analisi — {{ process_name }}</h1>
+  <h1>Dataset per l'analisi — {{ process_name }}</h1>
   <p class="muted">
-    Ogni struttura è un insieme di scelte di mapping confermate ("Utilizza per l'analisi" dal
-    risultato del wizard). Puoi aggiornarne i dati mantenendo le stesse scelte, modificarle
-    generando una nuova versione, o eliminarla. "Aggiungi al catalogo" rende il mapping di questa
-    struttura un pattern di riferimento riusabile per future tabelle con lo stesso nome (sia per
-    l'euristica mock sia come contesto per Claude): eliminare la struttura lo rimuove anche dal
-    catalogo, non è un'entità separata.
+    Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in
+    oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo
+    stesso mapping, modificare il mapping (nuova versione) o eliminarlo. "Aggiungi al catalogo" rende
+    il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle
+    con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.
   </p>
 
   <table class="admin-table process-table">
     <thead>
-      <tr><th>Struttura</th><th>Ultimo aggiornamento</th><th>Azioni</th></tr>
+      <tr><th>Dataset</th><th>Ultimo aggiornamento</th><th>Azioni</th></tr>
     </thead>
     <tbody>
       {% for s in structures %}
@@ -33,15 +32,15 @@
         <td>
           <div class="row-actions" style="grid-template-columns: repeat(4, minmax(0, 1fr))">
             <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">Aggiorna dati</a>
-            <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">Modifica struttura</a>
+            <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">Modifica mapping</a>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary">{{ "Rimuovi dal catalogo" if s.config.in_catalog else "Aggiungi al catalogo" }}</button>
             </form>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete"
-                  data-confirm-title="Eliminare la struttura?"
-                  data-confirm="&quot;{{ s.config.name }}&quot; verrà eliminata definitivamente insieme a tutti i suoi aggiornamenti dati{% if s.config.in_catalog %} e sarà rimossa dal catalogo{% endif %}. L'operazione non si può annullare."
-                  data-confirm-ok="Elimina struttura">
+                  data-confirm-title="Eliminare il dataset?"
+                  data-confirm="&quot;{{ s.config.name }}&quot; verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati{% if s.config.in_catalog %} e sarà tolto dal catalogo{% endif %}. L'operazione non si può annullare."
+                  data-confirm-ok="Elimina dataset">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary danger">Elimina</button>
             </form>
@@ -49,13 +48,13 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="muted">Nessuna struttura ancora in uso per l'analisi in questo processo.</td></tr>
+      <tr><td colspan="3" class="muted">Nessun dataset ancora in uso per l'analisi in questo processo.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <div class="actions">
-    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">+ Nuova struttura dati</a>
+    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">+ Nuovo dataset</a>
     <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
   </div>
 </div>

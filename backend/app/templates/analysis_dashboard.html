@@ -11,7 +11,7 @@
 
   <table class="admin-table">
     <thead>
-      <tr><th>Struttura</th><th>Versione</th><th>Ultimo run</th><th></th></tr>
+      <tr><th>Dataset</th><th>Versione</th><th>Ultimo aggiornamento</th><th></th></tr>
     </thead>
     <tbody>
       {% for s in structures %}
@@ -31,7 +31,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima preparare una struttura).</td></tr>
+      <tr><td colspan="4" class="muted">Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima prepararne uno).</td></tr>
       {% endfor %}
     </tbody>
   </table>

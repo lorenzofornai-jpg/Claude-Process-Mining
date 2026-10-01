@@ -5,7 +5,7 @@
   <p class="muted">
     Crea ed elimina processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
     preparazione dei dati, Data Analyst per le analisi). Uno stesso utente può avere più
-    ruoli, anche sullo stesso processo. L'amministratore non lavora sui dati: strutture e analisi
+    ruoli, anche sullo stesso processo. L'amministratore non lavora sui dati: dataset e analisi
     le creano gli utenti assegnati.
   </p>
 
@@ -55,7 +55,7 @@
           {% set n_struct = row.structures|length %}{% set n_cat = row.structures|selectattr("in_catalog")|list|length %}
           <form method="post" action="/admin/processes/{{ row.workspace.id }}/delete" style="display:inline"
                 data-confirm-title="Eliminare il processo &quot;{{ row.workspace.process_name }}&quot;?"
-                data-confirm="Verranno eliminate anche le sue {{ n_struct }} strutture dati{% if n_cat %} ({{ n_cat }} nel catalogo, che verranno rimosse dal catalogo){% endif %}, l'assessment, i documenti e le assegnazioni. L'operazione non si può annullare."
+                data-confirm="Verranno eliminati anche i suoi {{ n_struct }} dataset{% if n_cat %} ({{ n_cat }} nel catalogo, che verranno tolti dal catalogo){% endif %}, l'assessment, i documenti e le assegnazioni. L'operazione non si può annullare."
                 data-confirm-ok="Elimina processo">
             <button type="submit" class="secondary">Elimina</button>
           </form>

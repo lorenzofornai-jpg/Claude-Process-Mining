@@ -1000,8 +1000,8 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
             {
                 "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": (
-                    "I dati caricati non sono compatibili con questa struttura, "
-                    f"mancano: {', '.join(problems)}. Usa \"Modifica struttura\" per rimappare "
+                    "I dati caricati non sono compatibili con il mapping di questo dataset, "
+                    f"mancano: {', '.join(problems)}. Usa \"Modifica mapping\" per rimappare "
                     "da zero, oppure carica dati nello stesso formato di prima."
                 ),
             },
@@ -1016,7 +1016,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
                 "update_data.html",
                 {
                     "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
-                    "error": "Non trovo il log precedente di questa struttura a cui aggiungere i dati: usa \"Sostituisci\".",
+                    "error": "Non trovo i dati precedenti di questo dataset a cui aggiungere i nuovi: usa \"Sostituisci\".",
                 },
                 status_code=400,
             )

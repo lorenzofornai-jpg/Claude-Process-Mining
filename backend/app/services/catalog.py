@@ -135,7 +135,7 @@ def dynamic_lookup(table_name: str, current_columns: list[str] | None = None) ->
                 # e' quello della proposta originale, spesso pre-correzione).
                 conf=0.90,
                 rationale=(r.rationale or "").strip()
-                or "Pattern di mapping riutilizzato dal catalogo (confermato in una struttura precedente).",
+                or "Pattern di mapping riutilizzato dal catalogo (confermato in un dataset precedente).",
             )
             for r in rows
         ]
@@ -158,7 +158,7 @@ def dynamic_lookup(table_name: str, current_columns: list[str] | None = None) ->
             timestamp_column=timestamp_column,
             rationale=(
                 f"Pattern riutilizzato dal catalogo: una tabella chiamata '{table_name}' e' gia' "
-                "stata mappata e confermata in una struttura precedente."
+                "stata mappata e confermata in un dataset precedente."
             ),
         )
         return hint, rules

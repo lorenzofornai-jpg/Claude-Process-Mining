@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Struttura già esistente</h1>
+  <h1>Dataset già esistente</h1>
   <div class="banner warning">
     Le tabelle che hai caricato ({{ tables|length }}, con le stesse colonne) corrispondono esattamente
-    alla struttura <strong>"{{ config.name }}"</strong> (v{{ config.current_version }}) già in uso per
+    al dataset <strong>"{{ config.name }}"</strong> (v{{ config.current_version }}) già in uso per
     questo processo. Non serve rifare il mapping AI: puoi usare questi file per aggiornarne i dati,
-    riapplicando le scelte di mapping già confermate.
+    riapplicando il mapping già confermato.
   </div>
 
   <form method="post" action="/ingestion/structures/{{ config.id }}/update-from-upload" class="form">
@@ -28,11 +28,11 @@
   <form method="post" action="/ingestion/upload" class="form" style="margin-top:12px">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
     <input type="hidden" name="force_new" value="1">
-    <button type="submit" class="secondary">Crea comunque una nuova struttura (rifà il mapping AI)</button>
+    <button type="submit" class="secondary">Crea comunque un nuovo dataset (rifà il mapping AI)</button>
   </form>
 
   <p class="tiny muted" style="margin-top:16px">
-    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Annulla e torna al registro strutture</a>
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Annulla e torna a Dataset per l'analisi</a>
   </p>
 </div>
 {% endblock %}
