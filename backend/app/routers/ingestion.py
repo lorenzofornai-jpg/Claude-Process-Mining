@@ -33,6 +33,7 @@ from app.models import (
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
+from app.routers.assessment import assessment_status, mapping_context
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
@@ -128,14 +129,9 @@ def _load_session(user_id: str, workspace_id: str) -> dict:
     se e' la prima visita di questa run del server (vedi state.py)."""
     sess = state.ensure(user_id, workspace_id)
     if "context" not in sess:
-        db = SessionLocal()
-        try:
-            ws = db.get(ProcessWorkspace, workspace_id)
-        finally:
-            db.close()
-        # Solo il nome: tipo, business unit e periodo non si chiedono piu' alla
-        # creazione (colonne rimaste nel modello per i processi gia' esistenti).
-        sess["context"] = {"process_name": ws.process_name}
+        # Nome del processo + risposte dell'assessment + attivita' lette dai BPMN
+        # (vedi routers/assessment.py): e' il process_context dato all'AI Mapping.
+        sess["context"] = mapping_context(workspace_id)
     return sess
 
 
@@ -214,7 +210,13 @@ def ingestion_dashboard(request: Request):
 
     return templates.TemplateResponse(
         "ingestion_dashboard.html",
-        {"request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace},
+        {
+            "request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace,
+            "assessments": {
+                ws.id: assessment_status(ws.id) for ws in workspaces
+                if "data_engineer" in roles_by_workspace.get(ws.id, set())
+            },
+        },
     )
 
 
@@ -261,6 +263,7 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
         "upload.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
             "editing_config": editing_config, "step": 2,
+            "assessment": assessment_status(workspace_id),
         }
     )
 
@@ -313,6 +316,9 @@ async def handle_upload(
     if denied:
         return denied
     sess = _load_session(user.id, workspace_id)
+    # l'assessment puo' essere cambiato da quando lo stato e' stato creato: si
+    # rilegge a ogni upload, che e' il punto da cui partono pertinenza e mapping AI
+    sess["context"] = mapping_context(workspace_id)
 
     if force_new and sess.get("pending_upload_paths"):
         # "Crea comunque una nuova struttura" dalla pagina del doppione: stessi file gia' caricati
@@ -333,6 +339,7 @@ async def handle_upload(
             "upload.html", {
                 "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
                 "editing_config": editing_config, "step": 2,
+                "assessment": assessment_status(workspace_id),
                 "error": "Carica almeno un file CSV/TXT (o uno ZIP che li contenga) prima di continuare.",
             },
             status_code=400,
@@ -374,7 +381,7 @@ async def handle_upload(
     # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
     verdict = None
     if AI_MAPPER == "claude":
-        verdict = await run_in_threadpool(check_relevance, sess["context"]["process_name"], tables_schema)
+        verdict = await run_in_threadpool(check_relevance, sess["context"], tables_schema)
     sess["relevance"] = verdict.model_dump() if verdict else None
 
     return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)

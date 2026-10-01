@@ -14,7 +14,9 @@ from app.models import (
     DataQualityCheckResult,
     ExtractionRun,
     IngestionConfig,
+    ProcessAssessment,
     ProcessAssignment,
+    ProcessDocument,
     ProcessIngestionLink,
     ProcessWorkspace,
     User,
@@ -242,12 +244,14 @@ def delete_process(request: Request, workspace_id: str):
         db.query(ExtractionRun).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.query(ProcessIngestionLink).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.query(ProcessAssignment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessAssessment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessDocument).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.delete(ws)
         db.commit()
     finally:
         db.close()
 
-    remove_files([*files, DATA_DIR / "uploads" / workspace_id])
+    remove_files([*files, DATA_DIR / "uploads" / workspace_id, DATA_DIR / "documents" / workspace_id])
     state.drop_workspace(workspace_id)
 
     return RedirectResponse("/admin", status_code=303)

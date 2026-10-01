@@ -323,3 +323,16 @@ tr.row-overridden { background: var(--brand-soft); }
   .actions .button-link, .actions button { text-align: center; }
 }
 .form label.checkbox { flex-direction: row; align-items: flex-start; }
+
+/* Assessment del processo */
+.progress-box { margin: 16px 0; }
+.progress-label { font-size: 13px; margin-bottom: 6px; }
+.progress { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.progress-bar { height: 100%; background: var(--brand, #4361d8); }
+.assessment-section { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 8px; display: flex; flex-direction: column; gap: 14px; }
+.assessment-section h2 { margin: 0; }
+.assessment-section .why { margin: 0; }
+.form fieldset.field { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.form fieldset.field legend { font-size: 13px; margin-bottom: 4px; padding: 0; }
+.req { color: var(--error); }
+.systems-table input, .systems-table select { width: 100%; box-sizing: border-box; }

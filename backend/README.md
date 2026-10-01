@@ -13,6 +13,7 @@ aggiornamento dati, nuova versione, eliminazione).
 | Fase disegnata | Dove nel codice |
 |---|---|
 | A. Creazione processo (admin) | `templates/admin_new_process.html`, `POST /admin/processes/new`: solo il nome, più Data Engineer/Data Analyst opzionali |
+| Assessment del processo | `routers/assessment.py`, `services/assessment.py` (domande come dati), `templates/assessment.html`: checklist compilata dal Data Engineer + documenti (BPMN → nomi attività); risposte passate come `process_context` ad AI Mapping e controllo di pertinenza. Checklist leggibile in `docs/assessment-checklist.md`, idee successive in `docs/ROADMAP.md` |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
 | Struttura doppione | in `handle_upload`: se tabelle e colonne caricate coincidono con una struttura già in uso del processo (`_find_identical_structure`), ci si ferma prima di controllo pertinenza e mapping AI e si propone di aggiornare quella (Sostituisci/Incrementa) con gli stessi file, o di creare comunque una nuova struttura |
 | Controllo pertinenza dati/processo | `services/relevance.py`: subito dopo l'upload, una chiamata Claude piccola (solo nomi tabelle/colonne + 2 esempi, effort basso, modello `RELEVANCE_CHECK_MODEL`) dice se i dati sono del processo giusto; se "non coerente" il mapping AI parte solo dopo conferma esplicita |

@@ -284,3 +284,37 @@ class DataQualityCheckResult(Base):
     affected_count: Mapped[int] = mapped_column(Integer, default=0)
 
     run: Mapped["ExtractionRun"] = relationship(back_populates="dq_results")
+
+
+class ProcessAssessment(Base):
+    """Checklist di assessment compilata dal Data Engineer prima di caricare i
+    dati: obiettivi di analisi, perimetro, sistemi, disponibilita' dei dati,
+    confini del processo. Le domande sono definite in services/assessment.py;
+    qui solo le risposte (dict {id_domanda: valore}), una riga per processo."""
+
+    __tablename__ = "process_assessment"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("process_workspace.id"), unique=True)
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class ProcessDocument(Base):
+    """Documento di contesto caricato nell'assessment (manuali di sistema,
+    procedure operative, disegni del processo BPMN, data dictionary...)."""
+
+    __tablename__ = "process_document"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("process_workspace.id"))
+    doc_type: Mapped[str] = mapped_column(String(50))  # vedi assessment.DOCUMENT_TYPES
+    filename: Mapped[str] = mapped_column(String(300))
+    file_path: Mapped[str] = mapped_column(String(500))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    # Attivita'/eventi letti da un file BPMN (nomi di task, eventi di inizio/fine):
+    # passati all'AI Mapping come riferimento per nominare gli event type.
+    bpmn_activities: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

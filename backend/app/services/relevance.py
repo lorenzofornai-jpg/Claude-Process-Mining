@@ -30,7 +30,7 @@ class RelevanceVerdict(BaseModel):
 
 _SYSTEM_PROMPT = """\
 Sei un controllo preliminare in una piattaforma di process mining. Ricevi il nome di un processo di
-business e lo schema (nomi tabelle, nomi colonne, pochi valori di esempio) dei file che un data
+business (con, se compilato, l'assessment: oggetto principale, sistemi coinvolti, obiettivi) e lo schema (nomi tabelle, nomi colonne, pochi valori di esempio) dei file che un data
 engineer ha caricato per quel processo. Devi dire se i dati sono plausibilmente quelli giusti per
 quel processo, prima che parta un'elaborazione costosa.
 
@@ -46,14 +46,16 @@ reason: in italiano, una o due frasi concrete che citano le tabelle decisive.
 """
 
 
-def check_relevance(process_name: str, tables: list[TableSchema]) -> RelevanceVerdict | None:
+def check_relevance(process_context: dict, tables: list[TableSchema]) -> RelevanceVerdict | None:
     """Ritorna il verdetto, o None se il controllo non e' stato possibile."""
     try:
         import anthropic
 
         client = anthropic.Anthropic()
         payload = {
-            "process_name": process_name,
+            "process_name": process_context.get("process_name", ""),
+            # risposte dell'assessment (oggetto principale, sistemi, obiettivi...), se compilato
+            "process_assessment": process_context.get("assessment"),
             "tables": [
                 {
                     "name": t.name,

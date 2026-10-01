@@ -17,6 +17,14 @@
   </div>
   {% endif %}
 
+  {% if assessment and assessment.percent < 100 and not editing_config %}
+  <div class="banner warning">
+    L'assessment del processo è completo al {{ assessment.percent }}%. Obiettivi, sistemi e caratteristiche
+    dei dati aiutano l'AI a proporre un mapping migliore e riducono le revisioni:
+    <a href="/ingestion/assessment?workspace_id={{ workspace_id }}">completalo prima di caricare i dati</a>.
+  </div>
+  {% endif %}
+
   {% if error %}
   <div class="banner error">{{ error }}</div>
   {% endif %}

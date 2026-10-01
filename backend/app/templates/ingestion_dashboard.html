@@ -18,6 +18,8 @@
         <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>
           {% if 'data_engineer' in roles %}
+          {% set st = assessments[ws.id] %}
+          <a class="{{ 'secondary' if st.percent == 100 else 'primary' }} button-link" href="/ingestion/assessment?workspace_id={{ ws.id }}">Assessment ({{ st.done }}/{{ st.total }})</a>
           <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuova struttura</a>
           <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
           {% endif %}

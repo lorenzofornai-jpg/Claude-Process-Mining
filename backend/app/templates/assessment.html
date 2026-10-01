@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Assessment del processo — {{ process_name }}</h1>
+  <p class="muted">
+    Prima di caricare i dati, raccontaci il contesto: obiettivi, perimetro, sistemi e caratteristiche
+    dei dati. Queste informazioni guidano la trasformazione in log OCEL 2.0 — l'AI le usa per proporre
+    il mapping e i controlli le usano per segnalare cosa manca — e ti evitano estrazioni e revisioni da rifare.
+    Puoi compilarla anche in più volte.
+  </p>
+
+  <div class="progress-box">
+    <div class="progress-label">
+      Completamento: <strong>{{ status.done }} / {{ status.total }}</strong> elementi essenziali
+      {% if status.percent == 100 %}<span class="pill">completo</span>{% endif %}
+    </div>
+    <div class="progress"><div class="progress-bar" style="width: {{ status.percent }}%"></div></div>
+  </div>
+
+  {% if saved %}<div class="banner ok">Assessment salvato.</div>{% endif %}
+  {% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/ingestion/assessment" class="form">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+
+    {% for section in sections %}
+    <section class="assessment-section">
+      <h2>{{ section.title }}</h2>
+      <p class="tiny muted why">Perché serve: {{ section.why }}</p>
+
+      {% for q in section.questions %}
+        {% set value = answers.get(q.id) %}
+        {% if q.type == "multiselect" %}
+        <fieldset class="field">
+          <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
+          {% for opt in q.options %}
+          <label class="checkbox">
+            <input type="checkbox" name="{{ q.id }}" value="{{ opt }}" {{ 'checked' if value and opt in value else '' }}>
+            <span>{{ opt }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        {% elif q.type == "systems" %}
+        <fieldset class="field">
+          <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
+          <p class="tiny muted">Uno per riga: ERP, CRM, workflow, portali, anche Excel se fa parte del processo.</p>
+          <table class="admin-table systems-table">
+            <thead><tr><th>Nome sistema</th><th>Tipo</th><th>Ruolo nel processo</th></tr></thead>
+            <tbody>
+              {% for i in range(max_system_rows) %}
+              {% set row = value[i] if value and i < value|length else {} %}
+              <tr>
+                <td><input type="text" name="sys_{{ i }}_name" value="{{ row.get('name', '') }}" placeholder="{{ 'es. SAP S/4HANA' if i == 0 else '' }}"></td>
+                <td>
+                  <select name="sys_{{ i }}_type">
+                    <option value="">—</option>
+                    {% for t in system_types %}
+                    <option value="{{ t }}" {{ 'selected' if row.get('type') == t else '' }}>{{ t }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td><input type="text" name="sys_{{ i }}_role" value="{{ row.get('role', '') }}" placeholder="{{ 'es. ordini, entrate merci, fatture' if i == 0 else '' }}"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </fieldset>
+        {% elif q.type == "select" %}
+        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+          <select name="{{ q.id }}">
+            <option value="">— scegli —</option>
+            {% for opt in q.options %}
+            <option value="{{ opt }}" {{ 'selected' if value == opt else '' }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% elif q.type == "textarea" %}
+        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+          <textarea name="{{ q.id }}" rows="2" placeholder="{{ q.placeholder or '' }}">{{ value or '' }}</textarea>
+        </label>
+        {% else %}
+        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+          <input type="{{ 'date' if q.type == 'date' else 'text' }}" name="{{ q.id }}" value="{{ value or '' }}" placeholder="{{ q.placeholder or '' }}">
+        </label>
+        {% endif %}
+      {% endfor %}
+    </section>
+    {% endfor %}
+
+    <button type="submit" class="primary">Salva assessment</button>
+  </form>
+
+  <section class="assessment-section" id="documenti">
+    <h2>6. Documenti di supporto</h2>
+    <p class="tiny muted why">
+      Perché serve: manuali, procedure e disegni del processo spiegano cosa significano tabelle, campi e stati.
+      Dai file BPMN vengono letti i nomi delle attività, che l'AI usa come riferimento per chiamare gli eventi
+      del log; gli altri documenti restano a disposizione per i prossimi passi (report lacune, richiesta di estrazione).
+      Salva le risposte sopra prima di caricare documenti.
+    </p>
+
+    {% if docs %}
+    <table class="admin-table">
+      <thead><tr><th>Documento</th><th>Tipo</th><th>Caricato</th><th></th></tr></thead>
+      <tbody>
+        {% for d in docs %}
+        <tr>
+          <td>
+            <a href="/ingestion/assessment/documents/{{ d.id }}?workspace_id={{ workspace_id }}">{{ d.filename }}</a>
+            <div class="tiny muted">{{ (d.size_bytes / 1024)|round|int }} KB</div>
+            {% if d.bpmn_activities %}
+            <div class="tiny">Attività lette dal BPMN ({{ d.bpmn_activities|length }}): {{ d.bpmn_activities[:12]|join(", ") }}{% if d.bpmn_activities|length > 12 %}, …{% endif %}</div>
+            {% endif %}
+          </td>
+          <td class="tiny">{{ doc_types.get(d.doc_type, d.doc_type) }}</td>
+          <td class="tiny muted">{{ d.uploaded_by }}<br>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td>
+            <form method="post" action="/ingestion/assessment/documents/{{ d.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Eliminare questo documento?');">
+              <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+              <button type="submit" class="secondary">Elimina</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="tiny muted">Nessun documento caricato.</p>
+    {% endif %}
+
+    <form method="post" action="/ingestion/assessment/documents" enctype="multipart/form-data" class="form">
+      <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+      <label>Tipo di documento
+        <select name="doc_type">
+          {% for k, label in doc_types.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>File (uno o più, max 25 MB ciascuno)
+        <input type="file" name="files" multiple required>
+      </label>
+      <p class="tiny muted">Formati: {{ allowed_ext }}</p>
+      <button type="submit" class="secondary">Carica documenti</button>
+    </form>
+  </section>
+
+  <div class="actions" style="margin-top:24px">
+    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Avanti: carica i dati sorgente</a>
+    <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
+  </div>
+</div>
+{% endblock %}

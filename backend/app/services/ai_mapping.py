@@ -305,6 +305,19 @@ rispetto a un'inferenza fatta solo da nomi/valori - specialmente su schemi con n
 tabella anagrafica da una transazionale. Se assente per una tabella, ragiona come faresti senza:
 non e' un requisito, e' un aiuto quando c'e'.
 
+Il "process_context" puo' includere "assessment" (checklist compilata dal data engineer: obiettivi e
+domande di business, perimetro, sistemi, oggetto principale, eventi di inizio/fine, varianti note,
+disponibilita' di storico modifiche, granularita' dei timestamp, campi personalizzati) e
+"bpmn_activities" (nomi delle attivita' letti dal disegno del processo). Usali cosi':
+- l'oggetto principale e gli altri oggetti indicati orientano la scelta degli object_type e delle chiavi;
+- quando una colonna data corrisponde a un'attivita' del BPMN o agli eventi di inizio/fine indicati,
+  chiama l'event_type con lo stesso nome (in inglese se il resto del modello e' in inglese, ma
+  riconoscibile), cosi' il log e' leggibile da chi conosce il processo;
+- dai priorita' (confidence piu' alta, rationale che lo cita) alle colonne utili agli obiettivi e alle
+  domande di business dichiarati;
+- i campi personalizzati descritti dall'utente vanno interpretati come indicato nella loro descrizione.
+Se assenti, ragiona come faresti senza.
+
 Ogni tabella puo' includere anche "known_pattern": una lista di mapping gia' proposti da un umano
 in una struttura precedente confermata per una tabella con questo stesso nome esatto (una "wiki" di
 pattern gia' validati, alimentata dal catalogo dell'app). Quando presente, trattalo come un priore
