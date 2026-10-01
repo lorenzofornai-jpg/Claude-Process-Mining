@@ -6,7 +6,17 @@
     Processi a cui sei assegnato, con le attività abilitate dal tuo ruolo.
   </p>
 
-  <table class="admin-table">
+  {# Stesse colonne di pulsanti su tutte le righe, cosi' i pulsanti hanno la stessa
+     larghezza e restano allineati in colonna anche tra processi con ruoli diversi. #}
+  {% set ns = namespace(de=false, da=false) %}
+  {% for ws in workspaces %}
+    {% set r = roles_by_workspace.get(ws.id, []) %}
+    {% if 'data_engineer' in r %}{% set ns.de = true %}{% endif %}
+    {% if 'data_analyst' in r %}{% set ns.da = true %}{% endif %}
+  {% endfor %}
+  {% set cols = (3 if ns.de else 0) + (1 if ns.da else 0) %}
+
+  <table class="admin-table process-table">
     <thead>
       <tr><th>Processo</th><th>Creato il</th><th></th></tr>
     </thead>
@@ -15,8 +25,9 @@
       {% set roles = roles_by_workspace.get(ws.id, []) %}
       <tr>
         <td>{{ ws.process_name }}</td>
-        <td class="tiny muted">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td class="tiny muted nowrap">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>
+          <div class="row-actions" style="grid-template-columns: repeat({{ cols }}, minmax(0, 1fr))">
           {% if 'data_engineer' in roles %}
           {% set st = assessments[ws.id] %}
           <a class="{{ 'secondary' if st.percent == 100 else 'primary' }} button-link" href="/ingestion/assessment?workspace_id={{ ws.id }}">Assessment ({{ st.done }}/{{ st.total }})</a>
@@ -24,8 +35,9 @@
           <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Strutture per l'analisi</a>
           {% endif %}
           {% if 'data_analyst' in roles %}
-          <a class="secondary button-link" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri analisi</a>
+          <a class="secondary button-link" style="grid-column: {{ cols }}" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri analisi</a>
           {% endif %}
+          </div>
         </td>
       </tr>
       {% else %}

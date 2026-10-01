@@ -353,3 +353,17 @@ tr.row-overridden { background: var(--brand-soft); }
    impedisce a position: sticky di agganciarsi alla finestra: qui scorre solo la tabella sistemi */
 .card.assessment-card { overflow: visible; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* I miei processi: pulsanti di azione della stessa larghezza, su una riga */
+.process-table td:last-child { width: 100%; }
+.nowrap { white-space: nowrap; }
+.row-actions { display: grid; gap: 8px; }
+.row-actions .button-link {
+  margin: 0; padding: 9px 10px; font-size: 13px;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; justify-content: center;
+}
+@media (max-width: 760px) {
+  .row-actions { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .row-actions .button-link { grid-column: auto !important; }
+}
