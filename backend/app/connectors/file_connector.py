@@ -7,6 +7,7 @@ usata per un refresh incrementale da sistema.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -43,7 +44,12 @@ def _infer_column_type(series: pd.Series) -> str:
         # (ogni colonna numerica verrebbe classificata "integer", mai "float").
         return "integer" if (as_num % 1 == 0).all() else "float"
 
-    parsed_dates = pd.to_datetime(non_null, errors="coerce", format=None)
+    # Su colonne di testo libero pandas non riesce a dedurre un formato data e
+    # avvisa (UserWarning) per ogni colonna: e' atteso, qui stiamo solo provando
+    # se la colonna sembra una data, quindi l'avviso riempiva il terminale senza motivo.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        parsed_dates = pd.to_datetime(non_null, errors="coerce", format=None)
     if parsed_dates.notna().mean() > 0.9:
         return "date"
 
