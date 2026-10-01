@@ -9,6 +9,25 @@
     vuoto e procedere, l'AI ragionerà comunque da nomi colonna, tipi e valori di esempio.
   </p>
 
+  {% if relevance and relevance.verdict == "non_coerente" %}
+  <div class="banner error">
+    <strong>Questi dati non sembrano del processo "{{ context.process_name }}"</strong>
+    (sembrano di: {{ relevance.detected_process }}). {{ relevance.reason }}
+    <div style="margin-top:8px">
+      <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Carica altri file</a>
+    </div>
+  </div>
+  {% elif relevance and relevance.verdict == "dubbio" %}
+  <div class="banner warning">
+    Non sono sicuro che questi dati siano del processo "{{ context.process_name }}"
+    (sembrano di: {{ relevance.detected_process }}). {{ relevance.reason }}
+    Se sono quelli giusti puoi procedere.
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="banner error">{{ error }}</div>
+  {% endif %}
+
   <form method="post" action="/ingestion/describe-tables" class="form">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
@@ -22,6 +41,13 @@
       </label>
     </section>
     {% endfor %}
+
+    {% if relevance and relevance.verdict == "non_coerente" %}
+    <label class="checkbox">
+      <input type="checkbox" name="confirm_mismatch" value="1">
+      I dati sono comunque quelli giusti per questo processo: procedi con il mapping AI
+    </label>
+    {% endif %}
 
     <div class="actions">
       <button type="submit" class="primary">Avanti: genera proposte di mapping AI</button>

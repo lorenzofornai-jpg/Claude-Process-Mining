@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -32,6 +33,7 @@ from app.models import (
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
+from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
 from app.services.validation import run_data_quality_checks
@@ -311,6 +313,12 @@ async def handle_upload(
     sess["mapping_status"] = None
     sess["mapping_error"] = None
     sess["table_descriptions"] = {}
+    # Controllo di pertinenza prima del mapping costoso: solo con il mapper Claude
+    # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
+    verdict = None
+    if AI_MAPPER == "claude":
+        verdict = await run_in_threadpool(check_relevance, sess["context"]["process_name"], tables_schema)
+    sess["relevance"] = verdict.model_dump() if verdict else None
 
     return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
 
@@ -329,6 +337,7 @@ def describe_tables_page(request: Request, workspace_id: str):
         "describe_tables.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
             "tables": tables_schema, "descriptions": descriptions, "step": 2,
+            "relevance": sess.get("relevance"), "error": None,
         }
     )
 
@@ -350,6 +359,17 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
         if raw and raw.strip():
             descriptions[t.name] = raw.strip()
     sess["table_descriptions"] = descriptions
+
+    relevance = sess.get("relevance")
+    if relevance and relevance["verdict"] == "non_coerente" and form.get("confirm_mismatch") != "1":
+        return templates.TemplateResponse(
+            "describe_tables.html", {
+                "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+                "tables": tables_schema, "descriptions": descriptions, "step": 2, "relevance": relevance,
+                "error": "Per procedere con questi dati conferma esplicitamente che sono quelli giusti.",
+            },
+            status_code=400,
+        )
 
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"

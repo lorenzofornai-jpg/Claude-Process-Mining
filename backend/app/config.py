@@ -53,6 +53,10 @@ AUTO_ACCEPT_CONFIDENCE_THRESHOLD = 0.85
 # configurato una chiave.
 AI_MAPPER = os.environ.get("AI_MAPPER", "claude")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
+# Modello del controllo di pertinenza dati/processo che precede il mapping
+# (services/relevance.py): chiamata piccola, si puo' puntare a un modello piu'
+# economico via .env (es. claude-haiku-4-5).
+RELEVANCE_CHECK_MODEL = os.environ.get("RELEVANCE_CHECK_MODEL", "claude-opus-5-5")
 
 # Cache-busting per gli asset statici (style.css): senza una query string che
 # cambia, il browser puo' continuare a servire una versione in cache anche
