@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>Profilo dei dati</h1>
+  <p class="muted">
+    Processo: <strong>{{ context.process_name }}</strong> · {{ dataset_label }}.
+    Prima di usare l'AI, l'app ha analizzato i dati completi — chiavi, collegamenti tra tabelle,
+    qualità delle date — senza costi. Correggere qui i problemi dell'estrazione costa molto meno che
+    scoprirli dopo il mapping o durante l'analisi.
+  </p>
+
+  {% set v = profile.verdict %}
+  <div class="banner {{ 'error' if v.level == 'bloccante' else ('warning' if v.level == 'attenzione' else 'ok') }}">
+    <strong>{{ v.label }}.</strong>
+    {% if profile.counts.bloccante %}{{ profile.counts.bloccante }} problemi bloccanti. {% endif %}
+    {% if profile.counts.attenzione %}{{ profile.counts.attenzione }} punti da verificare. {% endif %}
+    {% if profile.counts.info %}{{ profile.counts.info }} note informative.{% endif %}
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><span class="stat-value">{{ profile.tables|length }}</span><span class="stat-label">tabelle</span></div>
+    <div class="stat"><span class="stat-value">{{ "{:,}".format(profile.total_rows).replace(",", ".") }}</span><span class="stat-label">righe</span></div>
+    <div class="stat"><span class="stat-value">{{ profile.relationships|length }}</span><span class="stat-label">collegamenti trovati</span></div>
+    <div class="stat"><span class="stat-value">{{ profile.tables|selectattr("key")|list|length }}/{{ profile.tables|length }}</span><span class="stat-label">tabelle con chiave</span></div>
+  </div>
+
+  {% if profile.issues %}
+  <h2>Cosa controllare</h2>
+  <div class="issue-list">
+    {% for i in profile.issues %}
+    <div class="issue issue-{{ i.severity }}">
+      <div class="issue-head">
+        <span class="sev sev-{{ i.severity }}">{{ i.severity }}</span>
+        {% if i.table %}<span class="mono tiny">{{ i.table }}</span>{% endif %}
+        <strong>{{ i.title }}</strong>
+      </div>
+      <div class="issue-body">
+        <div><span class="muted">Impatto:</span> {{ i.impact }}</div>
+        <div><span class="muted">Cosa fare:</span> {{ i.action }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h2>Tabelle</h2>
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead><tr><th>Tabella</th><th>Righe</th><th>Chiave candidata</th><th>Date</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for t in profile.tables %}
+      <tr>
+        <td class="mono">{{ t.name }}<div class="tiny muted">{{ t.columns }} colonne</div></td>
+        <td>{{ "{:,}".format(t.rows).replace(",", ".") }}</td>
+        <td class="mono tiny">{{ t.key|join(" + ") if t.key else "—" }}</td>
+        <td class="tiny">
+          {% for d in t.dates %}
+          <div><span class="mono">{{ d.column }}</span>: {{ d.min or "?" }} → {{ d.max or "?" }}
+            <span class="muted">· {{ "con ora" if d.has_time else "solo data" }}{% if d.filled_pct < 100 %} · valorizzata {{ d.filled_pct }}%{% endif %}</span></div>
+          {% else %}<span class="muted">nessuna colonna data</span>{% endfor %}
+        </td>
+        <td class="tiny">
+          {% if t.duplicates %}<div>{{ t.duplicates }} righe duplicate</div>{% endif %}
+          {% if t.empty_columns %}<div class="muted">vuote: {{ t.empty_columns|join(", ") }}</div>{% endif %}
+          {% if t.constant_columns %}<div class="muted">valore unico: {{ t.constant_columns|join(", ") }}</div>{% endif %}
+          {% if not (t.duplicates or t.empty_columns or t.constant_columns) %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Collegamenti tra tabelle</h2>
+  {% if profile.relationships %}
+  <p class="tiny muted">Ogni riga indica una colonna che rimanda alla chiave di un'altra tabella: diventeranno i legami tra eventi e oggetti nel log.</p>
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead><tr><th>Da</th><th>A (chiave)</th><th>Righe collegate</th><th>Trovato per</th></tr></thead>
+    <tbody>
+      {% for r in profile.relationships %}
+      <tr>
+        <td class="mono tiny">{{ r.child_table }}.{{ r.child_column }}</td>
+        <td class="mono tiny">{{ r.parent_table }}.{{ r.parent_column }}</td>
+        <td>
+          <div class="coverage"><div class="coverage-bar {{ 'low' if r.coverage_pct < 95 else '' }}" style="width: {{ r.coverage_pct }}%"></div></div>
+          <span class="tiny">{{ r.coverage_pct }}%{% if r.orphan_rows %} · {{ r.orphan_rows }} orfane{% endif %}</span>
+        </td>
+        <td class="tiny muted">{{ r.matched_by }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="tiny muted">Nessun collegamento trovato tra le tabelle.</p>
+  {% endif %}
+
+  <form method="post" action="/ingestion/profile/continue" class="actions" style="margin-top:24px">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    <button type="submit" class="primary">{{ "Prosegui comunque" if v.level == "bloccante" else "Prosegui: descrivi le tabelle" }}</button>
+    <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Carica altri file</a>
+  </form>
+</div>
+{% endblock %}

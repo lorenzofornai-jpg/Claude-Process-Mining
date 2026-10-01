@@ -386,3 +386,19 @@ tr.row-overridden { background: var(--brand-soft); }
 .confirm-actions button { margin: 0; }
 .danger-fill { background: var(--error); }
 .danger-fill:hover { background: var(--error); filter: brightness(0.92); }
+
+/* Profilo dei dati */
+.issue-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 20px; }
+.issue { border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius-md); padding: 12px 14px; }
+.issue-bloccante { border-left-color: var(--error); }
+.issue-attenzione { border-left-color: var(--warn); }
+.issue-info { border-left-color: var(--border); }
+.issue-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.issue-body { font-size: 13px; margin-top: 6px; display: grid; gap: 3px; }
+.sev { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 8px; border-radius: 999px; }
+.sev-bloccante { background: var(--error-soft); color: var(--error); }
+.sev-attenzione { background: var(--warn-soft); color: var(--warn); }
+.sev-info { background: var(--card-bg-soft); color: var(--muted); }
+.coverage { height: 6px; width: 120px; border-radius: 3px; background: var(--border); overflow: hidden; margin-bottom: 3px; }
+.coverage-bar { height: 100%; background: var(--ok); }
+.coverage-bar.low { background: var(--warn); }

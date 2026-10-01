@@ -33,7 +33,8 @@ from app.models import (
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
-from app.routers.assessment import assessment_status, mapping_context
+from app.routers.assessment import assessment_status, load_assessment, mapping_context
+from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
@@ -377,13 +378,52 @@ async def handle_upload(
                 }
             )
 
+    # Profilazione deterministica (zero token) prima di qualunque chiamata AI:
+    # chiavi, duplicati, collegamenti tra tabelle, qualita' delle date.
+    answers, _ = load_assessment(workspace_id)
+    date_cols = {t.name: [c.name for c in t.columns if c.inferred_type == "date"] for t in tables_schema}
+    sess["profile"] = await run_in_threadpool(
+        profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to"))
+    )
+    sess["relevance"] = None
+    return RedirectResponse(url=f"/ingestion/profile?workspace_id={workspace_id}", status_code=303)
+
+
+@router.get("/ingestion/profile", response_class=HTMLResponse)
+def profile_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    if not sess.get("profile"):
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    return templates.TemplateResponse(
+        "profile.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+            "profile": sess["profile"], "dataset_label": sess.get("dataset_label"), "step": 2,
+        }
+    )
+
+
+@router.post("/ingestion/profile/continue")
+async def profile_continue(request: Request, workspace_id: str = Form(...)):
+    """Dopo aver visto il profilo, l'utente decide di proseguire: solo ora parte
+    il controllo di pertinenza (AI, economico), poi descrizione tabelle e mapping."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    tables_schema = sess.get("tables_schema_objs")
+    if not tables_schema or not sess.get("profile"):
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    # le evidenze misurate (chiavi, date, collegamenti) arrivano all'AI Mapping con il contesto
+    sess["context"]["data_profile"] = compact_for_mapping(sess["profile"])
     # Controllo di pertinenza prima del mapping costoso: solo con il mapper Claude
     # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
     verdict = None
     if AI_MAPPER == "claude":
         verdict = await run_in_threadpool(check_relevance, sess["context"], tables_schema)
     sess["relevance"] = verdict.model_dump() if verdict else None
-
     return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
 
 

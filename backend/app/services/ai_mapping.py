@@ -318,6 +318,14 @@ disponibilita' di storico modifiche, granularita' dei timestamp, campi personali
 - i campi personalizzati descritti dall'utente vanno interpretati come indicato nella loro descrizione.
 Se assenti, ragiona come faresti senza.
 
+Il "process_context" puo' includere anche "data_profile": evidenze MISURATE sui dati completi (non
+inferenze): "candidate_keys" (colonne senza vuoti ne' ripetizioni che identificano le righe di ogni
+tabella), "date_columns" (con has_time, percentuale di valori presenti, intervallo di date) e
+"relationships" (colonna figlio -> chiave padre con % di righe che trovano corrispondenza). Usale come
+prova forte: le candidate_keys sono le migliori object_type.key; ogni relationship e' un candidato
+naturale per una e2o_relationship (evento della tabella figlio -> oggetto della tabella padre); una
+colonna data quasi sempre vuota genera pochi eventi, dillo nella rationale.
+
 Ogni tabella puo' includere anche "known_pattern": una lista di mapping gia' proposti da un umano
 in una struttura precedente confermata per una tabella con questo stesso nome esatto (una "wiki" di
 pattern gia' validati, alimentata dal catalogo dell'app). Quando presente, trattalo come un priore

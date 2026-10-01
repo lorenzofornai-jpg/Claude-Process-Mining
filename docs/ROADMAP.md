@@ -19,12 +19,17 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   derivato da assessment + catalogo.
 
 ## 2. Capire i dati prima di spendere AI (deterministico, zero token)
-- ⬜ **Profilazione tabelle**: univocità chiavi, integrità dei join (% righe
-  senza corrispondenza), periodo coperto da ogni tabella, volumi; grafo delle
-  tabelle e dei collegamenti.
-- ⬜ **Controlli sui timestamp** con impatto spiegato: date senza ora, date
-  segnaposto (00000000, 9999-12-31), eventi nel futuro/fuori periodo,
-  registrazioni batch (picchi a mezzanotte), fuso orario.
+- ✅ **Profilazione tabelle** (pagina "Profilo dei dati" dopo l'upload, prima
+  di qualunque chiamata AI): chiavi candidate anche composte, duplicati,
+  colonne vuote/costanti, collegamenti tra tabelle con % di righe collegate e
+  orfane, tabelle isolate, copertura del periodo rispetto all'assessment.
+  Chiavi, date e collegamenti passati all'AI Mapping come evidenze misurate.
+- ✅ **Controlli sui timestamp** con impatto e cosa fare: date senza ora, date
+  segnaposto (00000000, 9999-12-31…), date nel futuro, fuori perimetro,
+  registrazioni batch a mezzanotte, valori non leggibili.
+- ⬜ Grafo visuale delle tabelle e dei collegamenti (oggi è una tabella).
+- ⬜ Usare il profilo anche in trasformazione: scartare duplicati esatti e
+  trattare le date segnaposto come mancanti in modo esplicito e tracciato.
 
 ## 3. Revisione rapida e comprensibile
 - ⬜ **Revisione a livello di modello** (tipi oggetto, tipi evento, relazioni)
