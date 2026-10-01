@@ -125,7 +125,9 @@
           <td class="tiny muted">{{ d.uploaded_by }}<br>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td>
             <form method="post" action="/ingestion/assessment/documents/{{ d.id }}/delete" style="display:inline"
-                  onsubmit="return confirm('Eliminare questo documento?');">
+                  data-confirm-title="Eliminare il documento?"
+                  data-confirm="&quot;{{ d.filename }}&quot; verrà eliminato definitivamente."
+                  data-confirm-ok="Elimina documento">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary">Elimina</button>
             </form>

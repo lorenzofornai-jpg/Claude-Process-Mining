@@ -32,5 +32,42 @@
   <main class="content">
     {% block content %}{% endblock %}
   </main>
+
+  {# Conferma con lo stile dell'app al posto di confirm() del browser (che mostra
+     l'indirizzo del sito come titolo). Si attiva su ogni form con data-confirm. #}
+  <dialog id="confirm-dialog" class="confirm-dialog">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text" class="muted"></p>
+      <div class="confirm-actions">
+        <button value="cancel" class="secondary">Annulla</button>
+        <button value="ok" class="primary danger-fill" id="confirm-ok">Conferma</button>
+      </div>
+    </form>
+  </dialog>
+  <script>
+    (function () {
+      var dlg = document.getElementById("confirm-dialog");
+      if (!dlg || !dlg.showModal) return;  // browser senza <dialog>: il form si invia senza conferma personalizzata
+      var pending = null;
+      document.addEventListener("submit", function (e) {
+        var form = e.target;
+        if (!form.dataset || form.dataset.confirm === undefined) return;
+        e.preventDefault();
+        pending = form;
+        document.getElementById("confirm-title").textContent = form.dataset.confirmTitle || "Confermi?";
+        document.getElementById("confirm-text").textContent = form.dataset.confirm;
+        document.getElementById("confirm-ok").textContent = form.dataset.confirmOk || "Conferma";
+        dlg.returnValue = "";
+        dlg.showModal();
+        document.getElementById("confirm-ok").blur();
+      });
+      dlg.addEventListener("close", function () {
+        if (dlg.returnValue === "ok" && pending) pending.submit();  // submit() non rilancia l'evento
+        pending = null;
+      });
+      dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close("cancel"); });
+    })();
+  </script>
 </body>
 </html>

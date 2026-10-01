@@ -39,7 +39,9 @@
               <button type="submit" class="secondary">{{ "Rimuovi dal catalogo" if s.config.in_catalog else "Aggiungi al catalogo" }}</button>
             </form>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete"
-                  onsubmit="return confirm('Eliminare definitivamente questa struttura e tutti i suoi run? Non si può annullare.');">
+                  data-confirm-title="Eliminare la struttura?"
+                  data-confirm="&quot;{{ s.config.name }}&quot; verrà eliminata definitivamente insieme a tutti i suoi aggiornamenti dati{% if s.config.in_catalog %} e sarà rimossa dal catalogo{% endif %}. L'operazione non si può annullare."
+                  data-confirm-ok="Elimina struttura">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary danger">Elimina</button>
             </form>
