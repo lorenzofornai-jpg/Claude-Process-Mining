@@ -20,9 +20,9 @@ Generata da `backend/app/services/assessment.py`, che è la fonte di verità: pe
 *Perché serve:* Diventa il filtro dell'estrazione e permette di verificare che le tabelle caricate coprano davvero il periodo e le società richieste.
 
 - Società / unità organizzative incluse *
+- Volume indicativo (documenti principali per anno) — meno di 10.000 / 10.000 - 100.000 / 100.000 - 1 milione / oltre 1 milione / non so
 - Periodo dal *
 - Periodo al *
-- Volume indicativo (documenti principali per anno) — meno di 10.000 / 10.000 - 100.000 / 100.000 - 1 milione / oltre 1 milione / non so
 - Esclusioni (opzionale)
 
 ## 3. Sistemi a supporto
@@ -54,9 +54,8 @@ Generata da `backend/app/services/assessment.py`, che è la fonte di verità: pe
 - È disponibile lo storico delle modifiche? * — Sì (es. CDHDR/CDPOS, audit trail) / No / Non so
 - Le date nei dati hanno anche l'ora? * — Sì, data e ora / Solo la data / Dipende dalla tabella / Non so
 - Fuso orario dei timestamp (opzionale)
-- Campi o tabelle personalizzate (opzionale)
 - I dati contengono dati personali? * — Sì, serve pseudonimizzarli / Sì, ma possono restare in chiaro / No / Non so
-
+- Campi o tabelle personalizzate (opzionale)
 ## 6. Documenti di supporto
 
 *Perché serve:* manuali, procedure e disegni spiegano tabelle, campi e stati. Dai file BPMN si leggono i nomi delle attività, usati per chiamare gli eventi del log. Almeno un documento conta come voce essenziale.

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card wide">
+<div class="card wide assessment-card">
   <h1>Assessment del processo — {{ process_name }}</h1>
   <p class="muted">
     Prima di caricare i dati, raccontaci il contesto: obiettivi, perimetro, sistemi e caratteristiche
@@ -28,26 +28,30 @@
       <h2>{{ section.title }}</h2>
       <p class="tiny muted why">Perché serve: {{ section.why }}</p>
 
+      <div class="assessment-grid">
       {% for q in section.questions %}
         {% set value = answers.get(q.id) %}
         {% if q.type == "multiselect" %}
-        <fieldset class="field">
+        <fieldset class="field span-2">
           <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
+          <div class="options-grid">
           {% for opt in q.options %}
           <label class="checkbox">
             <input type="checkbox" name="{{ q.id }}" value="{{ opt }}" {{ 'checked' if value and opt in value else '' }}>
             <span>{{ opt }}</span>
           </label>
           {% endfor %}
+          </div>
         </fieldset>
         {% elif q.type == "systems" %}
-        <fieldset class="field">
+        <fieldset class="field span-2">
           <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
           <p class="tiny muted">Uno per riga: ERP, CRM, workflow, portali, anche Excel se fa parte del processo.</p>
-          <table class="admin-table systems-table">
+          <div class="table-scroll"><table class="admin-table systems-table">
             <thead><tr><th>Nome sistema</th><th>Tipo</th><th>Ruolo nel processo</th></tr></thead>
             <tbody>
-              {% for i in range(max_system_rows) %}
+              {% set shown_rows = [[(value|length if value else 0) + 1, 3]|max, max_system_rows]|min %}
+              {% for i in range(shown_rows) %}
               {% set row = value[i] if value and i < value|length else {} %}
               <tr>
                 <td><input type="text" name="sys_{{ i }}_name" value="{{ row.get('name', '') }}" placeholder="{{ 'es. SAP S/4HANA' if i == 0 else '' }}"></td>
@@ -63,7 +67,8 @@
               </tr>
               {% endfor %}
             </tbody>
-          </table>
+          </table></div>
+          {% if shown_rows < max_system_rows %}<p class="tiny muted">Servono più righe? Salva: dopo il salvataggio compare una riga vuota in più (fino a {{ max_system_rows }} sistemi).</p>{% endif %}
         </fieldset>
         {% elif q.type == "select" %}
         <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
@@ -75,7 +80,7 @@
           </select>
         </label>
         {% elif q.type == "textarea" %}
-        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+        <label class="span-2"><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
           <textarea name="{{ q.id }}" rows="2" placeholder="{{ q.placeholder or '' }}">{{ value or '' }}</textarea>
         </label>
         {% else %}
@@ -84,10 +89,14 @@
         </label>
         {% endif %}
       {% endfor %}
+      </div>
     </section>
     {% endfor %}
 
-    <button type="submit" class="primary">Salva assessment</button>
+    <div class="save-bar">
+      <span class="tiny muted">Completamento {{ status.done }}/{{ status.total }} · le risposte si salvano con questo pulsante, anche parziali</span>
+      <button type="submit" class="primary">Salva assessment</button>
+    </div>
   </form>
 
   <section class="assessment-section" id="documenti">
@@ -100,7 +109,7 @@
     </p>
 
     {% if docs %}
-    <table class="admin-table">
+    <div class="table-scroll"><table class="admin-table">
       <thead><tr><th>Documento</th><th>Tipo</th><th>Caricato</th><th></th></tr></thead>
       <tbody>
         {% for d in docs %}
@@ -124,7 +133,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <p class="tiny muted">Nessun documento caricato.</p>
     {% endif %}
