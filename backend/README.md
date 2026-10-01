@@ -14,6 +14,7 @@ aggiornamento dati, nuova versione, eliminazione).
 |---|---|
 | A. Creazione processo (admin) | `templates/admin_new_process.html`, `POST /admin/processes/new`: solo il nome, più Data Engineer/Data Analyst opzionali |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
+| Struttura doppione | in `handle_upload`: se tabelle e colonne caricate coincidono con una struttura già in uso del processo (`_find_identical_structure`), ci si ferma prima di controllo pertinenza e mapping AI e si propone di aggiornare quella (Sostituisci/Incrementa) con gli stessi file, o di creare comunque una nuova struttura |
 | Controllo pertinenza dati/processo | `services/relevance.py`: subito dopo l'upload, una chiamata Claude piccola (solo nomi tabelle/colonne + 2 esempi, effort basso, modello `RELEVANCE_CHECK_MODEL`) dice se i dati sono del processo giusto; se "non coerente" il mapping AI parte solo dopo conferma esplicita |
 | E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); prima, descrizione tabelle opzionale (`templates/describe_tables.html`); poi gira in background (`templates/mapping_status.html`, polling) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |

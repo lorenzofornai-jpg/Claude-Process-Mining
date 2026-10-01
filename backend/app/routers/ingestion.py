@@ -34,7 +34,7 @@ from app.models import (
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.services.relevance import check_relevance
-from app.services.structures import delete_structures, remove_files
+from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
 from app.services.validation import run_data_quality_checks
 
@@ -265,19 +265,60 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
     )
 
 
+def _find_identical_structure(workspace_id: str, fingerprint: dict[str, list[str]]) -> IngestionConfig | None:
+    """Struttura in uso per l'analisi di questo processo con esattamente le stesse
+    tabelle e colonne del caricamento (ordine delle colonne ininfluente)."""
+    db = SessionLocal()
+    try:
+        ids = workspace_config_ids(db, workspace_id)
+        if not ids:
+            return None
+        for config in (
+            db.query(IngestionConfig)
+            .filter(IngestionConfig.id.in_(ids), IngestionConfig.status == "approved")
+            .order_by(IngestionConfig.created_at.desc())
+            .all()
+        ):
+            existing = {t: sorted(cols) for t, cols in (config.schema_fingerprint or {}).items()}
+            if existing and existing == fingerprint:
+                return config
+        return None
+    finally:
+        db.close()
+
+
+@router.post("/ingestion/structures/{config_id}/update-from-upload")
+def update_from_pending_upload(request: Request, config_id: str, workspace_id: str = Form(...), mode: str = Form("replace")):
+    """Dalla pagina del doppione: usa i file appena caricati per aggiornare la
+    struttura esistente, senza doverli ricaricare."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    paths = [Path(p) for p in sess.pop("pending_upload_paths", [])]
+    if not paths:
+        return RedirectResponse(f"/ingestion/structures/{config_id}/update-data?workspace_id={workspace_id}", status_code=303)
+    return _apply_update(request, user, workspace_id, config_id, paths, mode)
+
+
 @router.post("/ingestion/upload")
 async def handle_upload(
     request: Request,
     background_tasks: BackgroundTasks,
     workspace_id: str = Form(...),
     files: list[UploadFile] = File(default_factory=list),
+    force_new: bool = Form(False),
 ):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
     sess = _load_session(user.id, workspace_id)
 
-    file_paths = _save_uploaded_files(files, UPLOAD_DIR / workspace_id)
+    if force_new and sess.get("pending_upload_paths"):
+        # "Crea comunque una nuova struttura" dalla pagina del doppione: stessi file gia' caricati
+        file_paths = [Path(p) for p in sess.pop("pending_upload_paths")]
+    else:
+        file_paths = _save_uploaded_files(files, UPLOAD_DIR / workspace_id)
 
     if not file_paths:
         editing_config = None
@@ -313,6 +354,22 @@ async def handle_upload(
     sess["mapping_status"] = None
     sess["mapping_error"] = None
     sess["table_descriptions"] = {}
+
+    # Struttura gia' esistente con le stesse identiche tabelle/colonne: nessun senso
+    # rifare controllo di pertinenza + mapping AI (token sprecati e una struttura
+    # doppione). Ci si ferma e si propone di aggiornare quella esistente. Non in
+    # modalita' "Modifica struttura", dove rimappare gli stessi dati e' voluto.
+    if not sess.get("edit_config_id") and not force_new:
+        duplicate = _find_identical_structure(workspace_id, _schema_fingerprint(sess["tables_schema"]))
+        if duplicate is not None:
+            sess["pending_upload_paths"] = [str(p) for p in file_paths]
+            return templates.TemplateResponse(
+                "duplicate_structure.html", {
+                    "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+                    "config": duplicate, "tables": tables_schema, "step": 2,
+                }
+            )
+
     # Controllo di pertinenza prima del mapping costoso: solo con il mapper Claude
     # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
     verdict = None
@@ -830,6 +887,14 @@ async def update_data_submit(
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
+    file_paths = _save_uploaded_files(files, UPLOAD_DIR / f"{config_id}-update")
+    return _apply_update(request, user, workspace_id, config_id, file_paths, mode)
+
+
+def _apply_update(request: Request, user, workspace_id: str, config_id: str, file_paths: list[Path], mode: str):
+    """Riapplica il mapping confermato di una struttura a nuovi file (sostituendo
+    o incrementando i dati). Usato da "Aggiorna dati" e dall'upload di una nuova
+    struttura identica a una esistente."""
     if mode not in ("replace", "append"):
         mode = "replace"
 
@@ -852,8 +917,6 @@ async def update_data_submit(
         confirmed = [_field_mapping_row_to_dict(r) for r in mapping_rows]
     finally:
         db.close()
-
-    file_paths = _save_uploaded_files(files, UPLOAD_DIR / f"{config_id}-update")
 
     if not file_paths:
         return templates.TemplateResponse(

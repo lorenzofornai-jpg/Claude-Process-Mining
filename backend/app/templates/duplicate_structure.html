@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Struttura già esistente</h1>
+  <div class="banner warning">
+    Le tabelle che hai caricato ({{ tables|length }}, con le stesse colonne) corrispondono esattamente
+    alla struttura <strong>"{{ config.name }}"</strong> (v{{ config.current_version }}) già in uso per
+    questo processo. Non serve rifare il mapping AI: puoi usare questi file per aggiornarne i dati,
+    riapplicando le scelte di mapping già confermate.
+  </div>
+
+  <form method="post" action="/ingestion/structures/{{ config.id }}/update-from-upload" class="form">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    <div class="option-box">
+      <div style="font-size:13px;margin-bottom:8px">Cosa fare con i dati già presenti</div>
+      <label class="checkbox">
+        <input type="radio" name="mode" value="replace" checked>
+        <span><strong>Sostituisci</strong> — il log conterrà solo i dati che hai appena caricato</span>
+      </label>
+      <label class="checkbox" style="margin-top:8px">
+        <input type="radio" name="mode" value="append">
+        <span><strong>Incrementa</strong> — i nuovi dati si aggiungono a quelli già presenti, senza duplicati</span>
+      </label>
+    </div>
+    <button type="submit" class="primary">Aggiorna i dati di "{{ config.name }}"</button>
+  </form>
+
+  <form method="post" action="/ingestion/upload" class="form" style="margin-top:12px">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    <input type="hidden" name="force_new" value="1">
+    <button type="submit" class="secondary">Crea comunque una nuova struttura (rifà il mapping AI)</button>
+  </form>
+
+  <p class="tiny muted" style="margin-top:16px">
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Annulla e torna al registro strutture</a>
+  </p>
+</div>
+{% endblock %}
