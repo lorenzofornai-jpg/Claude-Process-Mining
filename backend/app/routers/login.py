@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.auth import current_user, verify_password
+from app.auth import current_user, start_session, verify_password
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import User
@@ -30,6 +30,12 @@ def _cache_bust() -> str:
     return uuid.uuid4().hex[:10]
 
 
+def _home_url(user: User) -> str:
+    """L'admin atterra su Amministrazione (non ha accesso ai moduli), gli
+    altri utenti su "I miei processi"."""
+    return "/admin" if user.is_admin else "/ingestion/dashboard"
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     # Il redirect da /logout passa ?logged_out=1: in quel caso NON si torna
@@ -41,9 +47,13 @@ def login_form(request: Request):
     # "Esci" non avesse funzionato - serviva un secondo click per uscire
     # davvero. Qui si rispetta sempre l'azione esplicita dell'utente.
     just_logged_out = request.query_params.get("logged_out") == "1"
-    if not just_logged_out and current_user(request) is not None:
-        return RedirectResponse(f"/ingestion/dashboard?_s={_cache_bust()}", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    user = None if just_logged_out else current_user(request)
+    if user is not None:
+        return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
+    error = None
+    if request.session.pop("expired", False):
+        error = "Sessione scaduta per inattività: accedi di nuovo."
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 
 @router.post("/login")
@@ -61,8 +71,8 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
             status_code=401,
         )
 
-    request.session["user_id"] = user.id
-    return RedirectResponse(f"/ingestion/dashboard?_s={_cache_bust()}", status_code=303)
+    start_session(request, user)
+    return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
 
 
 @router.post("/logout")

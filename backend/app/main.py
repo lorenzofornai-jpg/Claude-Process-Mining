@@ -12,7 +12,10 @@ from app.routers import admin, analysis, ingestion, login
 APP_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="AI Process Mining - Modulo 1: Ingestion (prototipo)")
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
+# max_age=None: cookie di sessione del browser (sparisce alla chiusura), invece
+# dei 14 giorni di default di Starlette che facevano rientrare senza login.
+# La scadenza per inattivita' e' in auth.current_user().
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax", max_age=None)
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 app.include_router(login.router)
 app.include_router(admin.router)

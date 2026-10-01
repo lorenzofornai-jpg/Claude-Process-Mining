@@ -3,7 +3,7 @@
 <div class="card wide">
   <h1>Fase G — Log OCEL 2.0 generato</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong> ({{ context.process_type }}).
+    Processo: <strong>{{ context.process_name }}</strong>.
     Ingestion Config salvata e collegata a questo processo (riusabile su altri processi
     previa approvazione del Process Owner).
   </p>
@@ -18,6 +18,18 @@
   <div class="banner warning">
     Questo è ancora un log di prova (bozza): non è ancora tracciato come struttura da usare per
     l'analisi, e non comparirà nel registro strutture finché non lo confermi esplicitamente.
+  </div>
+  {% endif %}
+
+  {% if result.stats.update_mode == "append" %}
+  <div class="banner ok">
+    Aggiornamento <strong>incrementale</strong>: aggiunti {{ result.stats.added_events }} eventi e
+    {{ result.stats.added_objects }} oggetti nuovi, {{ result.stats.updated_objects }} oggetti
+    aggiornati. I totali qui sotto includono i dati già presenti.
+  </div>
+  {% elif result.stats.update_mode == "replace" %}
+  <div class="banner ok">
+    Dati <strong>sostituiti</strong>: il log contiene solo i dati appena caricati.
   </div>
   {% endif %}
 

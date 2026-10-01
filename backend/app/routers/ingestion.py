@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -32,7 +33,9 @@ from app.models import (
 )
 from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
-from app.services.transformation import build_ocel, compile_defs
+from app.services.relevance import check_relevance
+from app.services.structures import delete_structures, remove_files
+from app.services.transformation import build_ocel, compile_defs, merge_ocel
 from app.services.validation import run_data_quality_checks
 
 router = APIRouter()
@@ -130,13 +133,9 @@ def _load_session(user_id: str, workspace_id: str) -> dict:
             ws = db.get(ProcessWorkspace, workspace_id)
         finally:
             db.close()
-        sess["context"] = {
-            "process_name": ws.process_name,
-            "process_type": ws.process_type,
-            "business_unit": ws.business_unit or "",
-            "period_from": ws.period_from or "",
-            "period_to": ws.period_to or "",
-        }
+        # Solo il nome: tipo, business unit e periodo non si chiedono piu' alla
+        # creazione (colonne rimaste nel modello per i processi gia' esistenti).
+        sess["context"] = {"process_name": ws.process_name}
     return sess
 
 
@@ -179,9 +178,10 @@ def _check_schema_compatibility(new_fingerprint: dict[str, list[str]], confirmed
 
 @router.get("/", response_class=HTMLResponse)
 def root(request: Request):
-    if current_user(request) is None:
+    user = current_user(request)
+    if user is None:
         return RedirectResponse(url="/login")
-    return RedirectResponse(url="/ingestion/dashboard")
+    return RedirectResponse(url="/admin" if user.is_admin else "/ingestion/dashboard")
 
 
 @router.get("/ingestion/dashboard", response_class=HTMLResponse)
@@ -190,25 +190,25 @@ def ingestion_dashboard(request: Request):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    # L'admin non lavora sui moduli (niente strutture ne' analisi): la sua
+    # "home" e' Amministrazione, "I miei processi" non ha senso per lui.
+    if user.is_admin:
+        return RedirectResponse("/admin", status_code=303)
+
     db = SessionLocal()
     try:
-        if user.is_admin:
-            workspaces = db.query(ProcessWorkspace).order_by(ProcessWorkspace.created_at.desc()).all()
-            # l'admin ha accesso illimitato a tutto: mostra entrambi i moduli ovunque
-            roles_by_workspace = {ws.id: {"data_engineer", "data_analyst"} for ws in workspaces}
-        else:
-            assignments = db.query(ProcessAssignment).filter_by(user_id=user.id).all()
-            roles_by_workspace: dict[str, set] = {}
-            for a in assignments:
-                roles_by_workspace.setdefault(a.workspace_id, set()).add(a.role)
-            workspaces = (
-                db.query(ProcessWorkspace)
-                .filter(ProcessWorkspace.id.in_(roles_by_workspace.keys()))
-                .order_by(ProcessWorkspace.created_at.desc())
-                .all()
-                if roles_by_workspace
-                else []
-            )
+        assignments = db.query(ProcessAssignment).filter_by(user_id=user.id).all()
+        roles_by_workspace: dict[str, set] = {}
+        for a in assignments:
+            roles_by_workspace.setdefault(a.workspace_id, set()).add(a.role)
+        workspaces = (
+            db.query(ProcessWorkspace)
+            .filter(ProcessWorkspace.id.in_(roles_by_workspace.keys()))
+            .order_by(ProcessWorkspace.created_at.desc())
+            .all()
+            if roles_by_workspace
+            else []
+        )
     finally:
         db.close()
 
@@ -216,51 +216,6 @@ def ingestion_dashboard(request: Request):
         "ingestion_dashboard.html",
         {"request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace},
     )
-
-
-@router.get("/ingestion/new", response_class=HTMLResponse)
-def new_context_form(request: Request):
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    if not user.is_admin:
-        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
-    return templates.TemplateResponse("context.html", {"request": request, "user": user, "step": 1})
-
-
-@router.post("/ingestion/new")
-def create_workspace(
-    request: Request,
-    process_name: str = Form(...),
-    process_type: str = Form(...),
-    business_unit: str = Form(""),
-    period_from: str = Form(""),
-    period_to: str = Form(""),
-):
-    user = current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    if not user.is_admin:
-        return HTMLResponse("Accesso negato: solo l'amministratore può creare un nuovo processo.", status_code=403)
-
-    db = SessionLocal()
-    try:
-        ws = ProcessWorkspace(
-            process_name=process_name,
-            process_type=process_type,
-            business_unit=business_unit or None,
-            period_from=period_from or None,
-            period_to=period_to or None,
-            created_by=user.name,
-        )
-        db.add(ws)
-        db.commit()
-    finally:
-        db.close()
-
-    # Il wizard di Ingestion (Fasi B-G) lo porta avanti il Data Engineer assegnato,
-    # non l'admin: si torna alla dashboard admin per fare l'assegnazione.
-    return RedirectResponse(url="/admin", status_code=303)
 
 
 EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
@@ -358,6 +313,12 @@ async def handle_upload(
     sess["mapping_status"] = None
     sess["mapping_error"] = None
     sess["table_descriptions"] = {}
+    # Controllo di pertinenza prima del mapping costoso: solo con il mapper Claude
+    # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
+    verdict = None
+    if AI_MAPPER == "claude":
+        verdict = await run_in_threadpool(check_relevance, sess["context"]["process_name"], tables_schema)
+    sess["relevance"] = verdict.model_dump() if verdict else None
 
     return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
 
@@ -376,6 +337,7 @@ def describe_tables_page(request: Request, workspace_id: str):
         "describe_tables.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
             "tables": tables_schema, "descriptions": descriptions, "step": 2,
+            "relevance": sess.get("relevance"), "error": None,
         }
     )
 
@@ -397,6 +359,17 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
         if raw and raw.strip():
             descriptions[t.name] = raw.strip()
     sess["table_descriptions"] = descriptions
+
+    relevance = sess.get("relevance")
+    if relevance and relevance["verdict"] == "non_coerente" and form.get("confirm_mismatch") != "1":
+        return templates.TemplateResponse(
+            "describe_tables.html", {
+                "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+                "tables": tables_schema, "descriptions": descriptions, "step": 2, "relevance": relevance,
+                "error": "Per procedere con questi dati conferma esplicitamente che sono quelli giusti.",
+            },
+            status_code=400,
+        )
 
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"
@@ -637,9 +610,9 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 db.flush()
 
             config = IngestionConfig(
-                name=f"{ctx['process_type']} - {source_system.name}",
+                name=f"{ctx['process_name']} - {source_system.name}",
                 source_system_id=source_system.id,
-                process_type=ctx["process_type"],
+                process_type=ctx.get("process_type", ""),
                 status="draft",
                 current_version=1,
                 owner=user.name,
@@ -839,7 +812,7 @@ def update_data_form(request: Request, config_id: str, workspace_id: str):
         db.close()
     return templates.TemplateResponse(
         "update_data.html",
-        {"request": request, "user": user, "workspace_id": workspace_id, "config": config, "error": None},
+        {"request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": "replace", "error": None},
     )
 
 
@@ -848,15 +821,28 @@ async def update_data_submit(
     request: Request,
     config_id: str,
     workspace_id: str = Form(...),
+    mode: str = Form("replace"),
     files: list[UploadFile] = File(default_factory=list),
 ):
+    """mode="replace": il nuovo log contiene solo i dati appena caricati (sostituisce
+    quelli pregressi). mode="append": i nuovi dati si aggiungono al log dell'ultimo
+    run di questa struttura (vedi transformation.merge_ocel)."""
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
+    if mode not in ("replace", "append"):
+        mode = "replace"
 
     db = SessionLocal()
     try:
         config = db.get(IngestionConfig, config_id)
+        last_run = (
+            db.query(ExtractionRun)
+            .filter_by(workspace_id=workspace_id, ingestion_config_id=config_id)
+            .order_by(ExtractionRun.started_at.desc())
+            .first()
+        )
+        previous_ocel_path = Path(last_run.ocel_file_path) if last_run else None
         mapping_rows = (
             db.query(FieldMapping)
             .filter_by(ingestion_config_id=config_id)
@@ -873,7 +859,7 @@ async def update_data_submit(
         return templates.TemplateResponse(
             "update_data.html",
             {
-                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": "Carica almeno un file CSV/TXT (o uno ZIP che li contenga) prima di continuare.",
             },
             status_code=400,
@@ -895,7 +881,7 @@ async def update_data_submit(
         return templates.TemplateResponse(
             "update_data.html",
             {
-                "request": request, "user": user, "workspace_id": workspace_id, "config": config,
+                "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": (
                     "I dati caricati non sono compatibili con questa struttura, "
                     f"mancano: {', '.join(problems)}. Usa \"Modifica struttura\" per rimappare "
@@ -907,6 +893,24 @@ async def update_data_submit(
 
     tables_data = {t.name: connector.extract_full(t.name) for t in tables_schema}
     ocel, skip_log, stats = build_ocel(tables_data, confirmed)
+    if mode == "append":
+        if previous_ocel_path is None or not previous_ocel_path.exists():
+            return templates.TemplateResponse(
+                "update_data.html",
+                {
+                    "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
+                    "error": "Non trovo il log precedente di questa struttura a cui aggiungere i dati: usa \"Sostituisci\".",
+                },
+                status_code=400,
+            )
+        previous = json.loads(previous_ocel_path.read_text(encoding="utf-8"))
+        ocel, delta = merge_ocel(previous, ocel)
+        stats = {
+            **stats, **delta,
+            "object_count": len(ocel["objects"]),
+            "event_count": len(ocel["events"]),
+        }
+    stats["update_mode"] = mode
     dq_results = run_data_quality_checks(ocel, skip_log)
 
     ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"
@@ -916,7 +920,7 @@ async def update_data_submit(
     try:
         run = ExtractionRun(
             workspace_id=workspace_id, ingestion_config_id=config_id,
-            run_type="incremental", status="completed",
+            run_type="incremental" if mode == "append" else "snapshot", status="completed",
             object_count=stats["object_count"], event_count=stats["event_count"],
             ocel_file_path=str(ocel_path),
         )
@@ -951,29 +955,13 @@ def delete_structure(request: Request, config_id: str, workspace_id: str = Form(
 
     db = SessionLocal()
     try:
-        config = db.get(IngestionConfig, config_id)
-        if config is None:
+        if db.get(IngestionConfig, config_id) is None:
             return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
-
-        run_ids = [r.id for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
-        ocel_paths = [r.ocel_file_path for r in db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).all()]
-
-        db.query(DataQualityCheckResult).filter(DataQualityCheckResult.extraction_run_id.in_(run_ids)).delete(
-            synchronize_session=False
-        )
-        db.query(ExtractionRun).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(ProcessIngestionLink).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(FieldMapping).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(ObjectTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(EventTypeDef).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.query(IngestionConfigVersion).filter_by(ingestion_config_id=config_id).delete(synchronize_session=False)
-        db.delete(config)
+        files = delete_structures(db, [config_id])
         db.commit()
     finally:
         db.close()
-
-    for p in ocel_paths:
-        Path(p).unlink(missing_ok=True)
+    remove_files(files)
 
     return RedirectResponse(f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
 

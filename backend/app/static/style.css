@@ -322,3 +322,4 @@ tr.row-overridden { background: var(--brand-soft); }
   .actions { flex-direction: column; align-items: stretch; }
   .actions .button-link, .actions button { text-align: center; }
 }
+.form label.checkbox { flex-direction: row; align-items: flex-start; }

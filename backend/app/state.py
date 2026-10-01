@@ -5,10 +5,10 @@ cosi' un Data Engineer puo' riprendere il lavoro su un processo assegnato in
 qualsiasi momento (dashboard -> stesso workspace_id -> stesso stato), invece
 di dover ripercorrere il wizard dall'inizio in un'unica sessione continua.
 
-L'user_id nella chiave e' voluto, non solo il workspace_id: un admin ha
-accesso illimitato a tutti i workspace, quindi puo' aprire il wizard di
-ingestion sullo stesso processo su cui sta lavorando il Data Engineer
-assegnato. Con la sola chiave workspace_id i due condividerebbero (e si
+L'user_id nella chiave e' voluto, non solo il workspace_id: piu' utenti
+possono avere accesso allo stesso workspace (es. un Data Engineer
+riassegnato, o uno stesso utente con piu' ruoli), quindi possono aprire il
+wizard di ingestion sullo stesso processo contemporaneamente. Con la sola chiave workspace_id i due condividerebbero (e si
 sovrascriverebbero a vicenda) lo stesso stato in-memory - file caricati,
 mapping in revisione, step del wizard - un vero problema di isolamento tra
 utenti diversi, non solo un display sbagliato. Con la chiave composita,
@@ -40,3 +40,10 @@ def get(user_id: str, workspace_id: str) -> dict[str, Any]:
 
 def exists(user_id: str, workspace_id: str) -> bool:
     return (user_id, workspace_id) in _SESSIONS
+
+
+def drop_workspace(workspace_id: str) -> None:
+    """Rimuove lo stato di tutti gli utenti su questo workspace (usato quando
+    l'admin elimina il processo)."""
+    for key in [k for k in _SESSIONS if k[1] == workspace_id]:
+        del _SESSIONS[key]

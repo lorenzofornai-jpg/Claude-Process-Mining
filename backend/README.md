@@ -12,8 +12,9 @@ aggiornamento dati, nuova versione, eliminazione).
 
 | Fase disegnata | Dove nel codice |
 |---|---|
-| A. Contestualizzazione | `templates/context.html`, `POST /ingestion/new` |
+| A. Creazione processo (admin) | `templates/admin_new_process.html`, `POST /admin/processes/new`: solo il nome, più Data Engineer/Data Analyst opzionali |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
+| Controllo pertinenza dati/processo | `services/relevance.py`: subito dopo l'upload, una chiamata Claude piccola (solo nomi tabelle/colonne + 2 esempi, effort basso, modello `RELEVANCE_CHECK_MODEL`) dice se i dati sono del processo giusto; se "non coerente" il mapping AI parte solo dopo conferma esplicita |
 | E. Mapping AI-assisted | `services/ai_mapping.py` (interfaccia `AIMapper`, mock `HeuristicAIMapper`, reale `ClaudeAIMapper`); prima, descrizione tabelle opzionale (`templates/describe_tables.html`); poi gira in background (`templates/mapping_status.html`, polling) |
 | F. Validazione + conferma umana | `templates/mapping_review.html`, `services/validation.py` |
 | G. Salvataggio config + run (come bozza) | `models.py` (schema completo), `_finalize()` in `routers/ingestion.py` |
@@ -34,6 +35,12 @@ analisi"** la promuove (`status = "approved"`), rendendola visibile nel
   che ogni tabella/colonna richiesta dal mapping esistente (`IngestionConfig.
   schema_fingerprint`) sia presente nel nuovo caricamento; se manca qualcosa,
   blocca con un messaggio esplicito invece di produrre un log sbagliato.
+  Due modalità: **Sostituisci** (il nuovo log contiene solo i dati appena
+  caricati, run `snapshot`) o **Incrementa** (i nuovi dati si uniscono al log
+  dell'ultimo run, run `incremental`, vedi `merge_ocel()` in
+  `services/transformation.py`): oggetti per id con i valori nuovi che
+  vincono, eventi aggiunti solo se non già presenti (stesso tipo, istante,
+  oggetti collegati e attributi), poi riordinati e rinumerati.
 - **Modifica struttura** — riapre l'intero wizard (nuova AI mapping +
   revisione) ma alla conferma aggiorna la struttura esistente invece di
   crearne una nuova: incrementa `current_version`, sostituisce
@@ -89,9 +96,9 @@ puoi creare altri amministratori con i tuoi stessi privilegi (spunta "Crea
 come amministratore" nel form nuovo utente — pensato per sostituire subito
 il superuser di bootstrap con utenze reali), utenti Data Engineer/Data
 Analyst, e nuovi processi, assegnando poi i ruoli per processo dalla stessa
-pagina. Poi accedi come quell'utente (o resta admin, che ha accesso
-illimitato a tutto) e da **I miei processi** apri il Modulo 1: Dati
-sorgente → Revisione mapping → Risultato.
+pagina. Poi accedi come quell'utente (l'admin non ha accesso ai moduli)
+e da **I miei processi** apri il Modulo 1: Dati sorgente → Revisione
+mapping → Risultato.
 
 L'unico modo di acquisire dati è caricare file CSV/TXT (nessuna scorciatoia
 "dataset sintetico" nell'interfaccia): usa i CSV in `data/synthetic_p2p/`
@@ -104,12 +111,16 @@ membro come guardia contro zip bomb).
 
 ### Ruoli e permessi
 
-- **Admin**: crea utenti e processi, assegna **Data Engineer**/**Data
-  Analyst** per processo (`/admin`), accesso illimitato a tutto (entrambi i
-  moduli, su ogni processo). Può creare **altri admin** con i propri stessi
+- **Admin**: crea utenti, crea ed elimina processi, assegna **Data
+  Engineer**/**Data Analyst** per processo (`/admin`). **Non** accede ai
+  moduli (niente strutture né analisi) né a "I miei processi": dopo il
+  login atterra direttamente su Amministrazione. Eliminare un processo
+  rimuove assegnazioni, run/file OCEL e tutte le strutture del processo;
+  quelle aggiunte al catalogo spariscono anche dal catalogo (che è solo il
+  flag `in_catalog` sulle strutture, letto dal DB a ogni mapping). Può creare **altri admin** con i propri stessi
   privilegi (checkbox "Crea come amministratore" in "Nuovo utente") — non è
   un ruolo per processo come gli altri due, è un flag sull'utente
-  (`User.is_admin`) che vale ovunque a prescindere da qualunque assegnazione.
+  (`User.is_admin`) che dà accesso ad Amministrazione, non ai moduli.
   Al primissimo avvio per un cliente nuovo (nessun admin ancora nel
   database) esiste **un solo utente**, di bootstrap: `superuser`/`superuser`,
   credenziali fisse nel codice (`BOOTSTRAP_ADMIN_EMAIL`/`_PASSWORD` in
@@ -144,7 +155,9 @@ membro come guardia contro zip bomb).
   viceversa, entrambi assegnati alla stessa persona sullo stesso processo →
   accede a entrambi.
 - Password con bcrypt, sessione via cookie firmato (Starlette
-  `SessionMiddleware`). I ruoli Process Owner/Viewer restano concettuali per
+  `SessionMiddleware`). Il cookie è di sessione del browser (sparisce alla
+  chiusura) e la sessione scade dopo `SESSION_IDLE_MINUTES` (30) minuti di
+  inattività, con avviso "Sessione scaduta" nella pagina di login. I ruoli Process Owner/Viewer restano concettuali per
   ora: lo schema (`ProcessAssignment.role` è una stringa libera) è già
   pensato per estendersi senza migrazioni quando arriveranno.
 

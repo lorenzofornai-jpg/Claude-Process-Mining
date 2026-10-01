@@ -7,9 +7,11 @@ manuale gia' usato nel resto del router di ingestion.
 """
 from __future__ import annotations
 
+import time
+
 import bcrypt
 
-from app.config import BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD
+from app.config import BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_PASSWORD, SESSION_IDLE_MINUTES
 from app.db import SessionLocal
 from app.models import ProcessAssignment, User
 
@@ -25,10 +27,26 @@ def verify_password(raw: str, hashed: str) -> bool:
         return False
 
 
+def start_session(request, user: User) -> None:
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["last_seen"] = int(time.time())
+
+
 def current_user(request) -> User | None:
+    """Utente loggato, o None. Se la sessione e' inattiva da piu' di
+    SESSION_IDLE_MINUTES la svuota (-> login con avviso "sessione scaduta"),
+    altrimenti rinnova il timestamp di ultima attivita'."""
     user_id = request.session.get("user_id")
     if not user_id:
         return None
+    now = int(time.time())
+    last_seen = request.session.get("last_seen", 0)
+    if now - last_seen > SESSION_IDLE_MINUTES * 60:
+        request.session.clear()
+        request.session["expired"] = True
+        return None
+    request.session["last_seen"] = now
     db = SessionLocal()
     try:
         return db.get(User, user_id)
@@ -38,13 +56,14 @@ def current_user(request) -> User | None:
 
 def has_process_access(user: User, workspace_id: str, required_role: str = "data_engineer") -> bool:
     """True se l'utente puo' lavorare su un dato modulo per questo processo:
-    admin (accesso illimitato a tutto), oppure un utente con quel ruolo
-    specifico assegnato a questo workspace. Uno stesso utente puo' avere piu'
-    ruoli, anche sullo stesso processo (es. data_engineer per il Modulo 1 e
-    data_analyst per il Modulo 2): sono righe distinte in ProcessAssignment,
-    non un attributo fisso sull'utente."""
+    solo un utente con quel ruolo specifico assegnato a questo workspace.
+    L'admin NON ha accesso ai moduli: gestisce utenti, processi e
+    assegnazioni da Amministrazione, ma non crea strutture ne' analisi.
+    Uno stesso utente puo' avere piu' ruoli, anche sullo stesso processo (es.
+    data_engineer per il Modulo 1 e data_analyst per il Modulo 2): sono righe
+    distinte in ProcessAssignment, non un attributo fisso sull'utente."""
     if user.is_admin:
-        return True
+        return False
     db = SessionLocal()
     try:
         return (

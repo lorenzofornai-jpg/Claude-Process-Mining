@@ -3,13 +3,14 @@
 <div class="card wide">
   <h1>Amministrazione</h1>
   <p class="muted">
-    Crea nuovi processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
+    Crea ed elimina processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
     Modulo 1 - Ingestion, Data Analyst per il Modulo 2 - Analisi). Uno stesso utente può avere più
-    ruoli, anche sullo stesso processo.
+    ruoli, anche sullo stesso processo. L'amministratore non lavora sui moduli: strutture e analisi
+    le creano gli utenti assegnati.
   </p>
 
   <div class="actions" style="margin-top:0">
-    <a class="primary button-link" href="/ingestion/new">+ Nuovo processo</a>
+    <a class="primary button-link" href="/admin/processes/new">+ Nuovo processo</a>
     <a class="secondary button-link" href="/admin/users/new">+ Nuovo utente</a>
   </div>
 
@@ -17,15 +18,15 @@
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Processo</th><th>Tipo</th><th>Creato il</th>
+        <th>Processo</th><th>Creato il</th>
         {% for role in assignable_roles %}<th>{{ role_labels[role] }}</th>{% endfor %}
+        <th></th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr>
         <td>{{ row.workspace.process_name }}</td>
-        <td>{{ row.workspace.process_type }}</td>
         <td class="tiny muted">{{ row.workspace.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         {% for role in assignable_roles %}
         <td>
@@ -50,6 +51,13 @@
           {% endif %}
         </td>
         {% endfor %}
+        <td>
+          {% set n_struct = row.structures|length %}{% set n_cat = row.structures|selectattr("in_catalog")|list|length %}
+          <form method="post" action="/admin/processes/{{ row.workspace.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Eliminare definitivamente questo processo? Verranno eliminate anche le sue {{ n_struct }} strutture{% if n_cat %} ({{ n_cat }} nel catalogo, che verranno rimosse dal catalogo){% endif %}, i run e le assegnazioni. Non si può annullare.');">
+            <button type="submit" class="secondary">Elimina</button>
+          </form>
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
@@ -59,8 +67,8 @@
 
   <h2>Utenti</h2>
   <p class="tiny muted">
-    Gli amministratori hanno accesso illimitato a tutto e non compaiono nelle assegnazioni sopra
-    (sarebbero ridondanti). Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
+    Gli amministratori gestiscono solo utenti, processi e assegnazioni: non accedono ai moduli e
+    non compaiono nelle assegnazioni sopra. Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
   </p>
   <table class="admin-table">
     <thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>

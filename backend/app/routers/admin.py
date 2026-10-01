@@ -6,10 +6,20 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import state
 from app.auth import current_user, hash_password
-from app.config import STATIC_VERSION
+from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
-from app.models import ProcessAssignment, ProcessWorkspace, User
+from app.models import (
+    DataQualityCheckResult,
+    ExtractionRun,
+    IngestionConfig,
+    ProcessAssignment,
+    ProcessIngestionLink,
+    ProcessWorkspace,
+    User,
+)
+from app.services.structures import delete_structures, remove_files, workspace_config_ids
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -48,9 +58,13 @@ def admin_dashboard(request: Request):
             (a.workspace_id, a.role): users_by_id.get(a.user_id)
             for a in db.query(ProcessAssignment).filter(ProcessAssignment.role.in_(ASSIGNABLE_ROLES)).all()
         }
+        configs_by_id = {c.id: c for c in db.query(IngestionConfig).all()}
         rows = [
             {
                 "workspace": ws,
+                "structures": [
+                    configs_by_id[cid] for cid in workspace_config_ids(db, ws.id) if cid in configs_by_id
+                ],
                 "assignments": {
                     role: assigned_user_by_workspace_role.get((ws.id, role))
                     for role in ASSIGNABLE_ROLES
@@ -70,6 +84,71 @@ def admin_dashboard(request: Request):
             "all_users": all_users, "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
         },
     )
+
+
+def _assignable_users(db) -> list[User]:
+    return sorted(db.query(User).filter_by(is_admin=False).all(), key=lambda u: u.name)
+
+
+def _new_process_page(request: Request, user: User, error: str | None = None, status_code: int = 200):
+    db = SessionLocal()
+    try:
+        assignable_users = _assignable_users(db)
+    finally:
+        db.close()
+    return templates.TemplateResponse(
+        "admin_new_process.html",
+        {
+            "request": request, "user": user, "error": error, "assignable_users": assignable_users,
+            "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/processes/new", response_class=HTMLResponse)
+def new_process_form(request: Request):
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    return _new_process_page(request, user)
+
+
+@router.post("/processes/new")
+def create_process(
+    request: Request,
+    process_name: str = Form(...),
+    data_engineer: str = Form(""),
+    data_analyst: str = Form(""),
+):
+    """Crea il processo (solo il nome) e, se scelti, assegna subito Data
+    Engineer e Data Analyst; le assegnazioni restano modificabili dalla
+    dashboard di Amministrazione."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    process_name = process_name.strip()
+    if not process_name:
+        return _new_process_page(request, user, "Il nome del processo è obbligatorio.", 400)
+
+    chosen = {"data_engineer": data_engineer, "data_analyst": data_analyst}
+    db = SessionLocal()
+    try:
+        valid_ids = {u.id for u in _assignable_users(db)}
+        if any(uid and uid not in valid_ids for uid in chosen.values()):
+            return _new_process_page(request, user, "Utente selezionato non valido.", 400)
+        # process_type e' NOT NULL nel modello: resta vuoto, non si chiede piu'
+        ws = ProcessWorkspace(process_name=process_name, process_type="", created_by=user.name)
+        db.add(ws)
+        db.flush()
+        for role, uid in chosen.items():
+            if uid:
+                db.add(ProcessAssignment(workspace_id=ws.id, user_id=uid, role=role, assigned_by=user.name))
+        db.commit()
+    finally:
+        db.close()
+
+    return RedirectResponse("/admin", status_code=303)
 
 
 @router.get("/users/new", response_class=HTMLResponse)
@@ -103,8 +182,8 @@ def create_user(
             )
         # Qualunque admin puo' crearne un altro con gli stessi privilegi: non
         # e' un ruolo per processo (quelli sono ASSIGNABLE_ROLES via
-        # ProcessAssignment), e' un flag sull'utente che da' accesso
-        # illimitato a tutto, a prescindere da qualunque assegnazione.
+        # ProcessAssignment), e' un flag sull'utente che da' accesso ad
+        # Amministrazione (non ai moduli, che restano ai ruoli assegnati).
         db.add(User(name=name, email=email_norm, password_hash=hash_password(password), is_admin=is_admin))
         db.commit()
     finally:
@@ -134,5 +213,41 @@ def assign_role(request: Request, workspace_id: str, user_id: str = Form(...), r
         db.commit()
     finally:
         db.close()
+
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/processes/{workspace_id}/delete")
+def delete_process(request: Request, workspace_id: str):
+    """Elimina definitivamente un processo con tutte le sue strutture (e
+    quindi anche le loro voci nel catalogo), run, file OCEL, upload e
+    assegnazioni."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+        if ws is None:
+            return RedirectResponse("/admin", status_code=303)
+
+        files = delete_structures(db, list(workspace_config_ids(db, workspace_id)))
+        # run/link residui del processo non legati a strutture ancora esistenti
+        runs = db.query(ExtractionRun).filter_by(workspace_id=workspace_id).all()
+        files += [Path(r.ocel_file_path) for r in runs]
+        db.query(DataQualityCheckResult).filter(
+            DataQualityCheckResult.extraction_run_id.in_([r.id for r in runs])
+        ).delete(synchronize_session=False)
+        db.query(ExtractionRun).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessIngestionLink).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ProcessAssignment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.delete(ws)
+        db.commit()
+    finally:
+        db.close()
+
+    remove_files([*files, DATA_DIR / "uploads" / workspace_id])
+    state.drop_workspace(workspace_id)
 
     return RedirectResponse("/admin", status_code=303)
