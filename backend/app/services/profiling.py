@@ -109,7 +109,7 @@ def profile_tables(
         tables.append(t)
         if n == 0:
             issues.append(_issue("bloccante", name, "La tabella è vuota",
-                                 "Non produrrà né oggetti né eventi: la parte di processo che rappresenta mancherà nel log.",
+                                 "Non produrrà né oggetti né eventi: la parte di processo che rappresenta mancherà nel dataset per l'analisi.",
                                  "Verifica i filtri dell'estrazione e ricarica il file."))
             continue
 
@@ -122,8 +122,11 @@ def profile_tables(
         t["constant_columns"] = [c for c in df.columns if c not in t["empty_columns"] and df[c].nunique() == 1]
         if t["empty_columns"]:
             issues.append(_issue("info", name, f"Colonne sempre vuote: {', '.join(t['empty_columns'])}",
-                                 "Non portano informazione al log.",
-                                 "Si possono togliere dall'estrazione; se dovrebbero essere valorizzate, verifica il campo sorgente."))
+                                 "Non contengono nessun valore, quindi non possono diventare né eventi né chiavi o "
+                                 "collegamenti tra tabelle: nel dataset per l'analisi resterebbero campi vuoti. "
+                                 "Per questo vengono escluse dal mapping AI (meno costi, meno righe da rivedere).",
+                                 "Se dovrebbero essere valorizzate (es. un campo \"approvatore\" sempre vuoto), "
+                                 "probabilmente l'estrazione ha preso il campo sbagliato: verificalo e ricarica i dati."))
         t["key"] = _find_key(df, set(date_columns.get(name, [])))
         if t["key"] is None and not t["duplicates"]:
             issues.append(_issue("attenzione", name, "Nessuna chiave univoca trovata (né una colonna né una coppia)",

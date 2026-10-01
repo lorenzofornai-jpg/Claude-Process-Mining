@@ -4,7 +4,7 @@ import json
 import shutil
 import uuid
 import zipfile
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
@@ -269,6 +269,13 @@ def upload_page(request: Request, workspace_id: str, edit_config_id: str | None 
     )
 
 
+def _without_empty_columns(tables_schema: list) -> list:
+    """Schema senza le colonne sempre vuote: non possono diventare eventi, chiavi o
+    collegamenti, quindi non si mandano all'AI (meno token, meno righe da rivedere).
+    Restano segnalate nel profilo dei dati."""
+    return [replace(t, columns=[c for c in t.columns if c.null_ratio < 1.0]) for t in tables_schema]
+
+
 def _find_identical_structure(workspace_id: str, fingerprint: dict[str, list[str]]) -> IngestionConfig | None:
     """Struttura in uso per l'analisi di questo processo con esattamente le stesse
     tabelle e colonne del caricamento (ordine delle colonne ininfluente)."""
@@ -422,7 +429,7 @@ async def profile_continue(request: Request, workspace_id: str = Form(...)):
     # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
     verdict = None
     if AI_MAPPER == "claude":
-        verdict = await run_in_threadpool(check_relevance, sess["context"], tables_schema)
+        verdict = await run_in_threadpool(check_relevance, sess["context"], _without_empty_columns(tables_schema))
     sess["relevance"] = verdict.model_dump() if verdict else None
     return RedirectResponse(url=f"/ingestion/describe-tables?workspace_id={workspace_id}", status_code=303)
 
@@ -480,7 +487,7 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
     sess["mapping_error"] = None
 
     background_tasks.add_task(
-        _run_ai_mapping, sess, tables_schema, sess["tables_data"], sess["dataset_label"], descriptions
+        _run_ai_mapping, sess, _without_empty_columns(tables_schema), sess["tables_data"], sess["dataset_label"], descriptions
     )
 
     return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)

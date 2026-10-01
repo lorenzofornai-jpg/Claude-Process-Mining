@@ -3,8 +3,8 @@
 <div class="card wide">
   <h1>Analisi</h1>
   <p class="muted">
-    Processo: <strong>{{ process_name }}</strong>. Qui in futuro sceglierai un log OCEL 2.0 e
-    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei log già disponibili
+    Processo: <strong>{{ process_name }}</strong>. Qui in futuro sceglierai un dataset (OCEL 2.0) e
+    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei dataset già disponibili
     per l'analisi.
   </p>
   <div class="banner warning">Analisi in costruzione: questa è solo la pagina d'ingresso.</div>
@@ -31,7 +31,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">Nessun log disponibile ancora per questo processo (il Data Engineer deve prima preparare una struttura).</td></tr>
+      <tr><td colspan="4" class="muted">Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima preparare una struttura).</td></tr>
       {% endfor %}
     </tbody>
   </table>

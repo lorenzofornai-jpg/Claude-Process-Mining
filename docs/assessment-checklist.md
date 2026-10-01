@@ -1,7 +1,7 @@
 # Checklist di assessment del processo
 
 Compilata dal Data Engineer nell'app (pagina **Assessment** del processo) prima di caricare i dati sorgente.
-Serve a ottimizzare la trasformazione in OCEL 2.0: le risposte e le attività lette dai BPMN vengono date
+Serve a ottimizzare la costruzione del dataset per l'analisi (formato OCEL 2.0): le risposte e le attività lette dai BPMN vengono date
 all'AI che propone il mapping e al controllo di pertinenza dei dati. Le voci con * sono essenziali e contano
 nell'indicatore di completamento.
 
@@ -36,7 +36,7 @@ Generata da `backend/app/services/assessment.py`, che è la fonte di verità: pe
 
 ## 4. Il processo
 
-*Perché serve:* L'oggetto principale e gli eventi di inizio e fine definiscono come leggere il processo: guidano la scelta di chiavi ed eventi nel mapping e i controlli di qualità sul log.
+*Perché serve:* L'oggetto principale e gli eventi di inizio e fine definiscono come leggere il processo: guidano la scelta di chiavi ed eventi nel mapping e i controlli di qualità sul dataset.
 
 - Oggetto principale del processo *
 - Altri oggetti coinvolti

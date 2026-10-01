@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Fase G — Log OCEL 2.0 generato</h1>
+  <h1>Fase G — Dataset per l'analisi generato</h1>
   <p class="muted">
     Processo: <strong>{{ context.process_name }}</strong>.
     Ingestion Config salvata e collegata a questo processo (riusabile su altri processi
@@ -16,7 +16,7 @@
   </div>
   {% else %}
   <div class="banner warning">
-    Questo è ancora un log di prova (bozza): non è ancora tracciato come struttura da usare per
+    Questo è ancora un dataset di prova (bozza): non è ancora tracciato come struttura da usare per
     l'analisi, e non comparirà nel registro strutture finché non lo confermi esplicitamente.
   </div>
   {% endif %}
@@ -29,7 +29,7 @@
   </div>
   {% elif result.stats.update_mode == "replace" %}
   <div class="banner ok">
-    Dati <strong>sostituiti</strong>: il log contiene solo i dati appena caricati.
+    Dati <strong>sostituiti</strong>: il dataset contiene solo i dati appena caricati.
   </div>
   {% endif %}
 
@@ -61,11 +61,11 @@
   </table>
 
   <div class="actions">
-    <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica log OCEL 2.0 (JSON)</a>
+    <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica dataset OCEL 2.0 (JSON)</a>
     {% if structure_status != "approved" %}
     <form method="post" action="/ingestion/structures/{{ result.ingestion_config_id }}/promote" style="display:inline">
       <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-      <button type="submit" class="primary">Utilizza log per analisi</button>
+      <button type="submit" class="primary">Utilizza per l'analisi</button>
     </form>
     {% endif %}
     <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">Vedi tutte le strutture</a>

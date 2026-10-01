@@ -76,7 +76,7 @@ SECTIONS: list[dict] = [
         "id": "process",
         "title": "4. Il processo",
         "why": "L'oggetto principale e gli eventi di inizio e fine definiscono come leggere il processo: "
-               "guidano la scelta di chiavi ed eventi nel mapping e i controlli di qualità sul log.",
+               "guidano la scelta di chiavi ed eventi nel mapping e i controlli di qualità sul dataset.",
         "questions": [
             {"id": "main_object", "label": "Oggetto principale del processo", "type": "text", "required": True,
              "placeholder": "es. Ordine d'acquisto, Fattura cliente, Ticket"},
