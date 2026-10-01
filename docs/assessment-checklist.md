@@ -58,6 +58,6 @@ Generata da `backend/app/services/assessment.py`, che è la fonte di verità: pe
 - Campi o tabelle personalizzate (opzionale)
 ## 6. Documenti di supporto
 
-*Perché serve:* manuali, procedure e disegni spiegano tabelle, campi e stati. Dai file BPMN si leggono i nomi delle attività, usati per chiamare gli eventi del log. Almeno un documento conta come voce essenziale.
+*Perché serve:* manuali, procedure e disegni spiegano tabelle, campi e stati. Dai file BPMN si leggono i nomi delle attività, usati per dare un nome agli eventi del dataset. Almeno un documento conta come voce essenziale.
 
 Tipi: Disegno del processo (BPMN o altro diagramma); Procedura operativa; Manuale di sistema; Data dictionary / descrizione tabelle; Altro. Max 25 MB per file.
