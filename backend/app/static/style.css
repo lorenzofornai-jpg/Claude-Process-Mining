@@ -458,3 +458,6 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 #capabilities h3 { font-size: 15px; margin: 20px 0 6px; }
 .feeds { margin: 0 0 8px; }
 .model-card, .table-block { scroll-margin-top: 80px; }
+tr.row-rejected td { color: var(--muted); }
+tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
+.mapping-table tr { scroll-margin-top: 90px; }

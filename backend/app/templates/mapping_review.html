@@ -23,6 +23,7 @@
 
   <form method="post" action="/ingestion/review">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    <input type="hidden" name="return_to" value="">
 
     <h2 id="modello">Modello proposto</h2>
     <div class="model-grid">
@@ -67,7 +68,7 @@
         </thead>
         <tbody>
           {% for r in rows %}
-          <tr class="{{ 'row-pending' if r.status == 'proposed' else ('row-overridden' if r.status == 'overridden' else '') }}">
+          <tr id="row-{{ r.row_id }}" class="{{ 'row-pending' if r.status == 'proposed' else ('row-overridden' if r.status == 'overridden' else ('row-rejected' if r.status == 'rejected' else '')) }}">
             <td class="mono">{{ r.source_column }}</td>
             <td>
               {{ r.target_label }}
@@ -147,6 +148,24 @@
 </div>
 <script>
   // un link a una tabella del dettaglio la apre prima di scorrere fin li'
+  // (anche quando si arriva sulla pagina con l'ancora di una riga o di una tabella)
+  function openFor(id) {
+    var el = document.getElementById(id);
+    var d = el && el.closest("details");
+    if (d) d.open = true;
+  }
+  if (location.hash) openFor(decodeURIComponent(location.hash.slice(1)));
+  // Accetta/Rifiuta su una singola riga si salva subito e torna alla riga
+  document.addEventListener("change", function (e) {
+    var radio = e.target;
+    if (!radio.matches('input[type="radio"][name^="decision_"]')) return;
+    var form = radio.form;
+    form.querySelector('input[name="return_to"]').value = "row-" + radio.name.slice("decision_".length);
+    var action = document.createElement("input");
+    action.type = "hidden"; action.name = "action"; action.value = "save";
+    form.appendChild(action);
+    form.submit();
+  });
   document.addEventListener("click", function (e) {
     var a = e.target.closest('a[href^="#tab-"]');
     if (!a) return;

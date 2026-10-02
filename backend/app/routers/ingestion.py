@@ -645,8 +645,9 @@ def _process_order(sess: dict, rows: list[dict]) -> dict:
     """Ordine di processo per la revisione: eventi per istante mediano (cosi' come
     avvengono), oggetti per il primo evento che li coinvolge, tabelle per il primo
     oggetto/evento che alimentano. Calcolato sui dati con il mapping corrente e
-    tenuto in cache finche' il mapping non cambia."""
-    used = _preview_rows(rows)
+    tenuto in cache finche' il mapping non cambia. Usa anche le righe rifiutate, cosi'
+    rifiutare un gruppo non lo sposta: l'ordine resta stabile mentre si decide."""
+    used = rows
     signature = _rows_signature(used, None)
     cached = sess.get("process_order")
     if cached and cached["signature"] == signature:
@@ -707,25 +708,38 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
         d["min_conf"] = min(d["min_conf"], r["confidence"])
         if r["status"] == "rejected":
             d["rejected"] += 1
-            continue
-        if r["status"] == "proposed":
+        elif r["status"] == "proposed":
             d["pending"] += 1
             if r["confidence"] < AUTO_ACCEPT_CONFIDENCE_THRESHOLD:
                 d["low"] += 1
+        # chiavi/date/collegamenti: quelli in vigore (righe non rifiutate); per un gruppo
+        # rifiutato per intero si mostrano quelli proposti, per poterlo valutare e ripristinare
         el = r["ocel_element"]
-        if el == "object_type.key":
-            d["keys"].append(r["source_column"])
-        elif el == "event_type.timestamp":
-            d["timestamps"].append(f"{r['source_table']}.{r['source_column']}")
-        elif el == "e2o_relationship" and r.get("related_object_type"):
-            if r["related_object_type"] not in d["links"]:
-                d["links"].append(r["related_object_type"])
-        else:
-            d["attributes"] += 1
+        for bucket in (("all_",) if r["status"] == "rejected" else ("", "all_")):
+            if el == "object_type.key":
+                d.setdefault(bucket + "keys", []).append(r["source_column"])
+            elif el == "event_type.timestamp":
+                d.setdefault(bucket + "timestamps", []).append(f"{r['source_table']}.{r['source_column']}")
+            elif el == "e2o_relationship" and r.get("related_object_type"):
+                links = d.setdefault(bucket + "links", [])
+                if r["related_object_type"] not in links:
+                    links.append(r["related_object_type"])
+        if el not in ("object_type.key", "event_type.timestamp", "e2o_relationship"):
+            d["all_attributes"] = d.get("all_attributes", 0) + 1
+            if r["status"] != "rejected":
+                d["attributes"] += 1
+    for d in groups.values():
+        if d["rejected"] == d["total"]:
+            for k in ("keys", "timestamps", "links"):
+                d[k] = d.get("all_" + k, [])
+            d["attributes"] = d.get("all_attributes", 0)
     order = order or {"events": {}, "objects": {}}
+    for g in groups.values():
+        g["anchor"] = f"grp-{g['kind']}-{g['name'].replace(' ', '_')}"
+        g["accepted"] = g["total"] - g["pending"] - g["rejected"]
 
-    def key(g, positions):  # ordine di processo; gruppi rifiutati in fondo
-        return (g["rejected"] == g["total"], positions.get(g["name"], 1e9), g["name"])
+    def key(g, positions):  # ordine di processo, stabile: un gruppo rifiutato resta al suo posto
+        return (positions.get(g["name"], 1e9), g["name"])
     objects = sorted((g for g in groups.values() if g["kind"] == "obj"), key=lambda g: key(g, order["objects"]))
     events = sorted((g for g in groups.values() if g["kind"] == "evt"), key=lambda g: key(g, order["events"]))
     return {"objects": objects, "events": events}
@@ -777,16 +791,23 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
     if action == "save":
-        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+        back = form.get("return_to") or ""
+        anchor = f"#{back}" if back.replace("-", "").isalnum() else ""
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}{anchor}", status_code=303)
 
-    # decisione per gruppo del modello: "group_accept|obj|PurchaseOrder"
+    # decisione per gruppo del modello: "group_accept|obj|PurchaseOrder". Si puo' sempre
+    # cambiare idea: accettare ripristina anche le righe rifiutate (le modifiche manuali restano).
     if action.startswith(("group_accept|", "group_reject|")):
         verb, kind, name = action.split("|", 2)
-        new_status = "confirmed" if verb == "group_accept" else "rejected"
         for r in rows:
-            if _row_group(r) == (kind, name) and (r["status"] == "proposed" or new_status == "rejected"):
-                r["status"] = new_status
-        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}#modello", status_code=303)
+            if _row_group(r) != (kind, name):
+                continue
+            if verb == "group_reject":
+                r["status"] = "rejected"
+            elif r["status"] in ("proposed", "rejected"):
+                r["status"] = "confirmed"
+        anchor = f"grp-{kind}-{name.replace(' ', '_')}"
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}#{anchor}", status_code=303)
 
     if action == "preview":
         return RedirectResponse(url=f"/ingestion/preview?workspace_id={workspace_id}", status_code=303)

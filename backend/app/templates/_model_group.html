@@ -1,13 +1,13 @@
-<div class="model-card {{ 'model-card-rejected' if g.rejected == g.total else '' }}" id="grp-{{ g.kind }}-{{ g.name|replace(' ', '_') }}">
+<div class="model-card {{ 'model-card-rejected' if g.rejected == g.total else '' }}" id="{{ g.anchor }}">
   <div class="model-card-head">
     <strong>{{ g.name }}</strong>
     <span class="tiny mono">{% for t in g.tables %}<a href="#tab-{{ t }}" title="Vai al dettaglio delle colonne di {{ t }}">{{ t }}</a>{{ ", " if not loop.last }}{% endfor %}</span>
   </div>
   <div class="tiny model-card-body">
     {% if g.kind == "obj" %}
-      <div>Chiave: <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] %} <span class="sev sev-attenzione">senza chiave</span>{% endif %}</div>
+      <div>Chiave: <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">senza chiave</span>{% endif %}</div>
     {% else %}
-      <div>Data/ora: <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}</span>{% if not g.timestamps %} <span class="sev sev-attenzione">senza data</span>{% endif %}</div>
+      <div>Data/ora: <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">senza data</span>{% endif %}</div>
       <div>Collegato a: {{ g.links|join(", ") if g.links else "solo all'oggetto della sua tabella" }}</div>
     {% endif %}
     <div class="muted">{{ g.attributes }} {{ "attributo" if g.attributes == 1 else "attributi" }} · {{ g.total }} {{ "riga" if g.total == 1 else "righe" }} di mapping</div>
@@ -16,10 +16,11 @@
     <span class="tiny">
       {% if g.rejected == g.total %}<span class="sev sev-info">rifiutato</span>
       {% elif g.pending %}<span class="sev sev-attenzione">{{ g.pending }} da decidere{% if g.low %}, {{ g.low }} incerte{% endif %}</span>
+      {% elif g.rejected %}<span class="sev sev-ok">accettato</span> <span class="tiny muted">({{ g.rejected }} {{ "riga rifiutata" if g.rejected == 1 else "righe rifiutate" }})</span>
       {% else %}<span class="sev sev-ok">accettato</span>{% endif %}
     </span>
     <span class="model-card-actions">
-      {% if g.pending %}<button type="submit" name="action" value="group_accept|{{ group_id }}" class="secondary">Accetta tutto</button>{% endif %}
+      {% if g.accepted < g.total %}<button type="submit" name="action" value="group_accept|{{ group_id }}" class="secondary">{{ "Ripristina" if g.rejected == g.total else "Accetta tutto" }}</button>{% endif %}
       {% if g.rejected < g.total %}<button type="submit" name="action" value="group_reject|{{ group_id }}" class="secondary danger">Rifiuta</button>{% endif %}
     </span>
   </div>
