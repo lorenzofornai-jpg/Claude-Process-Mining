@@ -159,7 +159,9 @@ def build_ocel(
 
             for rule in own_rules:
                 for target_id in _resolve_related_objects(row, rule, object_defs, tables_data):
-                    relationships.append({"objectId": target_id, "qualifier": rule["qualifier"]})
+                    rel = {"objectId": target_id, "qualifier": rule["qualifier"]}
+                    if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine
+                        relationships.append(rel)
 
             attrs = []
             for col in evt_def.attribute_columns:

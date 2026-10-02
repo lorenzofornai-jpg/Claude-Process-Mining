@@ -3,8 +3,9 @@
 <div class="card wide">
   <h1>Revisione del mapping</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}{% if mapping_cost_eur is not none %}
-    · Costo AI del mapping: € {{ "%.2f"|format(mapping_cost_eur)|replace(".", ",") }} (limite € {{ "%.2f"|format(mapping_budget_eur)|replace(".", ",") }}){% endif %}.
+    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}{% if mapping_known_tables %}
+    · Riconosciute senza AI: {{ mapping_known_tables|join(", ") }}{% endif %}{% if mapping_cost_usd is not none %}
+    · Costo AI del mapping: {{ "%.2f"|format(mapping_cost_usd)|replace(".", ",") }} $ (limite {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $){% endif %}.
     Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
     gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
     solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione,
@@ -30,6 +31,8 @@
     <div class="banner error">
       <strong>Nessuna proposta per {{ missing_tables|length }} {{ "tabella" if missing_tables|length == 1 else "tabelle" }}:</strong>
       <span class="mono">{{ missing_tables|join(", ") }}</span>. Senza proposte queste tabelle non entrerebbero nel dataset.
+      {% if mapping_budget_skipped %}{{ mapping_budget_skipped|join(", ") }} {{ "è stata esclusa" if mapping_budget_skipped|length == 1 else "sono state escluse" }}
+      per restare nel limite di spesa di {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $: la rigenerazione ha un suo limite dello stesso importo.{% endif %}
       Puoi rigenerare le proposte solo per queste tabelle (gli oggetti e gli eventi già proposti restano e vengono riusati come riferimento).
       <div style="margin-top:10px"><button type="submit" name="action" value="regenerate_missing" class="secondary">Rigenera proposte per queste tabelle</button></div>
     </div>
@@ -89,7 +92,7 @@
                 {{ (r.confidence * 100)|round|int }}%
               </span>
               {% if r.based_on_template %}
-              <div class="tiny muted">template: {{ r.based_on_template }}</div>
+              <div class="tiny muted">fonte: {{ template_labels.get(r.based_on_template, r.based_on_template) }}</div>
               {% endif %}
             </td>
             <td class="rationale">{{ r.rationale }}</td>

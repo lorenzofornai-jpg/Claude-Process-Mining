@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.config import AI_MAPPER, AI_MAPPING_BUDGET_EUR, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
+from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
 from app.models import (
@@ -33,6 +33,7 @@ from app.models import (
     User,
 )
 from app import state
+from app.services.deterministic_mapping import TEMPLATE_LABELS
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.assessment import assessment_status, load_assessment, mapping_context
 from app.services.profiling import compact_for_mapping, profile_tables
@@ -543,7 +544,9 @@ def _run_ai_mapping(
         sess["dataset_label"] = f"{dataset_label} · AI Mapping Service: {mapper_label}"
         sess["mapping_rows"] = rows
         sess["mapping_missing_tables"] = _tables_without_proposals(tables_schema, rows)
-        sess["mapping_cost_eur"] = getattr(mapper, "spent_eur", None)
+        sess["mapping_cost_usd"] = getattr(mapper, "spent_usd", None)
+        sess["mapping_known_tables"] = getattr(mapper, "known_tables", [])
+        sess["mapping_budget_skipped"] = getattr(mapper, "budget_skipped", [])
         sess["mapping_status"] = "done"
     except Exception as exc:
         print(f"Generazione mapping fallita del tutto ({exc!r}).")
@@ -586,8 +589,9 @@ def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[s
             }
             rows.append(d)
         sess["mapping_missing_tables"] = _tables_without_proposals(tables, rows)
-        if getattr(mapper, "spent_eur", None) is not None:
-            sess["mapping_cost_eur"] = (sess.get("mapping_cost_eur") or 0) + mapper.spent_eur
+        if getattr(mapper, "spent_usd", None) is not None:
+            sess["mapping_cost_usd"] = (sess.get("mapping_cost_usd") or 0) + mapper.spent_usd
+            sess["mapping_budget_skipped"] = getattr(mapper, "budget_skipped", [])
     except Exception as exc:
         print(f"Rigenerazione proposte non riuscita ({exc!r}).")
     sess["mapping_status"] = "done"
@@ -672,7 +676,10 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "workspace_id": workspace_id,
             "context": sess["context"],
             "dataset_label": sess["dataset_label"],
-            "mapping_cost_eur": sess.get("mapping_cost_eur"), "mapping_budget_eur": AI_MAPPING_BUDGET_EUR,
+            "mapping_cost_usd": sess.get("mapping_cost_usd"), "mapping_budget_usd": AI_MAPPING_BUDGET_USD,
+            "mapping_known_tables": sess.get("mapping_known_tables") or [],
+            "mapping_budget_skipped": sess.get("mapping_budget_skipped") or [],
+            "template_labels": TEMPLATE_LABELS,
             "by_table": by_table,
             "tables_to_check": tables_to_check,
             "groups_by_table": groups_by_table,

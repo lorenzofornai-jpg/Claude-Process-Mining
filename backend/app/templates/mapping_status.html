@@ -18,13 +18,17 @@
   </p>
   {% if progress %}
   <ol class="mapping-steps">
+    <li class="is-done">✓ Riconosciute senza AI (dizionario SAP, catalogo), nessun costo:
+      <strong>{{ progress.known|length if progress.known else 0 }}</strong> {{ "tabella" if progress.known and progress.known|length == 1 else "tabelle" }}
+      {% if progress.known %}<div class="tiny muted">{{ progress.known|join(", ") }}</div>{% endif %}
+    </li>
     <li class="{{ 'is-done' if progress.phase != 'model' else 'is-running' }}">
       {% if progress.phase == 'model' %}<span class="spinner" aria-hidden="true"></span>{% else %}✓{% endif %}
-      Modello comune: oggetti ed eventi di tutte le tabelle
+      Modello comune con l'AI per le tabelle non riconosciute
     </li>
     <li class="{{ 'is-running' if progress.phase != 'model' else '' }}">
       {% if progress.phase != 'model' %}<span class="spinner" aria-hidden="true"></span>{% endif %}
-      Mapping colonna per colonna, tabelle in parallelo:
+      Mapping con l'AI delle tabelle non riconosciute, in parallelo:
       <strong>{{ progress.done|length }} di {{ progress.total }}</strong> completate
       {% if progress.phase == 'retry' %}<span class="tiny muted">(secondo tentativo per le tabelle rimaste)</span>{% endif %}
       {% if progress.done %}<div class="tiny muted">Fatte: {{ progress.done|join(", ") }}</div>{% endif %}
@@ -32,7 +36,7 @@
     </li>
   </ol>
   {% endif %}
-  <p class="tiny muted">{% if progress and progress.budget_eur %}Spesa AI finora € {{ "%.2f"|format(progress.spent_eur)|replace(".", ",") }} su un limite di € {{ "%.2f"|format(progress.budget_eur)|replace(".", ",") }} · {% endif %}In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
+  <p class="tiny muted">{% if progress and progress.budget_usd %}Spesa AI finora {{ "%.2f"|format(progress.spent_usd)|replace(".", ",") }} $ su un limite di {{ "%.2f"|format(progress.budget_usd)|replace(".", ",") }} $ · {% endif %}In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
     tabelle molto larghe richiedono più tempo. Se resta fermo sullo stesso punto per molti minuti, controlla
     nel terminale del server le righe «ClaudeAIMapper».{% endif %}</p>
   {% endif %}

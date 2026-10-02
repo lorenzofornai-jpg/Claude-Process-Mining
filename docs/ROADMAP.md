@@ -39,13 +39,19 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ **Mapping più veloce e visibile**: prima un modello comune breve (oggetti ed
   eventi di tutte le tabelle), poi una chiamata per tabella in parallelo con quel
   modello come vocabolario; la pagina di attesa mostra le tabelle fatte e in corso.
-- ✅ **Tetto di spesa del mapping AI** (default 0,50 € per elaborazione,
-  `AI_MAPPING_BUDGET_EUR`): limiti di output per chiamata calcolati prima di
+- ✅ **Mapping misto**: prima le regole (catalogo dei dataset già confermati,
+  dizionario delle tabelle SAP standard in `services/sap_dictionary.py`: P2P,
+  AP, AR, O2C), senza AI e senza costo; Claude solo per le tabelle non
+  riconosciute, con il modello già definito come vocabolario. Le 7 tabelle SAP
+  di esempio si mappano tutte senza Claude.
+- ✅ **Tetto di spesa del mapping AI** (default 0,50 $ per elaborazione,
+  `AI_MAPPING_BUDGET_USD`): limiti di output per chiamata calcolati prima di
   chiamare Claude, effort basso, risposta compatta (solo colonne utili, chiavi
-  corte); se il dataset è troppo grande si ferma prima di spendere. Costo
-  mostrato in attesa e in revisione.
-- ⬜ **Mapping misto**: regole + dizionario SAP open source per ciò che si
-  riconosce con certezza, Claude solo per le tabelle/colonne dubbie.
+  corte). Se non tutto ci sta si escludono le tabelle più grandi (rigenerabili
+  dalla revisione); costo mostrato in attesa e in revisione.
+- ⬜ Arricchire il dizionario SAP (VBFA/flusso documenti O2C, CDHDR/CDPOS
+  storico modifiche, MKPF, BKPF/BSEG) e collegare il pagamento alla fattura
+  (BSAK ↔ RBKP via AWKEY), oggi non supportato dal motore di trasformazione.
 - ✖ **Anteprima del processo e "KPI e analisi possibili"**: provate e tolte dal
   Modulo 1. Rallentavano la generazione del dataset e anticipavano ragionamenti
   che appartengono all'analisi. Dalla revisione si conferma e si genera il dataset.

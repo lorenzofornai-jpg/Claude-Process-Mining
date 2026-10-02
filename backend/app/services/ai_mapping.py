@@ -28,9 +28,9 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from app.config import AI_MAPPING_BUDGET_EUR, AI_MAPPING_EFFORT, ANTHROPIC_MODEL, USD_PER_EUR
+from app.config import AI_MAPPING_BUDGET_USD, AI_MAPPING_EFFORT, ANTHROPIC_MODEL
 from app.connectors.base import TableSchema
-from app.services import catalog
+from app.services import catalog, deterministic_mapping
 
 ID_LIKE_PATTERN = re.compile(r"(_number|_no|_id)$", re.IGNORECASE)
 
@@ -154,6 +154,25 @@ _TEMPLATE_RULES: dict[str, list[dict]] = {
 }
 
 
+def proposals_from_rules(table: TableSchema, rules: list[dict], based_on_template: str) -> list[MappingProposal]:
+    return [
+        MappingProposal(
+            source_table=table.name,
+            source_column=rule["col"],
+            ocel_element=rule["el"],
+            object_type=rule.get("object_type"),
+            event_type=rule.get("event_type"),
+            attribute_name=rule["col"] if "attribute" in rule["el"] else None,
+            qualifier=rule.get("qualifier"),
+            related_object_type=rule.get("related_object_type"),
+            confidence=rule["conf"],
+            rationale=rule["rationale"],
+            based_on_template=based_on_template,
+        )
+        for rule in rules
+    ]
+
+
 class HeuristicAIMapper(AIMapper):
     """Mock dell'AI Mapping Service: stessa interfaccia di un futuro ClaudeAIMapper."""
 
@@ -165,37 +184,12 @@ class HeuristicAIMapper(AIMapper):
     ) -> list[MappingProposal]:
         proposals: list[MappingProposal] = []
         for table in tables:
-            hint = catalog.lookup(table.name)
-            if hint and table.name in _TEMPLATE_RULES:
-                proposals.extend(self._from_template(table, _TEMPLATE_RULES[table.name], catalog.TEMPLATE_ID))
-                continue
-            dynamic = catalog.dynamic_lookup(table.name, [c.name for c in table.columns])
-            if dynamic:
-                _, rules = dynamic
-                proposals.extend(self._from_template(table, rules, catalog.LEARNED_TEMPLATE_ID))
-                continue
-            proposals.extend(self._generic_fallback(table))
-        return proposals
-
-    def _from_template(self, table: TableSchema, rules: list[dict], based_on_template: str) -> list[MappingProposal]:
-        out = []
-        for rule in rules:
-            out.append(
-                MappingProposal(
-                    source_table=table.name,
-                    source_column=rule["col"],
-                    ocel_element=rule["el"],
-                    object_type=rule.get("object_type"),
-                    event_type=rule.get("event_type"),
-                    attribute_name=rule["col"] if "attribute" in rule["el"] else None,
-                    qualifier=rule.get("qualifier"),
-                    related_object_type=rule.get("related_object_type"),
-                    confidence=rule["conf"],
-                    rationale=rule["rationale"],
-                    based_on_template=based_on_template,
-                )
-            )
-        return out
+            known = deterministic_mapping.rules_for(table, _TEMPLATE_RULES)
+            if known:
+                proposals.extend(proposals_from_rules(table, *known))
+            else:
+                proposals.extend(self._generic_fallback(table))
+        return deterministic_mapping.finalize(proposals, tables)
 
     def _generic_fallback(self, table: TableSchema) -> list[MappingProposal]:
         """Euristica generica per tabelle non presenti nel catalogo.
@@ -327,8 +321,10 @@ lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usat
   la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
 - event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
   tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi.
-Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi. Copri tutte le
-tabelle. Non inventare colonne. Risposta breve: niente spiegazioni.
+"already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
+(riconosciute senza AI): non ripeterlo, ma riusa ESATTAMENTE quei nomi quando una tabella si riferisce
+agli stessi oggetti. Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi.
+Copri tutte le tabelle ricevute. Non inventare colonne. Risposta breve: niente spiegazioni.
 """
 
 _MAPPING_SYSTEM_PROMPT = """\
@@ -408,11 +404,16 @@ def _profile_for_table(profile: dict | None, table: str) -> dict | None:
 class ClaudeAIMapper(AIMapper):
     """Implementazione reale via Anthropic API (stessa interfaccia del mock).
 
+    Metodo misto: le tabelle riconosciute con certezza (catalogo, dizionario
+    SAP standard) sono mappate senza AI; Claude riceve solo le altre, con il
+    modello gia' definito come vocabolario.
+
     Costo sotto controllo: prima di chiamare Claude si stima l'input di ogni
     chiamata e si assegna a ciascuna un limite di output (max_tokens) tale che
-    il costo massimo possibile dell'intero mapping stia nel tetto
-    AI_MAPPING_BUDGET_EUR. Se il dataset e' troppo grande per il tetto, si
-    ferma prima di spendere (MappingBudgetError)."""
+    il costo massimo possibile stia nel tetto AI_MAPPING_BUDGET_USD. Se non
+    tutte le tabelle ci stanno, le piu' grandi restano escluse (budget_skipped)
+    e si possono rigenerare dalla revisione; se non ci sta nulla e nulla e'
+    stato riconosciuto, si ferma prima di spendere (MappingBudgetError)."""
 
     PARALLEL_CALLS = 6
 
@@ -425,14 +426,12 @@ class ClaudeAIMapper(AIMapper):
         self._lock = threading.Lock()
         self.spent_usd = 0.0
         self.last_missing_tables: list[str] = []
+        self.budget_skipped: list[str] = []
+        self.known_tables: list[str] = []
 
     @property
     def budget_usd(self) -> float:
-        return AI_MAPPING_BUDGET_EUR * USD_PER_EUR
-
-    @property
-    def spent_eur(self) -> float:
-        return self.spent_usd / USD_PER_EUR
+        return AI_MAPPING_BUDGET_USD
 
     @staticmethod
     def _known_pattern_for(table_name: str, current_columns: list[str]) -> list[dict] | None:
@@ -473,7 +472,7 @@ class ClaudeAIMapper(AIMapper):
         print(
             f"ClaudeAIMapper: stop_reason={response.stop_reason}, token in/out="
             f"{response.usage.input_tokens}/{response.usage.output_tokens} (max {max_tokens}), "
-            f"spesa finora € {self.spent_eur:.3f}"
+            f"spesa finora $ {self.spent_usd:.3f}"
         )
         if response.stop_reason != "end_turn" or response.parsed_output is None:
             raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
@@ -502,9 +501,11 @@ class ClaudeAIMapper(AIMapper):
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     @staticmethod
-    def _skeleton_content(tables: list[TableSchema], context_profile: dict, descriptions: dict[str, str]) -> str:
+    def _skeleton_content(tables: list[TableSchema], context_profile: dict, descriptions: dict[str, str],
+                          vocabulary: dict | None = None) -> str:
         payload = {
             "process_context": context_profile,
+            "already_defined_model": vocabulary,
             "tables": [
                 {"name": t.name, "rows": t.row_count, "user_description": descriptions.get(t.name),
                  "columns": [f"{c.name}:{c.inferred_type}" for c in t.columns]}
@@ -514,6 +515,32 @@ class ClaudeAIMapper(AIMapper):
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     # ---- mapping -----------------------------------------------------------
+    def _plan(self, unknown: list[TableSchema], context_profile: dict, descriptions: dict[str, str],
+              vocabulary: dict | None, use_skeleton: bool) -> tuple[dict, dict, list[TableSchema]] | None:
+        """Limiti di output per tabella che garantiscono il tetto di spesa.
+        Se non ci stanno tutte, esclude le tabelle piu' grandi finche' ci stanno."""
+        candidates = sorted(unknown, key=lambda t: len(t.columns))
+        vocab_tokens = 1500 if use_skeleton else _tokens(json.dumps(vocabulary or {}))
+        while candidates:
+            skeleton = use_skeleton and len(candidates) > 1
+            sk_cost = self._cost(_tokens(_SKELETON_SYSTEM_PROMPT + self._skeleton_content(
+                candidates, context_profile, descriptions, vocabulary)), _SKELETON_MAX_TOKENS) if skeleton else 0.0
+            table_in = {
+                t.name: _tokens(_MAPPING_SYSTEM_PROMPT + self._table_content(t, context_profile, descriptions, None))
+                + vocab_tokens
+                for t in candidates
+            }
+            out_tokens = (self.budget_usd - sk_cost - self._cost(sum(table_in.values()), 0)) / self._price_out * 1_000_000
+            total_cols = sum(len(t.columns) for t in candidates) or 1
+            per_col = out_tokens / total_cols
+            if per_col >= _MIN_OUTPUT_PER_COLUMN:
+                max_out = {t.name: max(1024, min(32000, int(per_col * len(t.columns)))) for t in candidates}
+                print(f"ClaudeAIMapper: piano di spesa ≤ $ {self.budget_usd:.2f}, "
+                      f"~{int(per_col)} token di output per colonna su {len(candidates)} tabelle")
+                return table_in, max_out, candidates
+            candidates = candidates[:-1]  # esclude la tabella piu' grande
+        return None
+
     def propose_mapping(
         self,
         tables: list[TableSchema],
@@ -522,57 +549,72 @@ class ClaudeAIMapper(AIMapper):
         vocabulary: dict | None = None,
         progress=None,
     ) -> list[MappingProposal]:
-        """1. modello comune (chiamata breve) per avere nomi coerenti tra tabelle;
-        2. una chiamata per tabella, in parallelo, con un limite di output
-           calcolato dal tetto di spesa. Le tabelle non riuscite si ritentano solo
-           se il budget residuo lo consente; le altre finiscono in last_missing_tables."""
+        """1. mapping deterministico delle tabelle riconosciute (nessun costo);
+        2. modello comune per le altre (chiamata breve), partendo da quanto gia' definito;
+        3. una chiamata per tabella non riconosciuta, in parallelo, entro il tetto di spesa.
+        Le tabelle non riuscite si ritentano solo se il budget residuo lo consente."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         descriptions = table_descriptions or {}
         mappable = [t for t in tables if t.columns]
         report = progress or (lambda info: None)
-        state = {"phase": "model", "total": len(mappable), "done": [], "running": [],
-                 "budget_eur": AI_MAPPING_BUDGET_EUR, "spent_eur": 0.0}
+
+        # --- 1. deterministico
+        proposals: list[MappingProposal] = []
+        unknown: list[TableSchema] = []
+        for t in mappable:
+            known = deterministic_mapping.rules_for(t, _TEMPLATE_RULES)
+            if known:
+                proposals.extend(proposals_from_rules(t, *known))
+                self.known_tables.append(t.name)
+            else:
+                unknown.append(t)
+        print(f"ClaudeAIMapper: {len(self.known_tables)} tabelle riconosciute senza AI, {len(unknown)} a Claude")
+        if proposals and vocabulary is None:
+            vocabulary = _vocabulary_from(proposals)
+
+        state = {"phase": "model" if unknown else "tables", "total": len(mappable), "done": list(self.known_tables),
+                 "known": list(self.known_tables), "running": [], "budget_usd": self.budget_usd, "spent_usd": 0.0}
         report(dict(state))
 
-        # --- piano di spesa, prima di chiamare Claude
-        use_skeleton = vocabulary is None and len(mappable) > 1
-        sk_content = self._skeleton_content(mappable, context_profile, descriptions) if use_skeleton else ""
-        sk_cost = self._cost(_tokens(_SKELETON_SYSTEM_PROMPT + sk_content), _SKELETON_MAX_TOKENS) if use_skeleton else 0.0
-        # il vocabolario reale arriva dopo: lo si stima con un margine pari a una piccola risposta
-        vocab_tokens = 1500 if use_skeleton else _tokens(json.dumps(vocabulary or {}))
-        table_in = {
-            t.name: _tokens(_MAPPING_SYSTEM_PROMPT + self._table_content(t, context_profile, descriptions, None)) + vocab_tokens
-            for t in mappable
-        }
-        input_cost = self._cost(sum(table_in.values()), 0)
-        out_budget_tokens = (self.budget_usd - sk_cost - input_cost) / self._price_out * 1_000_000
-        total_cols = sum(len(t.columns) for t in mappable) or 1
-        per_col = out_budget_tokens / total_cols
-        if per_col < _MIN_OUTPUT_PER_COLUMN:
-            raise MappingBudgetError(
-                f"Con {len(mappable)} tabelle e {total_cols} colonne il mapping AI supererebbe il limite di "
-                f"€ {AI_MAPPING_BUDGET_EUR:.2f} per elaborazione. Carica meno tabelle (o solo le colonne "
-                f"che servono) e riprova; il limite si cambia con AI_MAPPING_BUDGET_EUR nel file .env."
-            )
-        max_out = {t.name: max(1024, min(32000, int(per_col * len(t.columns)))) for t in mappable}
-        print(f"ClaudeAIMapper: piano di spesa ≤ € {AI_MAPPING_BUDGET_EUR:.2f}, ~{int(per_col)} token di output per colonna")
+        if unknown:
+            # --- piano di spesa, prima di chiamare Claude
+            use_skeleton = len(unknown) > 1
+            plan = self._plan(unknown, context_profile, descriptions, vocabulary, use_skeleton)
+            if plan is None:
+                self.budget_skipped = [t.name for t in unknown]
+                if not proposals:
+                    total_cols = sum(len(t.columns) for t in unknown)
+                    raise MappingBudgetError(
+                        f"Con {len(unknown)} tabelle e {total_cols} colonne da mappare con l'AI il costo supererebbe "
+                        f"il limite di $ {self.budget_usd:.2f} per elaborazione. Carica meno tabelle (o solo le "
+                        f"colonne che servono) e riprova; il limite si cambia con AI_MAPPING_BUDGET_USD nel file .env."
+                    )
+                unknown = []
+            else:
+                table_in, max_out, unknown_in_budget = plan
+                self.budget_skipped = [t.name for t in unknown if t not in unknown_in_budget]
+                unknown = unknown_in_budget
 
-        if use_skeleton:
+        if unknown and len(unknown) > 1:
             try:
-                sk = self._stream(_SKELETON_SYSTEM_PROMPT, sk_content, _SKELETON_MAX_TOKENS, LLMSkeleton)
-                vocabulary = {
-                    "object_types": {o.name: {"table": o.table, "key_columns": o.key_columns} for o in sk.object_types},
-                    "event_types": [{"name": e.name, "table": e.table, "timestamp_column": e.timestamp_column}
-                                    for e in sk.event_types],
-                }
+                sk = self._stream(_SKELETON_SYSTEM_PROMPT,
+                                  self._skeleton_content(unknown, context_profile, descriptions, vocabulary),
+                                  _SKELETON_MAX_TOKENS, LLMSkeleton)
+                merged = dict(vocabulary or {})
+                objects = dict(merged.get("object_types", {}))
+                objects.update({o.name: {"table": o.table, "key_columns": o.key_columns} for o in sk.object_types})
+                events = list(merged.get("event_types", []))
+                events += [{"name": e.name, "table": e.table, "timestamp_column": e.timestamp_column}
+                           for e in sk.event_types]
+                vocabulary = {"object_types": objects, "event_types": events}
             except Exception as exc:
                 print(f"ClaudeAIMapper: modello comune non riuscito ({exc!r}), procedo senza.")
 
         def one(t: TableSchema) -> list[MappingProposal]:
             parsed = self._stream(_MAPPING_SYSTEM_PROMPT, self._table_content(t, context_profile, descriptions, vocabulary),
                                   max_out[t.name], LLMTableMapping)
-            known = {c.name for c in t.columns}
+            known_cols = {c.name for c in t.columns}
             return [
                 MappingProposal(
                     source_table=t.name, source_column=m.col, ocel_element=_ELEMENT[m.el],
@@ -581,30 +623,29 @@ class ClaudeAIMapper(AIMapper):
                     rationale=m.why or "Mapping evidente da nome e valori della colonna.",
                     based_on_template=None,
                 )
-                for m in parsed.columns if m.col in known
+                for m in parsed.columns if m.col in known_cols
             ]
 
-        proposals: list[MappingProposal] = []
-        pending = list(mappable)
+        pending = list(unknown)
         for attempt in (1, 2):
-            if attempt == 2:
+            skipped_now: list[TableSchema] = []
+            if attempt == 2 and pending:
                 # secondo tentativo solo se il budget residuo copre il caso peggiore
-                affordable = []
                 reserve = self.budget_usd - self.spent_usd
+                affordable = []
                 for t in pending:
                     worst = self._cost(table_in[t.name], max_out[t.name])
                     if worst <= reserve:
                         affordable.append(t)
                         reserve -= worst
-                pending_skipped = [t for t in pending if t not in affordable]
+                    else:
+                        skipped_now.append(t)
                 pending = affordable
-            else:
-                pending_skipped = []
             if not pending:
-                pending = pending_skipped
+                pending = skipped_now
                 break
             state.update(phase="tables" if attempt == 1 else "retry", running=[t.name for t in pending],
-                         spent_eur=round(self.spent_eur, 3))
+                         spent_usd=round(self.spent_usd, 3))
             report(dict(state))
             failed: list[TableSchema] = []
             with ThreadPoolExecutor(max_workers=min(self.PARALLEL_CALLS, len(pending))) as pool:
@@ -622,13 +663,27 @@ class ClaudeAIMapper(AIMapper):
                         state["done"] = state["done"] + [t.name]
                     else:
                         failed.append(t)
-                    state["spent_eur"] = round(self.spent_eur, 3)
+                    state["spent_usd"] = round(self.spent_usd, 3)
                     report(dict(state))
-            pending = failed + pending_skipped
-        self.last_missing_tables = [t.name for t in pending]
-        print(f"ClaudeAIMapper: mapping completato, spesa € {self.spent_eur:.3f} (limite € {AI_MAPPING_BUDGET_EUR:.2f})")
+            pending = failed + skipped_now
+        self.last_missing_tables = [t.name for t in pending] + self.budget_skipped
+        print(f"ClaudeAIMapper: mapping completato, spesa $ {self.spent_usd:.3f} (limite $ {self.budget_usd:.2f})")
         if not proposals:
             raise RuntimeError("Claude non ha prodotto nessuna proposta di mapping")
+        proposals = deterministic_mapping.finalize(proposals, mappable)
         order = {t.name: i for i, t in enumerate(mappable)}
         proposals.sort(key=lambda p: order.get(p.source_table, len(order)))
         return proposals
+
+
+def _vocabulary_from(proposals: list[MappingProposal]) -> dict:
+    """Modello gia' definito (oggetti con tabella e chiave, eventi con tabella e data)."""
+    objects: dict[str, dict] = {}
+    events: list[dict] = []
+    for p in proposals:
+        if p.ocel_element == "object_type.key" and p.object_type:
+            o = objects.setdefault(p.object_type, {"table": p.source_table, "key_columns": []})
+            o["key_columns"].append(p.source_column)
+        elif p.ocel_element == "event_type.timestamp" and p.event_type:
+            events.append({"name": p.event_type, "table": p.source_table, "timestamp_column": p.source_column})
+    return {"object_types": objects, "event_types": events}
