@@ -52,7 +52,36 @@
 {% endfor %}
 {% endif %}
 
-{% if caps.data_suggestions %}
+{% set requested = caps.requested_kpis or [] %}
+<h3 id="altri-kpi">Altri KPI</h3>
+<p class="tiny muted">Ti serve un KPI che non è in elenco? Scrivilo qui (anche più di uno, separati da virgola):
+  ti dico se potrai analizzarlo con questi dati e, se no, quali dati integrare.</p>
+<form class="kpi-ask" data-kpi-check action="/ingestion/preview/kpi-check" method="post">
+  <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+  <input type="text" name="kpi_request" maxlength="1000" value="{{ kpi_request or '' }}"
+         placeholder="es. % fatture contestate, costo per fattura, rispetto dei termini di pagamento" aria-label="KPI da verificare">
+  <button type="submit" class="secondary">Verifica</button>
+</form>
+{% if kpi_error %}<p class="tiny kpi-missing">{{ kpi_error }}</p>{% endif %}
+{% if requested %}
+<div class="kpi-verdicts">
+  {% for v in requested %}
+  <div class="kpi-verdict kpi-card kpi-{{ v.status }}">
+    <div class="kpi-head">
+      <strong>{{ v.name }}</strong>
+      <span class="sev {{ status_class[v.status] }}">{{ "potrai analizzarlo" if v.status == "possibile" else ("solo in parte" if v.status == "parziale" else "non analizzabile con questi dati") }}</span>
+    </div>
+    <div class="tiny">{{ v.explanation }}</div>
+    {% if v.status != "non_possibile" %}<div class="tiny muted"><span class="kpi-key">Si calcola con</span> {{ v.computed_as }}</div>{% endif %}
+    {% if v.missing %}<div class="tiny kpi-missing"><span class="kpi-key">Manca</span> {{ v.missing|join("; ") }}</div>{% endif %}
+    {% if v.integration_what %}<div class="tiny"><span class="kpi-key">Per analizzarlo integra</span> {{ v.integration_what }}{% if v.integration_how %} <span class="tiny muted">({{ v.integration_how }})</span>{% endif %}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% set requested_integrations = requested|selectattr("integration_what")|list %}
+{% if caps.data_suggestions or requested_integrations %}
 <h3>Dati da integrare per osservare più KPI</h3>
 <p class="tiny muted">Non sono obbligatori: indicano quali dati aggiuntivi renderebbero osservabili i KPI oggi mancanti o parziali. Decidi tu se richiederli.</p>
 <div class="issue-list">
@@ -65,7 +94,18 @@
     </div>
   </div>
   {% endfor %}
+  {% for v in requested_integrations %}
+  <div class="issue issue-info">
+    <div class="issue-head"><span class="sev sev-info">KPI richiesto</span> <strong>{{ v.integration_what }}</strong></div>
+    <div class="issue-body">
+      <div><span class="muted">A cosa serve:</span> rende analizzabile «{{ v.name }}»</div>
+      {% if v.integration_how %}<div><span class="muted">Come ottenerlo:</span> {{ v.integration_how }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
 </div>
+<p class="tiny muted">Se decidi di integrarli: estrai le tabelle indicate e ricarica tutte le tabelle insieme da «Carica tabelle»; il mapping verrà proposto anche per i nuovi dati.
+  Puoi anche generare subito il dataset con i dati attuali e integrare in un secondo momento.</p>
 {% endif %}
 
 <h3>Tipi di analisi</h3>

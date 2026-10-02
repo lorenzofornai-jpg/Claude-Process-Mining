@@ -42,13 +42,18 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   vista selezionabile (proposto l'oggetto che nasce con la prima attività).
   Varianti, tempi e colli di bottiglia restano all'analisi.
 - ✅ **KPI per il management**: Claude riconosce la famiglia di processo e
-  propone 10-14 KPI / casi di valore nel linguaggio del C-level, per obiettivo
+  propone i 5-7 KPI / casi di valore più rilevanti nel linguaggio del C-level, per obiettivo
   (cassa e capitale circolante, costi ed efficienza, rischio e compliance,
   clienti e fornitori, ricavi e margini): responsabile, domanda del management,
   valore, riferimento indicativo, cosa aggiunge il process mining, osservabile /
   in parte / non osservabile con i dati attuali e cosa manca. Libreria di
   riferimento in `services/business_kpi_library.py` (AR, AP, P2P, O2C), da
   arricchire con gli esempi degli utenti.
+- ✅ **Altri KPI su richiesta**: il data engineer scrive i KPI che gli servono
+  oltre a quelli proposti; Claude risponde solo se saranno analizzabili
+  (sì / in parte / no), cosa manca e quali dati integrare. I KPI richiesti
+  restano in anteprima, si rivalutano se cambia il mapping e si salvano con il
+  dataset.
 - ✅ **Cosa potrai analizzare** (una chiamata AI, in cache finché il mapping non
   cambia, salvata con il dataset): process overview, control tower, dettaglio
   KPI, root cause con stato possibile/parziale/non possibile; KPI con come si

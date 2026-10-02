@@ -36,7 +36,9 @@ from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.routers.assessment import assessment_status, load_assessment, mapping_context
 from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.preview import build_preview, summary_for_ai
-from app.services.analysis_capabilities import assess_capabilities, fallback_capabilities
+from app.services.analysis_capabilities import (
+    assess_capabilities, check_requested_kpis, fallback_capabilities, merge_requested,
+)
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
@@ -939,9 +941,54 @@ async def preview_capabilities(request: Request, workspace_id: str, refresh: int
                 print(f"Valutazione analisi possibili non riuscita ({exc!r}): uso la versione di base.")
         if caps is None:
             caps, source = fallback_capabilities(summary).model_dump(), "base"
+        # KPI chiesti in precedenza dal data engineer: si rivalutano sul mapping attuale
+        previous = [k["name"] for k in (cached or {}).get("data", {}).get("requested_kpis", [])]
+        caps["requested_kpis"] = []
+        if previous and source == "ai":
+            try:
+                check = await run_in_threadpool(check_requested_kpis, sess["context"], summary, "\n".join(previous))
+                caps["requested_kpis"] = [v.model_dump() for v in check.verdicts]
+            except Exception as exc:
+                print(f"Rivalutazione KPI richiesti non riuscita ({exc!r}).")
         sess["capabilities"] = {"signature": sess["preview_signature"], "data": caps, "source": source}
     return templates.TemplateResponse(
         "_capabilities.html", {"request": request, "caps": caps, "source": source, "workspace_id": workspace_id}
+    )
+
+
+@router.post("/ingestion/preview/kpi-check", response_class=HTMLResponse)
+async def preview_kpi_check(request: Request, workspace_id: str = Form(...), kpi_request: str = Form("")):
+    """Il data engineer chiede altri KPI oltre ai 5-7 proposti: per ognuno Claude dice
+    solo se sara' osservabile con questi dati e quali dati integrare altrimenti."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    cached = sess.get("capabilities")
+    summary = sess.get("preview_summary")
+    if summary is None or not cached or cached["signature"] != sess.get("preview_signature"):
+        return HTMLResponse('<p class="tiny muted">Anteprima cambiata: ricarica la pagina.</p>')
+    caps, source = cached["data"], cached["source"]
+    kpi_error = None
+    text = kpi_request.strip()[:1000]
+    if not text:
+        kpi_error = "Scrivi almeno un KPI da verificare."
+    elif AI_MAPPER != "claude":
+        kpi_error = "La verifica di altri KPI richiede l'AI, non attiva in questa installazione."
+    else:
+        try:
+            check = await run_in_threadpool(check_requested_kpis, sess["context"], summary, text)
+            caps["requested_kpis"] = merge_requested(
+                caps.get("requested_kpis", []), [v.model_dump() for v in check.verdicts]
+            )
+        except Exception as exc:
+            print(f"Verifica KPI richiesti non riuscita ({exc!r}).")
+            kpi_error = "Verifica non riuscita: riprova tra poco."
+    return templates.TemplateResponse(
+        "_capabilities.html", {
+            "request": request, "caps": caps, "source": source, "workspace_id": workspace_id,
+            "kpi_error": kpi_error, "kpi_request": text if kpi_error else "",
+        }
     )
 
 

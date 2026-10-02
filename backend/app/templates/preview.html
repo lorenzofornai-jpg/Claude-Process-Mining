@@ -120,6 +120,22 @@
         .catch(function () { box.innerHTML = '<p class="tiny muted">Valutazione non disponibile: ricarica la pagina per riprovare.</p>'; });
     }
     load(box.dataset.src);
+    box.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!form.matches("[data-kpi-check]")) return;
+      e.preventDefault();
+      var btn = form.querySelector("button");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Verifico…';
+      fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          box.innerHTML = html;
+          var target = document.getElementById("altri-kpi");
+          if (target) target.scrollIntoView({ block: "start" });
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = "Verifica"; });
+    });
     box.addEventListener("click", function (e) {
       if (e.target.matches("[data-refresh]")) {
         box.innerHTML = '<p class="tiny muted"><span class="spinner" aria-hidden="true"></span> Rivaluto…</p>';

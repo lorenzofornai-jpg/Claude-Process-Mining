@@ -5,7 +5,8 @@ legge modello (oggetti, eventi, attributi), statistiche dell'anteprima e
 assessment, e restituisce in forma strutturata:
 - casi d'uso (process overview, control tower, dettaglio KPI, root cause...)
   con stato possibile / parziale / non possibile e cosa manca;
-- KPI calcolabili e non, con definizione e dati mancanti;
+- 5-7 KPI di business calcolabili e non, con definizione e dati mancanti;
+  il data engineer puo' chiederne altri (check_requested_kpis: solo verdetto e dati da integrare);
 - dimensioni di analisi disponibili e quelle utili ma assenti;
 - suggerimenti di integrazione dati, con il beneficio di ciascuno.
 Senza AI (mapper euristico o errore) c'e' una versione deterministica ridotta.
@@ -89,13 +90,13 @@ Ricevi anche una libreria di riferimento di KPI di business per i processi piu' 
    tabelle SAP BSID/BSAD/KNA1 -> Accounts Receivable; EKKO/EKBE/RBKP -> Purchase-to-Pay; VBAK/LIKP/VBRK
    -> Order-to-Cash). Le informazioni dell'utente possono essere scarse: usa la tua conoscenza del
    processo per proporre comunque i KPI che contano.
-2. kpis: e' la parte piu' importante. 10-14 KPI / casi di valore che un C-level considera prioritari per
-   QUESTO processo, nel suo linguaggio e con i suoi obiettivi di miglioramento (capitale circolante,
+2. kpis: e' la parte piu' importante. Solo 5-7 KPI / casi di valore: i piu' rilevanti che un C-level
+   considera prioritari per QUESTO processo (gli altri li chiedera' il data engineer, se servono), nel suo linguaggio e con i suoi obiettivi di miglioramento (capitale circolante,
    costo per transazione, automazione, rischio, esperienza di clienti e fornitori, ricavi). Parti dalla
    libreria per la famiglia riconosciuta (es. per Accounts Receivable: DSO, touchless collection,
    payment terms mismatch...) e completala; NON limitarti a tempi di attraversamento e colli di
-   bottiglia: quelli sono strumenti, non obiettivi. Includi i KPI importanti NON osservabili con questi
-   dati: mostrano cosa manca. Per ognuno:
+   bottiglia: quelli sono strumenti, non obiettivi. Scegli per rilevanza, non per osservabilita': se un
+   KPI chiave NON e' osservabile con questi dati includilo comunque, mostra cosa manca. Per ognuno:
    - objective: l'obiettivo di business; name: il nome usato dal management; owner: chi lo segue;
    - executive_question: la domanda che si pone il C-level, in prima persona;
    - business_value: cosa vale migliorarlo, in termini economici/operativi concreti (es. "ogni giorno
@@ -146,6 +147,70 @@ def assess_capabilities(process_context: dict, model_summary: dict) -> Capabilit
     if response.stop_reason != "end_turn" or response.parsed_output is None:
         raise RuntimeError(f"valutazione non completata (stop_reason={response.stop_reason})")
     return response.parsed_output
+
+
+class KpiVerdict(BaseModel):
+    name: str                      # nome del KPI come lo usa il management
+    objective: BusinessObjective
+    status: Status
+    explanation: str               # perche' si', in parte o no, in una o due frasi
+    computed_as: str               # con quali eventi/attributi; per i non osservabili cosa servirebbe
+    missing: list[str]
+    integration_what: str          # dato da integrare per renderlo osservabile ("" se non serve)
+    integration_how: str           # dove si trova di solito (tabelle/campi del sistema)
+
+
+class KpiCheck(BaseModel):
+    verdicts: list[KpiVerdict]
+
+
+_CHECK_SYSTEM = """\
+Sei un partner di una societa' di consulenza esperto di process mining. Un data engineer sta per
+generare un dataset OCEL 2.0 e ti chiede se alcuni KPI aggiuntivi saranno analizzabili con questi dati.
+Ricevi nome del processo, assessment, modello di dati con statistiche dell'anteprima e i KPI richiesti
+(testo libero, anche piu' di uno). Per ciascun KPI richiesto restituisci un verdetto sintetico:
+- name: il nome corretto con cui lo conosce il management; objective: l'obiettivo di business;
+- status: possibile (osservabile con questi dati), parziale (solo in parte o con approssimazioni),
+  non_possibile;
+- explanation: una o due frasi, perche';
+- computed_as: con quali eventi/attributi del modello si calcola; se non osservabile cosa servirebbe;
+- missing: dati mancanti precisi (vuoto se possibile);
+- integration_what / integration_how: se non e' pienamente osservabile, quale dato integrare e dove si
+  trova di solito nel sistema dichiarato (es. SAP: tabella.campo); stringhe vuote se non serve.
+Se il testo non e' un KPI riconoscibile, interpretalo nel modo piu' plausibile per questo processo.
+Scrivi in italiano. Non inventare dati che non risultano dal modello.
+"""
+
+
+def check_requested_kpis(process_context: dict, model_summary: dict, requested: str) -> KpiCheck:
+    """Verdetto sintetico (osservabile / in parte / no + dati da integrare) sui KPI
+    che il data engineer chiede oltre a quelli proposti."""
+    import anthropic
+
+    client = anthropic.Anthropic()
+    payload = {
+        "process_name": process_context.get("process_name"),
+        "assessment": process_context.get("assessment"),
+        "dataset_model_and_preview": model_summary,
+        "requested_kpis": requested,
+    }
+    with client.messages.stream(
+        model=ANTHROPIC_MODEL,
+        max_tokens=8000,
+        system=_CHECK_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+        output_format=KpiCheck,
+    ) as stream:
+        response = stream.get_final_message()
+    if response.stop_reason != "end_turn" or response.parsed_output is None:
+        raise RuntimeError(f"verifica KPI non completata (stop_reason={response.stop_reason})")
+    return response.parsed_output
+
+
+def merge_requested(existing: list[dict], verdicts: list[dict]) -> list[dict]:
+    """Aggiunge i verdetti nuovi; un KPI richiesto di nuovo sostituisce il precedente."""
+    new_names = {v["name"].strip().lower() for v in verdicts}
+    return [k for k in existing if k["name"].strip().lower() not in new_names] + verdicts
 
 
 def fallback_capabilities(model_summary: dict) -> Capabilities:
