@@ -292,6 +292,38 @@ class LLMMappingResponse(BaseModel):
     proposals: list[LLMFieldMapping]
 
 
+class LLMSkeletonObject(BaseModel):
+    name: str
+    table: str
+    key_columns: list[str]
+
+
+class LLMSkeletonEvent(BaseModel):
+    name: str
+    table: str
+    timestamp_column: str
+
+
+class LLMSkeleton(BaseModel):
+    object_types: list[LLMSkeletonObject]
+    event_types: list[LLMSkeletonEvent]
+
+
+_SKELETON_SYSTEM_PROMPT = """\
+Sei l'AI Mapping Service di una piattaforma di process mining. Ricevi le tabelle sorgente di un
+processo (nomi, colonne, tipi, pochi valori di esempio, eventuale nota dell'utente) e il contesto di
+processo (assessment, attivita' BPMN, data_profile con chiavi candidate, colonne data e relazioni
+misurate). Definisci SOLO lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra'
+poi usato tabella per tabella per mappare ogni colonna:
+- object_types: i tipi di oggetto di business (nome in inglese, leggibile, es. "Purchase Order"),
+  la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
+- event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
+  tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi.
+Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi. Copri tutte le
+tabelle. Non inventare colonne. Risposta breve: niente spiegazioni.
+"""
+
+
 _MAPPING_SYSTEM_PROMPT = """\
 Sei l'AI Mapping Service di una piattaforma enterprise di process mining.
 Il tuo compito e' proporre, per OGNI colonna di OGNI tabella sorgente ricevuta, un mapping verso un
@@ -365,18 +397,6 @@ Regole:
 """
 
 
-def _merge_vocabulary(base: dict | None, proposals: list[MappingProposal]) -> dict:
-    """Tipi di oggetto (con tabella di definizione) e di evento gia' proposti."""
-    objects = dict((base or {}).get("object_types", {}))
-    events = list((base or {}).get("event_types", []))
-    for p in proposals:
-        if p.ocel_element == "object_type.key" and p.object_type:
-            objects.setdefault(p.object_type, p.source_table)
-        if p.event_type and p.ocel_element in ("event_type.timestamp",) and p.event_type not in events:
-            events.append(p.event_type)
-    return {"object_types": objects, "event_types": events}
-
-
 class ClaudeAIMapper(AIMapper):
     """Implementazione reale via Anthropic API (stessa interfaccia del mock)."""
 
@@ -413,11 +433,12 @@ class ClaudeAIMapper(AIMapper):
             for r in rules
         ]
 
-    # Limite di output per singola chiamata. Con dataset di molte tabelle/colonne
-    # (es. 7 tabelle SAP) 16k token non bastavano: la risposta veniva tagliata o
-    # il modello si concentrava su poche tabelle. Con lo streaming il limite alto
-    # non rischia timeout HTTP.
-    MAX_OUTPUT_TOKENS = 64000
+    # Limite di output per singola chiamata (una tabella alla volta: basta e avanza
+    # anche per tabelle SAP con molte colonne; lo streaming evita timeout HTTP).
+    MAX_OUTPUT_TOKENS = 32000
+    # Chiamate per tabella in parallelo. Una sola chiamata per tutte le tabelle
+    # produceva decine di migliaia di token in sequenza (10-20 minuti su 7 tabelle SAP).
+    PARALLEL_CALLS = 6
 
     def propose_mapping(
         self,
@@ -425,37 +446,105 @@ class ClaudeAIMapper(AIMapper):
         context_profile: dict,
         table_descriptions: dict[str, str] | None = None,
         vocabulary: dict | None = None,
+        progress=None,
     ) -> list[MappingProposal]:
-        """Proposte per tutte le tabelle, con controllo di copertura: le tabelle
-        rimaste senza nessuna proposta vengono richieste di nuovo, una alla volta,
-        passando come vocabolario i tipi di oggetto/evento gia' proposti (cosi' i
-        nomi restano coerenti). Le tabelle ancora scoperte finiscono in
-        self.last_missing_tables, che la revisione mostra all'utente."""
+        """Due fasi:
+        1. modello comune (una chiamata breve): tipi di oggetto con chiave e tabella
+           che li definisce, tipi di evento con tabella e colonna data - cosi' i nomi
+           restano coerenti tra tabelle anche se le chiamate successive sono separate;
+        2. una chiamata per tabella, in parallelo, con il modello comune come vocabolario.
+        Le tabelle senza proposte vengono richieste una seconda volta; quelle ancora
+        scoperte finiscono in self.last_missing_tables, che la revisione mostra.
+        progress(dict) riceve l'avanzamento per la pagina di attesa."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         table_descriptions = table_descriptions or {}
         mappable = [t for t in tables if t.columns]
         self.last_missing_tables: list[str] = []
-        proposals: list[MappingProposal] = []
-        try:
-            proposals = self._call(mappable, context_profile, table_descriptions, vocabulary)
-        except Exception as exc:
-            # anche una risposta tagliata/non valida non deve far perdere tutto:
-            # si passa alla richiesta tabella per tabella qui sotto
-            print(f"ClaudeAIMapper: chiamata unica non riuscita ({exc!r}), procedo tabella per tabella.")
-        covered = {p.source_table for p in proposals}
-        for t in [t for t in mappable if t.name not in covered]:
-            vocab = _merge_vocabulary(vocabulary, proposals)
+        report = progress or (lambda info: None)
+        state = {"phase": "model", "total": len(mappable), "done": [], "running": []}
+        report(dict(state))
+
+        if vocabulary is None and len(mappable) > 1:
             try:
-                extra = [p for p in self._call([t], context_profile, table_descriptions, vocab) if p.source_table == t.name]
+                vocabulary = self._skeleton(mappable, context_profile, table_descriptions)
             except Exception as exc:
-                print(f"ClaudeAIMapper: nessuna proposta per la tabella {t.name} ({exc!r}).")
-                extra = []
-            if extra:
-                proposals.extend(extra)
-            else:
-                self.last_missing_tables.append(t.name)
+                print(f"ClaudeAIMapper: modello comune non riuscito ({exc!r}), procedo senza.")
+
+        def one(t: TableSchema) -> list[MappingProposal]:
+            return [p for p in self._call([t], context_profile, table_descriptions, vocabulary) if p.source_table == t.name]
+
+        proposals: list[MappingProposal] = []
+        pending = list(mappable)
+        for attempt in (1, 2):
+            if not pending:
+                break
+            state.update(phase="tables" if attempt == 1 else "retry", running=[t.name for t in pending])
+            report(dict(state))
+            failed: list[TableSchema] = []
+            with ThreadPoolExecutor(max_workers=min(self.PARALLEL_CALLS, len(pending))) as pool:
+                futures = {pool.submit(one, t): t for t in pending}
+                for fut in as_completed(futures):
+                    t = futures[fut]
+                    try:
+                        extra = fut.result()
+                    except Exception as exc:
+                        print(f"ClaudeAIMapper: tabella {t.name} non riuscita al tentativo {attempt} ({exc!r}).")
+                        extra = []
+                    state["running"] = [n for n in state["running"] if n != t.name]
+                    if extra:
+                        proposals.extend(extra)
+                        state["done"] = state["done"] + [t.name]
+                    else:
+                        failed.append(t)
+                    report(dict(state))
+            pending = failed
+        self.last_missing_tables = [t.name for t in pending]
         if not proposals:
             raise RuntimeError("Claude non ha prodotto nessuna proposta di mapping")
+        # ordine stabile per tabella, come caricate
+        order = {t.name: i for i, t in enumerate(mappable)}
+        proposals.sort(key=lambda p: order.get(p.source_table, len(order)))
         return proposals
+
+    def _skeleton(self, tables: list[TableSchema], context_profile: dict, table_descriptions: dict[str, str]) -> dict:
+        """Modello comune del dataset in una chiamata breve (solo nomi, chiavi e date)."""
+        payload = {
+            "process_context": context_profile,
+            "tables": [
+                {
+                    "name": t.name,
+                    "row_count": t.row_count,
+                    "user_description": table_descriptions.get(t.name),
+                    "columns": [
+                        {"name": c.name, "inferred_type": c.inferred_type, "sample_values": c.sample_values[:3],
+                         "distinct_ratio": c.distinct_ratio}
+                        for c in t.columns
+                    ],
+                }
+                for t in tables
+            ],
+        }
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=16000,
+            system=_SKELETON_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+            output_format=LLMSkeleton,
+        ) as stream:
+            response = stream.get_final_message()
+        print(
+            f"ClaudeAIMapper: modello comune su {len(tables)} tabelle, stop_reason={response.stop_reason}, "
+            f"token in/out={response.usage.input_tokens}/{response.usage.output_tokens}"
+        )
+        if response.stop_reason != "end_turn" or response.parsed_output is None:
+            raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
+        sk = response.parsed_output
+        return {
+            "object_types": {o.name: {"table": o.table, "key_columns": o.key_columns} for o in sk.object_types},
+            "event_types": [{"name": e.name, "table": e.table, "timestamp_column": e.timestamp_column}
+                            for e in sk.event_types],
+        }
 
     def _call(
         self,
@@ -498,10 +587,11 @@ class ClaudeAIMapper(AIMapper):
             payload["already_defined_model"] = vocabulary
             instructions = (
                 "Questa richiesta riguarda SOLO le tabelle in \"tables\": proponi il mapping di ogni loro "
-                "colonna. \"already_defined_model\" elenca tipi di oggetto (con la tabella che li definisce) "
-                "e tipi di evento gia' proposti per le altre tabelle dello stesso dataset: riusa ESATTAMENTE "
+                "colonna. \"already_defined_model\" e' il modello comune dell'intero dataset (tipi di oggetto "
+                "con la tabella che li definisce, tipi di evento con tabella e colonna data): riusa ESATTAMENTE "
                 "quei nomi per object_type, related_object_type ed event_type quando si riferiscono alla "
-                "stessa cosa, cosi' i collegamenti tra tabelle restano coerenti.\n\n" + instructions
+                "stessa cosa, cosi' i collegamenti tra tabelle restano coerenti. Le colonne che referenziano "
+                "oggetti definiti in altre tabelle diventano e2o_relationship verso quei tipi.\n\n" + instructions
             )
 
         with self._client.messages.stream(

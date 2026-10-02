@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 import uuid
 import zipfile
 from dataclasses import asdict, replace
@@ -489,6 +490,8 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"
     sess["mapping_error"] = None
+    sess["mapping_started"] = time.time()
+    sess["mapping_progress"] = None
 
     background_tasks.add_task(
         _run_ai_mapping, sess, _without_empty_columns(tables_schema), sess["tables_data"], sess["dataset_label"], descriptions
@@ -505,7 +508,13 @@ def _run_ai_mapping(
     try:
         mapper, mapper_label = _get_ai_mapper()
         try:
-            proposals = mapper.propose_mapping(tables_schema, sess["context"], table_descriptions)
+            if isinstance(mapper, ClaudeAIMapper):
+                proposals = mapper.propose_mapping(
+                    tables_schema, sess["context"], table_descriptions,
+                    progress=lambda info: sess.__setitem__("mapping_progress", info),
+                )
+            else:
+                proposals = mapper.propose_mapping(tables_schema, sess["context"], table_descriptions)
         except Exception as exc:
             if mapper_label == "euristica mock":
                 raise
@@ -560,7 +569,10 @@ def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[s
             "event_types": sorted({r["event_type"] for r in rows if r.get("event_type")}),
         }
         if isinstance(mapper, ClaudeAIMapper):
-            proposals = mapper.propose_mapping(tables, sess["context"], table_descriptions, vocabulary)
+            proposals = mapper.propose_mapping(
+                tables, sess["context"], table_descriptions, vocabulary,
+                progress=lambda info: sess.__setitem__("mapping_progress", info),
+            )
         else:
             proposals = mapper.propose_mapping(tables, sess["context"], table_descriptions)
         next_id = max((r["row_id"] for r in rows), default=-1) + 1
@@ -599,6 +611,8 @@ def mapping_status_page(request: Request, workspace_id: str):
         "mapping_status.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
             "error": sess.get("mapping_error") if status == "error" else None, "step": 2,
+            "progress": sess.get("mapping_progress"),
+            "elapsed_min": int((time.time() - sess.get("mapping_started", time.time())) // 60),
         }
     )
 
@@ -858,6 +872,8 @@ async def submit_review(
         tables = [t for t in schema if t.name in missing]
         if tables:
             sess["mapping_status"] = "pending"
+            sess["mapping_started"] = time.time()
+            sess["mapping_progress"] = None
             background_tasks.add_task(_run_regenerate_missing, sess, tables, sess.get("table_descriptions", {}))
             return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)

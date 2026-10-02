@@ -11,12 +11,30 @@
     <a href="/ingestion/upload?workspace_id={{ workspace_id }}">← Torna al caricamento file</a>
   </p>
   {% else %}
-  <h1>Fase E — Sto generando le proposte di mapping AI…</h1>
+  <h1>Sto generando le proposte di mapping…</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong>. Su dataset con molte tabelle/colonne
-    può richiedere fino a un minuto: questa pagina si aggiorna da sola
-    ogni pochi secondi, non serve ricaricarla o tornare indietro.
+    Processo: <strong>{{ context.process_name }}</strong>. La pagina si aggiorna da sola ogni pochi secondi:
+    non serve ricaricarla o tornare indietro.
   </p>
+  {% if progress %}
+  <ol class="mapping-steps">
+    <li class="{{ 'is-done' if progress.phase != 'model' else 'is-running' }}">
+      {% if progress.phase == 'model' %}<span class="spinner" aria-hidden="true"></span>{% else %}✓{% endif %}
+      Modello comune: oggetti ed eventi di tutte le tabelle
+    </li>
+    <li class="{{ 'is-running' if progress.phase != 'model' else '' }}">
+      {% if progress.phase != 'model' %}<span class="spinner" aria-hidden="true"></span>{% endif %}
+      Mapping colonna per colonna, tabelle in parallelo:
+      <strong>{{ progress.done|length }} di {{ progress.total }}</strong> completate
+      {% if progress.phase == 'retry' %}<span class="tiny muted">(secondo tentativo per le tabelle rimaste)</span>{% endif %}
+      {% if progress.done %}<div class="tiny muted">Fatte: {{ progress.done|join(", ") }}</div>{% endif %}
+      {% if progress.running and progress.phase != 'model' %}<div class="tiny muted">In corso: {{ progress.running|join(", ") }}</div>{% endif %}
+    </li>
+  </ol>
+  {% endif %}
+  <p class="tiny muted">In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
+    tabelle molto larghe richiedono più tempo. Se resta fermo sullo stesso punto per molti minuti, controlla
+    nel terminale del server le righe «ClaudeAIMapper».{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -483,3 +483,6 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 .kpi-verdicts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
 @media (max-width: 820px) { .kpi-verdicts { grid-template-columns: minmax(0, 1fr); } }
 #altri-kpi { scroll-margin-top: 64px; }
+.mapping-steps { margin: 16px 0 8px; padding-left: 20px; display: grid; gap: 10px; }
+.mapping-steps li { color: var(--muted); }
+.mapping-steps li.is-running, .mapping-steps li.is-done { color: var(--text); }

@@ -49,6 +49,9 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   in parte / non osservabile con i dati attuali e cosa manca. Libreria di
   riferimento in `services/business_kpi_library.py` (AR, AP, P2P, O2C), da
   arricchire con gli esempi degli utenti.
+- ✅ **Mapping più veloce e visibile**: prima un modello comune breve (oggetti ed
+  eventi di tutte le tabelle), poi una chiamata per tabella in parallelo con quel
+  modello come vocabolario; la pagina di attesa mostra le tabelle fatte e in corso.
 - ✅ **Altri KPI su richiesta**: il data engineer scrive i KPI che gli servono
   oltre a quelli proposti; Claude risponde solo se saranno analizzabili
   (sì / in parte / no), cosa manca e quali dati integrare. I KPI richiesti
