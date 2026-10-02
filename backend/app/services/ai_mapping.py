@@ -365,6 +365,18 @@ Regole:
 """
 
 
+def _merge_vocabulary(base: dict | None, proposals: list[MappingProposal]) -> dict:
+    """Tipi di oggetto (con tabella di definizione) e di evento gia' proposti."""
+    objects = dict((base or {}).get("object_types", {}))
+    events = list((base or {}).get("event_types", []))
+    for p in proposals:
+        if p.ocel_element == "object_type.key" and p.object_type:
+            objects.setdefault(p.object_type, p.source_table)
+        if p.event_type and p.ocel_element in ("event_type.timestamp",) and p.event_type not in events:
+            events.append(p.event_type)
+    return {"object_types": objects, "event_types": events}
+
+
 class ClaudeAIMapper(AIMapper):
     """Implementazione reale via Anthropic API (stessa interfaccia del mock)."""
 
@@ -401,13 +413,57 @@ class ClaudeAIMapper(AIMapper):
             for r in rules
         ]
 
+    # Limite di output per singola chiamata. Con dataset di molte tabelle/colonne
+    # (es. 7 tabelle SAP) 16k token non bastavano: la risposta veniva tagliata o
+    # il modello si concentrava su poche tabelle. Con lo streaming il limite alto
+    # non rischia timeout HTTP.
+    MAX_OUTPUT_TOKENS = 64000
+
     def propose_mapping(
         self,
         tables: list[TableSchema],
         context_profile: dict,
         table_descriptions: dict[str, str] | None = None,
+        vocabulary: dict | None = None,
     ) -> list[MappingProposal]:
+        """Proposte per tutte le tabelle, con controllo di copertura: le tabelle
+        rimaste senza nessuna proposta vengono richieste di nuovo, una alla volta,
+        passando come vocabolario i tipi di oggetto/evento gia' proposti (cosi' i
+        nomi restano coerenti). Le tabelle ancora scoperte finiscono in
+        self.last_missing_tables, che la revisione mostra all'utente."""
         table_descriptions = table_descriptions or {}
+        mappable = [t for t in tables if t.columns]
+        self.last_missing_tables: list[str] = []
+        proposals: list[MappingProposal] = []
+        try:
+            proposals = self._call(mappable, context_profile, table_descriptions, vocabulary)
+        except Exception as exc:
+            # anche una risposta tagliata/non valida non deve far perdere tutto:
+            # si passa alla richiesta tabella per tabella qui sotto
+            print(f"ClaudeAIMapper: chiamata unica non riuscita ({exc!r}), procedo tabella per tabella.")
+        covered = {p.source_table for p in proposals}
+        for t in [t for t in mappable if t.name not in covered]:
+            vocab = _merge_vocabulary(vocabulary, proposals)
+            try:
+                extra = [p for p in self._call([t], context_profile, table_descriptions, vocab) if p.source_table == t.name]
+            except Exception as exc:
+                print(f"ClaudeAIMapper: nessuna proposta per la tabella {t.name} ({exc!r}).")
+                extra = []
+            if extra:
+                proposals.extend(extra)
+            else:
+                self.last_missing_tables.append(t.name)
+        if not proposals:
+            raise RuntimeError("Claude non ha prodotto nessuna proposta di mapping")
+        return proposals
+
+    def _call(
+        self,
+        tables: list[TableSchema],
+        context_profile: dict,
+        table_descriptions: dict[str, str],
+        vocabulary: dict | None,
+    ) -> list[MappingProposal]:
         payload = {
             "process_context": context_profile,
             "tables": [
@@ -437,20 +493,34 @@ class ClaudeAIMapper(AIMapper):
                 for t in tables
             ],
         }
+        instructions = "Schema delle tabelle sorgente e contesto di processo:\n\n"
+        if vocabulary:
+            payload["already_defined_model"] = vocabulary
+            instructions = (
+                "Questa richiesta riguarda SOLO le tabelle in \"tables\": proponi il mapping di ogni loro "
+                "colonna. \"already_defined_model\" elenca tipi di oggetto (con la tabella che li definisce) "
+                "e tipi di evento gia' proposti per le altre tabelle dello stesso dataset: riusa ESATTAMENTE "
+                "quei nomi per object_type, related_object_type ed event_type quando si riferiscono alla "
+                "stessa cosa, cosi' i collegamenti tra tabelle restano coerenti.\n\n" + instructions
+            )
 
-        response = self._client.messages.parse(
+        with self._client.messages.stream(
             model=self._model,
-            max_tokens=16000,
+            max_tokens=self.MAX_OUTPUT_TOKENS,
             system=_MAPPING_SYSTEM_PROMPT,
             messages=[{
                 "role": "user",
-                "content": (
-                    "Schema delle tabelle sorgente e contesto di processo:\n\n"
-                    + json.dumps(payload, indent=2, ensure_ascii=False)
-                ),
+                "content": instructions + json.dumps(payload, indent=2, ensure_ascii=False),
             }],
             output_format=LLMMappingResponse,
+        ) as stream:
+            response = stream.get_final_message()
+        print(
+            f"ClaudeAIMapper: {len(tables)} tabelle, stop_reason={response.stop_reason}, "
+            f"token in/out={response.usage.input_tokens}/{response.usage.output_tokens}"
         )
+        if response.stop_reason != "end_turn" or response.parsed_output is None:
+            raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
 
         parsed = response.parsed_output
         return [

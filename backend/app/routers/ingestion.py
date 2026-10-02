@@ -533,11 +533,49 @@ def _run_ai_mapping(
 
         sess["dataset_label"] = f"{dataset_label} · AI Mapping Service: {mapper_label}"
         sess["mapping_rows"] = rows
+        sess["mapping_missing_tables"] = _tables_without_proposals(tables_schema, rows)
         sess["mapping_status"] = "done"
     except Exception as exc:
         print(f"Generazione mapping fallita del tutto ({exc!r}).")
         sess["mapping_status"] = "error"
         sess["mapping_error"] = str(exc)
+
+
+def _tables_without_proposals(tables_schema: list, rows: list[dict]) -> list[str]:
+    covered = {r["source_table"] for r in rows}
+    return [t.name for t in tables_schema if t.columns and t.name not in covered]
+
+
+def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[str, str]) -> None:
+    """Rigenera le proposte solo per le tabelle rimaste scoperte, riusando come
+    vocabolario i tipi di oggetto/evento gia' presenti, e le aggiunge alla revisione."""
+    try:
+        mapper, _ = _get_ai_mapper()
+        rows = sess["mapping_rows"]
+        vocabulary = {
+            "object_types": {r["object_type"]: r["source_table"] for r in rows
+                             if r["ocel_element"] == "object_type.key" and r.get("object_type")},
+            "event_types": sorted({r["event_type"] for r in rows if r.get("event_type")}),
+        }
+        if isinstance(mapper, ClaudeAIMapper):
+            proposals = mapper.propose_mapping(tables, sess["context"], table_descriptions, vocabulary)
+        else:
+            proposals = mapper.propose_mapping(tables, sess["context"], table_descriptions)
+        next_id = max((r["row_id"] for r in rows), default=-1) + 1
+        for i, p in enumerate(proposals):
+            d = asdict(p)
+            d["row_id"] = next_id + i
+            d["status"] = "proposed"
+            d["original_ai_proposal"] = {
+                "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
+                "attribute_name": p.attribute_name, "qualifier": p.qualifier,
+                "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
+            }
+            rows.append(d)
+        sess["mapping_missing_tables"] = _tables_without_proposals(tables, rows)
+    except Exception as exc:
+        print(f"Rigenerazione proposte non riuscita ({exc!r}).")
+    sess["mapping_status"] = "done"
 
 
 @router.get("/ingestion/mapping-status", response_class=HTMLResponse)
@@ -570,9 +608,9 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
         return denied
     sess = _load_session(user.id, workspace_id)
     rows = sess.get("mapping_rows")
-    if rows is None:
-        # Non ancora pronto (o mai partito, es. link diretto): manda alla pagina
-        # di attesa invece di un errore, e' quella che sa cosa fare in ogni stato.
+    if rows is None or sess.get("mapping_status") == "pending":
+        # Non ancora pronto (o mai partito, es. link diretto, o rigenerazione in corso):
+        # manda alla pagina di attesa, e' quella che sa cosa fare in ogni stato.
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     for r in rows:
         r["target_label"] = _target_label(r)
@@ -620,6 +658,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "by_table": by_table,
             "tables_to_check": tables_to_check,
             "groups_by_table": groups_by_table,
+            "missing_tables": _tables_without_proposals(_without_empty_columns(sess.get("tables_schema_objs") or []), rows),
             "model": _model_summary(rows, order),
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
@@ -746,7 +785,9 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
 
 
 @router.post("/ingestion/review")
-async def submit_review(request: Request, workspace_id: str = Form(...), action: str = Form(...)):
+async def submit_review(
+    request: Request, background_tasks: BackgroundTasks, workspace_id: str = Form(...), action: str = Form(...)
+):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
@@ -808,6 +849,16 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
                 r["status"] = "confirmed"
         anchor = f"grp-{kind}-{name.replace(' ', '_')}"
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}#{anchor}", status_code=303)
+
+    if action == "regenerate_missing":
+        schema = _without_empty_columns(sess["tables_schema_objs"])
+        missing = set(_tables_without_proposals(schema, rows))
+        tables = [t for t in schema if t.name in missing]
+        if tables:
+            sess["mapping_status"] = "pending"
+            background_tasks.add_task(_run_regenerate_missing, sess, tables, sess.get("table_descriptions", {}))
+            return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
     if action == "preview":
         return RedirectResponse(url=f"/ingestion/preview?workspace_id={workspace_id}", status_code=303)

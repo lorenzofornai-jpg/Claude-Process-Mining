@@ -25,6 +25,15 @@
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
     <input type="hidden" name="return_to" value="">
 
+    {% if missing_tables %}
+    <div class="banner error">
+      <strong>Nessuna proposta per {{ missing_tables|length }} {{ "tabella" if missing_tables|length == 1 else "tabelle" }}:</strong>
+      <span class="mono">{{ missing_tables|join(", ") }}</span>. Senza proposte queste tabelle non entrerebbero nel dataset.
+      Puoi rigenerare le proposte solo per queste tabelle (gli oggetti e gli eventi già proposti restano e vengono riusati come riferimento).
+      <div style="margin-top:10px"><button type="submit" name="action" value="regenerate_missing" class="secondary">Rigenera proposte per queste tabelle</button></div>
+    </div>
+    {% endif %}
+
     <h2 id="modello">Modello proposto</h2>
     <div class="model-grid">
       <div>
