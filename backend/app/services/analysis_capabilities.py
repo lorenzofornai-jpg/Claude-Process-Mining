@@ -31,12 +31,18 @@ class UseCase(BaseModel):
     missing: list[str]
 
 
+KpiArea = Literal["tempi", "qualita_conformita", "efficienza_automazione", "finanza_costi", "servizio_controparti"]
+
+
 class Kpi(BaseModel):
+    area: KpiArea
     name: str
+    why_relevant: str        # perche' conta per il business, una frase
     definition: str
-    computed_as: str
-    status: Status
-    missing: list[str]
+    computed_as: str         # con quali eventi/attributi del modello
+    status: Status           # possibile = osservabile con questi dati
+    missing: list[str]       # dati che servirebbero (vuoto se osservabile)
+    breakdowns: list[str]    # dimensioni disponibili con cui scomporlo
 
 
 class Dimension(BaseModel):
@@ -86,14 +92,21 @@ statistiche reali dell'anteprima (casi, eventi per tipo, passaggi frequenti, tem
 attributi candidati a dimensioni di analisi (con numero di valori distinti ed esempi).
 
 Valuta in modo ONESTO cosa sara' possibile analizzare con QUESTI dati, per un utente di business:
-- use_cases: includi sempre process_overview (performance: tempi, volumi, colli di bottiglia,
+- use_cases: breve (4-5 voci); includi sempre process_overview (performance: tempi, volumi, colli di bottiglia,
   filtrabili per dimensioni), control_tower (KPI principali), kpi_detail (dettaglio per KPI/caso d'uso),
   root_cause (analisi delle cause rispetto alle dimensioni disponibili) e, se sensato, conformance.
   status = possibile solo se eventi e attributi necessari ci sono davvero; parziale se manca qualcosa
   ma si ottiene un risultato utile; non_possibile altrimenti. In missing scrivi cosa manca in concreto.
-- kpis: 6-10 KPI rilevanti per il processo (usa gli esempi di riferimento come ispirazione, adattali);
-  computed_as spiega con quali eventi/attributi del modello si calcola; per quelli non calcolabili
-  indica in missing i dati necessari.
+- kpis: e' la parte piu' importante. Elenca 12-18 KPI TIPICI E RILEVANTI per questo processo, come
+  li userebbe un process owner o un controller, coprendo le aree: tempi, qualita_conformita,
+  efficienza_automazione, finanza_costi, servizio_controparti (usa solo le aree sensate per il
+  processo; gli esempi di riferimento sono ispirazione, non un elenco da copiare). Includi anche i
+  KPI importanti che NON sono osservabili con questi dati: servono a capire cosa manca.
+  Per ognuno: why_relevant (perche' conta, una frase concreta), definition, computed_as (con quali
+  eventi/attributi del modello si calcola; per i non osservabili cosa servirebbe), status
+  (possibile = osservabile con questi dati, parziale = solo in parte o con approssimazioni,
+  non_possibile), missing (dati mancanti precisi), breakdowns (dimensioni DISPONIBILI con cui
+  scomporlo, max 4). Ordina per area e, dentro l'area, per rilevanza.
 - dimensions: le dimensioni di filtro disponibili (dagli attributi candidati, con nome leggibile e
   source "Tipo.attributo") E quelle tipiche del processo che mancano (available=false), es. per il P2P
   categoria merceologica, area geografica del fornitore, area/organizzazione del buyer, tipo documento.
@@ -118,13 +131,14 @@ def assess_capabilities(process_context: dict, model_summary: dict) -> Capabilit
         "dataset_model_and_preview": model_summary,
         "reference_kpi_examples": REFERENCE_KPIS,
     }
-    response = client.messages.parse(
+    with client.messages.stream(
         model=ANTHROPIC_MODEL,
-        max_tokens=12000,
+        max_tokens=32000,
         system=_SYSTEM,
         messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
         output_format=Capabilities,
-    )
+    ) as stream:
+        response = stream.get_final_message()
     if response.stop_reason != "end_turn" or response.parsed_output is None:
         raise RuntimeError(f"valutazione non completata (stop_reason={response.stop_reason})")
     return response.parsed_output
@@ -149,9 +163,11 @@ def fallback_capabilities(model_summary: dict) -> Capabilities:
                     what_you_can_do="Confronto di tempi e varianti tra i valori delle dimensioni disponibili.",
                     missing=[] if dims else ["attributi descrittivi (categorie, organizzazione, controparte)"]),
         ],
-        kpis=[Kpi(name="Tempo di attraversamento", definition="Tempo dal primo all'ultimo evento di ogni caso",
+        kpis=[Kpi(area="tempi", name="Tempo di attraversamento",
+                  why_relevant="Misura quanto dura il processo dall'inizio alla fine per ogni caso.",
+                  definition="Tempo dal primo all'ultimo evento di ogni caso",
                   computed_as=f"{activities[0]} → {activities[-1]}" if has_flow else "—",
-                  status="possibile" if has_flow else "non_possibile", missing=[])],
+                  status="possibile" if has_flow else "non_possibile", missing=[], breakdowns=dim_names[:4])],
         dimensions=[Dimension(name=d["attribute"], source=d["attribute"], available=True,
                               note=f"{d['distinct_values']} valori, es. {', '.join(map(str, d['examples'][:3]))}") for d in dims],
         data_suggestions=[],

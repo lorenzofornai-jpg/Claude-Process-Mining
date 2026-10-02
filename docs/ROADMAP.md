@@ -36,10 +36,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   oggetto (chiave) e di evento (data, collegamenti) con "Accetta tutto /
   Rifiuta" per gruppo; il dettaglio per colonna è richiuso, aperto solo per le
   tabelle con proposte incerte.
-- ✅ **Anteprima del processo** prima di confermare (senza AI): casi, eventi,
-  varianti, durata mediana e 90° percentile, percorso più frequente, attività
-  e passaggi con attese mediane, collo di bottiglia, un caso reale passo per
-  passo, dimensioni di analisi disponibili; punto di vista selezionabile.
+- ✅ **Anteprima del processo** prima di confermare (senza AI), volutamente
+  ridotta a ciò che serve a verificare il mapping: casi, eventi, attività
+  riconosciute con volumi, un caso reale, dimensioni disponibili; punto di
+  vista selezionabile (proposto l'oggetto che nasce con la prima attività).
+  Varianti, tempi e colli di bottiglia restano all'analisi.
+- ✅ **KPI tipici del processo** (12-18, per area: tempi, qualità e conformità,
+  efficienza e automazione, finanza e costi, servizio e controparti) con perché
+  contano, definizione, come si calcolano, osservabile / in parte / non
+  osservabile con i dati attuali, cosa manca e dimensioni per scomporli.
 - ✅ **Cosa potrai analizzare** (una chiamata AI, in cache finché il mapping non
   cambia, salvata con il dataset): process overview, control tower, dettaglio
   KPI, root cause con stato possibile/parziale/non possibile; KPI con come si

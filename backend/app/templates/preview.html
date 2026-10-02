@@ -4,9 +4,9 @@
   <h1>Anteprima del processo</h1>
   <p class="muted">
     Processo: <strong>{{ context.process_name }}</strong>. Questo è il processo che risulta dai dati caricati con il
-    mapping attuale (incluse le proposte non ancora decise, escluse quelle rifiutate), calcolato senza AI.
-    Se qualcosa non torna — attività mancanti, passaggi impossibili, tempi assurdi — torna alla revisione e correggi
-    il mapping prima di generare il dataset.
+    mapping attuale (incluse le proposte non ancora decise, escluse quelle rifiutate). Serve a verificare che il
+    mapping sia giusto — attività attese, volumi plausibili, un caso reale che abbia senso — e a capire quali KPI
+    potrai osservare. Se qualcosa non torna, torna alla revisione prima di generare il dataset.
   </p>
 
   {% if pending_count %}
@@ -32,86 +32,45 @@
         {% endfor %}
       </select>
     </label>
-    <span class="tiny muted">Proposto l'oggetto collegato al maggior numero di attività. In un dataset object-centric puoi
-      analizzare il processo da più punti di vista.</span>
+    <span class="tiny muted">Proposto l'oggetto che nasce con la prima attività del processo. In un dataset object-centric
+      puoi leggere il processo da più punti di vista.</span>
   </form>
 
   <div class="stat-row">
     <div class="stat"><span class="stat-value">{{ preview.case_count }}</span><span class="stat-label">casi ({{ preview.case_type }})</span></div>
     <div class="stat"><span class="stat-value">{{ preview.events_total }}</span><span class="stat-label">eventi</span></div>
     <div class="stat"><span class="stat-value">{{ preview.activities|length }}</span><span class="stat-label">attività</span></div>
-    <div class="stat"><span class="stat-value">{{ preview.variant_count }}</span><span class="stat-label">varianti</span></div>
-    <div class="stat"><span class="stat-value">{{ preview.throughput.median }}</span><span class="stat-label">durata mediana di un caso (90%: {{ preview.throughput.p90 }})</span></div>
+    <div class="stat"><span class="stat-value">{{ preview.dimensions|length }}</span><span class="stat-label">dimensioni di analisi</span></div>
   </div>
 
-  <h2 id="analisi">Cosa potrai analizzare con questi dati</h2>
+  <h2 id="analisi">KPI e analisi possibili con questi dati</h2>
   <div id="capabilities" data-src="/ingestion/preview/capabilities?workspace_id={{ workspace_id }}">
     <p class="tiny muted"><span class="spinner" aria-hidden="true"></span> Sto valutando quali analisi saranno possibili con questi dati…</p>
   </div>
 
 
-  {% if preview.variants %}
-  <h2>Percorso più frequente</h2>
-  <div class="flow">
-    {% for step in preview.variants[0].steps %}
-      <span class="flow-step">{{ step }}</span>{% if not loop.last %}<span class="flow-arrow" aria-hidden="true">→</span>{% endif %}
+  <h2>Attività riconosciute</h2>
+  <p class="tiny muted">Verifica che ci siano tutte le attività che ti aspetti e che i volumi siano plausibili.
+    Tempi, varianti e colli di bottiglia li analizzerai dopo, sul dataset generato.</p>
+  <table class="bar-table activities-only">
+    {% for a in preview.activities %}
+    <tr title="{{ a.name }}: {{ a.events }} eventi, presente nel {{ a.case_pct }}% dei casi">
+      <td class="bar-label">{{ a.name }}</td>
+      <td class="bar-cell"><div class="bar" style="width: {{ a.bar_pct }}%"></div></td>
+      <td class="bar-value">{{ a.events }}<span class="muted"> eventi · {{ a.case_pct }}% dei casi</span></td>
+    </tr>
     {% endfor %}
-  </div>
-  <p class="tiny muted">Seguito dal {{ preview.variants[0].pct }}% dei casi. Altre varianti più frequenti:</p>
-  <ul class="variant-list tiny">
-    {% for v in preview.variants[1:] %}
-    <li><strong>{{ v.pct }}%</strong> ({{ v.count }}) · {{ v.steps|join(" → ") }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-
-  <div class="preview-grid">
-    <section>
-      <h2>Attività</h2>
-      <p class="tiny muted">In ordine di posizione tipica nel processo. Barra = numero di eventi.</p>
-      <table class="bar-table">
-        {% for a in preview.activities %}
-        <tr title="{{ a.name }}: {{ a.events }} eventi, presente nel {{ a.case_pct }}% dei casi">
-          <td class="bar-label">{{ a.name }}
-            {% if a.is_start %}<span class="tag">inizio</span>{% endif %}{% if a.is_end %}<span class="tag">fine</span>{% endif %}
-          </td>
-          <td class="bar-cell"><div class="bar" style="width: {{ a.bar_pct }}%"></div></td>
-          <td class="bar-value">{{ a.events }}<span class="muted"> · {{ a.case_pct }}% casi</span></td>
-        </tr>
-        {% endfor %}
-      </table>
-    </section>
-    <section>
-      <h2>Passaggi principali</h2>
-      <p class="tiny muted">Da un'attività alla successiva nello stesso caso. Barra = frequenza; a destra l'attesa mediana.</p>
-      <table class="bar-table">
-        {% for e in preview.edges %}
-        <tr title="{{ e.from }} → {{ e.to }}: {{ e.count }} volte, attesa mediana {{ e.median }}">
-          <td class="bar-label">{{ e.from }} → {{ e.to }}
-            {% if e.is_bottleneck %}<span class="sev sev-attenzione">⏱ collo di bottiglia</span>{% endif %}
-            {% if e.is_loop %}<span class="tag">ripetizione</span>{% endif %}
-          </td>
-          <td class="bar-cell"><div class="bar {{ 'bar-warn' if e.is_bottleneck else '' }}" style="width: {{ e.bar_pct }}%"></div></td>
-          <td class="bar-value">{{ e.count }}<span class="muted"> · {{ e.median }}</span></td>
-        </tr>
-        {% endfor %}
-      </table>
-      {% if preview.bottleneck %}
-      <p class="tiny">Collo di bottiglia: tra <strong>{{ preview.bottleneck.from }}</strong> e <strong>{{ preview.bottleneck.to }}</strong>
-        passano in mediana <strong>{{ preview.bottleneck.median }}</strong> (il passaggio frequente con l'attesa più lunga).</p>
-      {% endif %}
-    </section>
-  </div>
+  </table>
 
   {% if preview.example %}
-  <h2>Un caso reale, passo per passo</h2>
+  <h2>Un caso reale, per verifica</h2>
   <p class="tiny muted mono">{{ preview.example.object_id }}</p>
   <div class="table-scroll">
   <table class="admin-table">
-    <thead><tr><th>Attività</th><th>Quando</th><th>Attesa dal passo precedente</th></tr></thead>
+    <thead><tr><th>Attività</th><th>Quando</th></tr></thead>
     <tbody>
       {% for s in preview.example.steps %}
-      <tr><td>{{ s.activity }}</td><td class="tiny">{{ s.time }}</td><td class="tiny">{{ s.wait or "—" }}</td></tr>
+      <tr><td>{{ s.activity }}</td><td class="tiny">{{ s.time }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

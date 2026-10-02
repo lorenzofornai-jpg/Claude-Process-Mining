@@ -42,9 +42,31 @@ def _pct(values: list[float], q: float) -> float | None:
     return s[min(len(s) - 1, int(round(q * (len(s) - 1))))]
 
 
-def choose_case_type(ocel: dict) -> str | None:
-    """Oggetto principale proposto: quello collegato al maggior numero di tipi di
-    evento (a parita', a piu' eventi)."""
+def choose_case_type(ocel: dict, rows: list[dict] | None = None) -> str | None:
+    """Oggetto principale proposto: quello che "nasce" con la prima attivita' del
+    processo (definito nella stessa tabella da cui viene la data di quell'evento,
+    es. l'ordine d'acquisto con "Create Purchase Order"); a parita' quello con la
+    chiave piu' semplice (la testata, non la riga). Se non si trova, l'oggetto
+    collegato al maggior numero di tipi di evento (a parita', a piu' eventi).
+    Evita di proporre controparti come il fornitore, collegate a tutto ma che
+    non rappresentano il caso."""
+    if rows and ocel["events"]:
+        times: dict[str, list[str]] = defaultdict(list)
+        for e in ocel["events"]:
+            times[e["type"]].append(e["time"])
+        by_median = sorted(times, key=lambda t: sorted(times[t])[len(times[t]) // 2])
+        ts_table = {r["event_type"]: r["source_table"] for r in rows if r["ocel_element"] == "event_type.timestamp"}
+        keys: dict[str, list[str]] = defaultdict(list)
+        key_table: dict[str, str] = {}
+        for r in rows:
+            if r["ocel_element"] == "object_type.key" and r.get("object_type"):
+                keys[r["object_type"]].append(r["source_column"])
+                key_table[r["object_type"]] = r["source_table"]
+        present = {o["type"] for o in ocel["objects"]}
+        for activity in by_median:
+            born_here = [t for t, tab in key_table.items() if tab == ts_table.get(activity) and t in present]
+            if born_here:
+                return min(born_here, key=lambda t: (len(keys[t]), t))
     obj_type = {o["id"]: o["type"] for o in ocel["objects"]}
     event_types_per_obj_type: dict[str, set] = defaultdict(set)
     events_per_obj_type: Counter = Counter()
@@ -62,7 +84,7 @@ def build_preview(tables_data: dict, rows: list[dict], case_type: str | None = N
     objects_by_type = Counter(o["type"] for o in ocel["objects"])
     events_by_type = Counter(e["type"] for e in ocel["events"])
     case_types = sorted(objects_by_type)
-    case_type = case_type if case_type in objects_by_type else choose_case_type(ocel)
+    case_type = case_type if case_type in objects_by_type else choose_case_type(ocel, rows)
 
     obj_type = {o["id"]: o["type"] for o in ocel["objects"]}
     traces: dict[str, list[dict]] = defaultdict(list)

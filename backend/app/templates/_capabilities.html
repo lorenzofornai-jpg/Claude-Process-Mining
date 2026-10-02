@@ -1,61 +1,52 @@
-{% set status_label = {"possibile": "possibile", "parziale": "parziale", "non_possibile": "non possibile"} %}
+{% set status_label = {"possibile": "osservabile", "parziale": "in parte", "non_possibile": "non osservabile"} %}
 {% set status_class = {"possibile": "sev-ok", "parziale": "sev-attenzione", "non_possibile": "sev-bloccante"} %}
-{% set area_label = {"process_overview": "Process overview", "control_tower": "Control tower", "kpi_detail": "Dettaglio KPI",
-                     "root_cause": "Root cause analysis", "conformance": "Conformità", "altro": "Altro"} %}
+{% set area_label = {"tempi": "Tempi", "qualita_conformita": "Qualità e conformità", "efficienza_automazione": "Efficienza e automazione",
+                     "finanza_costi": "Finanza e costi", "servizio_controparti": "Servizio e controparti"} %}
+{% set uc_label = {"process_overview": "Process overview", "control_tower": "Control tower", "kpi_detail": "Dettaglio KPI",
+                   "root_cause": "Root cause analysis", "conformance": "Conformità", "altro": "Altro"} %}
+{% set uc_status = {"possibile": "possibile", "parziale": "parziale", "non_possibile": "non possibile"} %}
+
 <div class="banner {{ 'ok' if source == 'ai' else 'warning' }}">{{ caps.summary }}</div>
 
-<div class="usecase-grid">
-  {% for u in caps.use_cases %}
-  <div class="usecase">
-    <div class="usecase-head">
-      <span class="tiny muted">{{ area_label.get(u.area, u.area) }}</span>
-      <span class="sev {{ status_class[u.status] }}">{{ status_label[u.status] }}</span>
+{% if caps.kpis %}
+{% set n_ok = caps.kpis|selectattr("status", "equalto", "possibile")|list|length %}
+{% set n_part = caps.kpis|selectattr("status", "equalto", "parziale")|list|length %}
+{% set n_no = caps.kpis|selectattr("status", "equalto", "non_possibile")|list|length %}
+<h3>KPI tipici del processo</h3>
+<p class="tiny muted">I KPI che un process owner userebbe per questo processo e quali potrai osservare con i dati caricati.</p>
+<div class="kpi-summary">
+  <div class="kpi-count"><span class="stat-value">{{ caps.kpis|length }}</span><span class="stat-label">KPI rilevanti</span></div>
+  <div class="kpi-count"><span class="stat-value">{{ n_ok }}</span><span class="stat-label"><span class="sev sev-ok">osservabili</span></span></div>
+  <div class="kpi-count"><span class="stat-value">{{ n_part }}</span><span class="stat-label"><span class="sev sev-attenzione">in parte</span></span></div>
+  <div class="kpi-count"><span class="stat-value">{{ n_no }}</span><span class="stat-label"><span class="sev sev-bloccante">non osservabili</span></span></div>
+</div>
+
+{% for area in ["tempi", "qualita_conformita", "efficienza_automazione", "finanza_costi", "servizio_controparti"] %}
+{% set kpis = caps.kpis|selectattr("area", "equalto", area)|list %}
+{% if kpis %}
+<h4 class="kpi-area">{{ area_label[area] }}</h4>
+<div class="kpi-list">
+  {% for k in kpis %}
+  <div class="kpi-card kpi-{{ k.status }}">
+    <div class="kpi-head">
+      <strong>{{ k.name }}</strong>
+      <span class="sev {{ status_class[k.status] }}">{{ status_label[k.status] }}</span>
     </div>
-    <strong>{{ u.title }}</strong>
-    <p class="tiny">{{ u.what_you_can_do }}</p>
-    {% if u.missing %}<p class="tiny muted">Manca: {{ u.missing|join("; ") }}</p>{% endif %}
+    <div class="tiny">{{ k.why_relevant }}</div>
+    <div class="tiny muted"><span class="kpi-key">Definizione</span> {{ k.definition }}</div>
+    <div class="tiny muted"><span class="kpi-key">{{ "Si calcola con" if k.status != "non_possibile" else "Servirebbe" }}</span> {{ k.computed_as }}</div>
+    {% if k.missing %}<div class="tiny"><span class="kpi-key">Manca</span> {{ k.missing|join("; ") }}</div>{% endif %}
+    {% if k.breakdowns and k.status != "non_possibile" %}<div class="tiny muted"><span class="kpi-key">Per</span> {{ k.breakdowns|join(", ") }}</div>{% endif %}
   </div>
   {% endfor %}
 </div>
-
-{% if caps.kpis %}
-<h3>KPI per la control tower</h3>
-<div class="table-scroll">
-<table class="admin-table">
-  <thead><tr><th>KPI</th><th>Come si calcola</th><th>Stato</th><th>Cosa manca</th></tr></thead>
-  <tbody>
-    {% for k in caps.kpis %}
-    <tr>
-      <td><strong>{{ k.name }}</strong><div class="tiny muted">{{ k.definition }}</div></td>
-      <td class="tiny">{{ k.computed_as }}</td>
-      <td><span class="sev {{ status_class[k.status] }}">{{ status_label[k.status] }}</span></td>
-      <td class="tiny muted">{{ k.missing|join("; ") or "—" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
+{% endif %}
+{% endfor %}
 {% endif %}
 
-{% set avail = caps.dimensions|selectattr("available")|list %}
-{% set missing_dims = caps.dimensions|rejectattr("available")|list %}
-<h3>Dimensioni per filtrare le analisi</h3>
-<div class="dim-columns">
-  <div>
-    <p class="tiny muted">Disponibili</p>
-    {% for d in avail %}<div class="dim"><span class="sev sev-ok">✓</span> <strong>{{ d.name }}</strong>{% if d.source %} <span class="mono tiny muted">{{ d.source }}</span>{% endif %}<div class="tiny muted">{{ d.note }}</div></div>
-    {% else %}<p class="tiny muted">Nessuna.</p>{% endfor %}
-  </div>
-  <div>
-    <p class="tiny muted">Utili ma assenti nei dati</p>
-    {% for d in missing_dims %}<div class="dim"><span class="sev sev-attenzione">—</span> <strong>{{ d.name }}</strong><div class="tiny muted">{{ d.note }}</div></div>
-    {% else %}<p class="tiny muted">Nessuna segnalata.</p>{% endfor %}
-  </div>
-</div>
-
 {% if caps.data_suggestions %}
-<h3>Integrazioni di dati consigliate</h3>
-<p class="tiny muted">Non sono obbligatorie: indicano quali dati aggiuntivi sbloccherebbero analisi oggi non possibili o parziali. Decidi tu se richiederli.</p>
+<h3>Dati da integrare per osservare più KPI</h3>
+<p class="tiny muted">Non sono obbligatori: indicano quali dati aggiuntivi renderebbero osservabili KPI oggi mancanti o parziali. Decidi tu se richiederli.</p>
 <div class="issue-list">
   {% for s in caps.data_suggestions %}
   <div class="issue {{ 'issue-attenzione' if s.priority == 'alta' else 'issue-info' }}">
@@ -69,7 +60,38 @@
 </div>
 {% endif %}
 
+<h3>Tipi di analisi</h3>
+<div class="usecase-grid">
+  {% for u in caps.use_cases %}
+  <div class="usecase">
+    <div class="usecase-head">
+      <span class="tiny muted">{{ uc_label.get(u.area, u.area) }}</span>
+      <span class="sev {{ status_class[u.status] }}">{{ uc_status[u.status] }}</span>
+    </div>
+    <strong>{{ u.title }}</strong>
+    <p class="tiny">{{ u.what_you_can_do }}</p>
+    {% if u.missing %}<p class="tiny muted">Manca: {{ u.missing|join("; ") }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% set avail = caps.dimensions|selectattr("available")|list %}
+{% set missing_dims = caps.dimensions|rejectattr("available")|list %}
+<h3>Dimensioni per filtrare</h3>
+<div class="dim-columns">
+  <div>
+    <p class="tiny muted">Disponibili</p>
+    {% for d in avail %}<div class="dim"><span class="sev sev-ok">✓</span> <strong>{{ d.name }}</strong>{% if d.source %} <span class="mono tiny muted">{{ d.source }}</span>{% endif %}<div class="tiny muted">{{ d.note }}</div></div>
+    {% else %}<p class="tiny muted">Nessuna.</p>{% endfor %}
+  </div>
+  <div>
+    <p class="tiny muted">Utili ma assenti nei dati</p>
+    {% for d in missing_dims %}<div class="dim"><span class="sev sev-attenzione">—</span> <strong>{{ d.name }}</strong><div class="tiny muted">{{ d.note }}</div></div>
+    {% else %}<p class="tiny muted">Nessuna segnalata.</p>{% endfor %}
+  </div>
+</div>
+
 <p class="tiny muted">
-  {% if source == 'ai' %}Valutazione AI basata sul modello e sull'anteprima qui sopra: verrà salvata insieme al dataset.{% else %}Valutazione di base senza AI.{% endif %}
+  {% if source == 'ai' %}Valutazione AI basata sul mapping e sui dati di questa anteprima: verrà salvata insieme al dataset.{% else %}Valutazione di base senza AI.{% endif %}
   <button type="button" class="link-button" data-refresh>Rivaluta</button>
 </p>

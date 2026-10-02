@@ -901,7 +901,9 @@ def preview_page(request: Request, workspace_id: str, case: str | None = None):
     if rows is None:
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     used = _preview_rows(rows)
-    preview = build_preview(sess["tables_data"], used, case or sess.get("preview_case"))
+    if case:  # scelta esplicita dell'utente: resta finche' non la cambia
+        sess["preview_case_user"] = case
+    preview = build_preview(sess["tables_data"], used, case or sess.get("preview_case_user"))
     sess["preview_case"] = preview["case_type"]
     sess["preview_summary"] = summary_for_ai(preview, used)
     sess["preview_signature"] = _rows_signature(used, preview["case_type"])
