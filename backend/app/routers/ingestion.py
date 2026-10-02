@@ -35,6 +35,8 @@ from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.routers.assessment import assessment_status, load_assessment, mapping_context
 from app.services.profiling import compact_for_mapping, profile_tables
+from app.services.preview import build_preview, summary_for_ai
+from app.services.analysis_capabilities import assess_capabilities, fallback_capabilities
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
@@ -578,6 +580,11 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
     by_table: dict[str, list[dict]] = {}
     for r in rows:
         by_table.setdefault(r["source_table"], []).append(r)
+    # tabelle da aprire subito: quelle con proposte ancora da decidere a confidence bassa
+    tables_to_check = {
+        r["source_table"] for r in rows
+        if r["status"] == "proposed" and r["confidence"] < AUTO_ACCEPT_CONFIDENCE_THRESHOLD
+    }
 
     pending_count = sum(1 for r in rows if r["status"] == "proposed")
 
@@ -599,6 +606,8 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "context": sess["context"],
             "dataset_label": sess["dataset_label"],
             "by_table": by_table,
+            "tables_to_check": tables_to_check,
+            "model": _model_summary(rows),
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
             "ocel_elements": VALID_OCEL_ELEMENTS,
@@ -606,6 +615,55 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "step": 3,
         },
     )
+
+
+def _row_group(r: dict) -> tuple[str, str] | None:
+    """Gruppo del modello a cui appartiene una riga di mapping: un tipo di oggetto
+    (chiave e attributi) o un tipo di evento (timestamp, attributi, collegamenti)."""
+    el = r["ocel_element"]
+    if el.startswith("object_type") and r.get("object_type"):
+        return ("obj", r["object_type"])
+    if (el.startswith("event_type") or el == "e2o_relationship") and r.get("event_type"):
+        return ("evt", r["event_type"])
+    return None
+
+
+def _model_summary(rows: list[dict]) -> dict:
+    """Il modello proposto visto dall'alto: per ogni tipo di oggetto/evento le sue
+    righe di mapping, cosi' l'utente decide per gruppo invece che colonna per colonna."""
+    groups: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        g = _row_group(r)
+        if g is None:
+            continue
+        d = groups.setdefault(g, {
+            "kind": g[0], "name": g[1], "tables": [], "keys": [], "timestamps": [], "links": [],
+            "attributes": 0, "total": 0, "pending": 0, "low": 0, "rejected": 0, "min_conf": 1.0,
+        })
+        if r["source_table"] not in d["tables"]:
+            d["tables"].append(r["source_table"])
+        d["total"] += 1
+        d["min_conf"] = min(d["min_conf"], r["confidence"])
+        if r["status"] == "rejected":
+            d["rejected"] += 1
+            continue
+        if r["status"] == "proposed":
+            d["pending"] += 1
+            if r["confidence"] < AUTO_ACCEPT_CONFIDENCE_THRESHOLD:
+                d["low"] += 1
+        el = r["ocel_element"]
+        if el == "object_type.key":
+            d["keys"].append(r["source_column"])
+        elif el == "event_type.timestamp":
+            d["timestamps"].append(f"{r['source_table']}.{r['source_column']}")
+        elif el == "e2o_relationship" and r.get("related_object_type"):
+            if r["related_object_type"] not in d["links"]:
+                d["links"].append(r["related_object_type"])
+        else:
+            d["attributes"] += 1
+    objects = sorted((g for g in groups.values() if g["kind"] == "obj"), key=lambda g: g["name"])
+    events = sorted((g for g in groups.values() if g["kind"] == "evt"), key=lambda g: g["name"])
+    return {"objects": objects, "events": events}
 
 
 @router.post("/ingestion/review")
@@ -656,6 +714,18 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
     if action == "save":
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
+    # decisione per gruppo del modello: "group_accept|obj|PurchaseOrder"
+    if action.startswith(("group_accept|", "group_reject|")):
+        verb, kind, name = action.split("|", 2)
+        new_status = "confirmed" if verb == "group_accept" else "rejected"
+        for r in rows:
+            if _row_group(r) == (kind, name) and (r["status"] == "proposed" or new_status == "rejected"):
+                r["status"] = new_status
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}#modello", status_code=303)
+
+    if action == "preview":
+        return RedirectResponse(url=f"/ingestion/preview?workspace_id={workspace_id}", status_code=303)
+
     if action == "finalize":
         still_pending = [r for r in rows if r["status"] == "proposed"]
         if still_pending:
@@ -666,6 +736,74 @@ async def submit_review(request: Request, workspace_id: str = Form(...), action:
         return RedirectResponse(url=f"/ingestion/result?workspace_id={workspace_id}", status_code=303)
 
     return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+
+
+def _preview_rows(rows: list[dict]) -> list[dict]:
+    """Righe usate per l'anteprima: tutto tranne i rifiuti (anche le proposte non
+    ancora decise, cosi' l'anteprima e' utile anche a meta' revisione)."""
+    return [r for r in rows if r["status"] != "rejected"]
+
+
+def _rows_signature(rows: list[dict], case_type: str | None) -> str:
+    import hashlib
+    key = json.dumps(
+        [[r["source_table"], r["source_column"], r["ocel_element"], r.get("object_type"), r.get("event_type"),
+          r.get("attribute_name"), r.get("related_object_type")] for r in rows] + [case_type],
+        ensure_ascii=False,
+    )
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()
+
+
+@router.get("/ingestion/preview", response_class=HTMLResponse)
+def preview_page(request: Request, workspace_id: str, case: str | None = None):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    rows = sess.get("mapping_rows")
+    if rows is None:
+        return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+    used = _preview_rows(rows)
+    preview = build_preview(sess["tables_data"], used, case or sess.get("preview_case"))
+    sess["preview_case"] = preview["case_type"]
+    sess["preview_summary"] = summary_for_ai(preview, used)
+    sess["preview_signature"] = _rows_signature(used, preview["case_type"])
+    return templates.TemplateResponse(
+        "preview.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
+            "preview": preview, "pending_count": sum(1 for r in rows if r["status"] == "proposed"), "step": 4,
+        }
+    )
+
+
+@router.get("/ingestion/preview/capabilities", response_class=HTMLResponse)
+async def preview_capabilities(request: Request, workspace_id: str, refresh: int = 0):
+    """Frammento HTML "Cosa potrai analizzare", caricato dalla pagina di anteprima.
+    Ricalcolato (chiamata AI) solo se il mapping o l'oggetto principale sono cambiati."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    summary = sess.get("preview_summary")
+    if summary is None:
+        return HTMLResponse("", status_code=204)
+    cached = sess.get("capabilities")
+    if not refresh and cached and cached["signature"] == sess["preview_signature"]:
+        caps, source = cached["data"], cached["source"]
+    else:
+        source = "ai"
+        caps = None
+        if AI_MAPPER == "claude":
+            try:
+                caps = (await run_in_threadpool(assess_capabilities, sess["context"], summary)).model_dump()
+            except Exception as exc:
+                print(f"Valutazione analisi possibili non riuscita ({exc!r}): uso la versione di base.")
+        if caps is None:
+            caps, source = fallback_capabilities(summary).model_dump(), "base"
+        sess["capabilities"] = {"signature": sess["preview_signature"], "data": caps, "source": source}
+    return templates.TemplateResponse(
+        "_capabilities.html", {"request": request, "caps": caps, "source": source, "workspace_id": workspace_id}
+    )
 
 
 def _finalize(workspace_id: str, sess: dict, user: User) -> None:
@@ -742,6 +880,10 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 workspace_id=workspace_id, ingestion_config_id=config.id,
                 pinned_version=1, linked_by=user.name, approved_by=user.name,
             ))
+
+        caps = sess.get("capabilities")
+        if caps and caps["signature"] == _rows_signature(_preview_rows(rows), sess.get("preview_case")):
+            config.analysis_capabilities = {**caps["data"], "source": caps["source"]}
 
         for od in object_defs.values():
             db.add(ObjectTypeDef(
@@ -823,7 +965,7 @@ def result_page(request: Request, workspace_id: str):
             "context": sess["context"],
             "result": result,
             "structure_status": structure_status,
-            "step": 4,
+            "step": 5,
         },
     )
 

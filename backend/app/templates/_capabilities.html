@@ -1,0 +1,75 @@
+{% set status_label = {"possibile": "possibile", "parziale": "parziale", "non_possibile": "non possibile"} %}
+{% set status_class = {"possibile": "sev-ok", "parziale": "sev-attenzione", "non_possibile": "sev-bloccante"} %}
+{% set area_label = {"process_overview": "Process overview", "control_tower": "Control tower", "kpi_detail": "Dettaglio KPI",
+                     "root_cause": "Root cause analysis", "conformance": "Conformità", "altro": "Altro"} %}
+<div class="banner {{ 'ok' if source == 'ai' else 'warning' }}">{{ caps.summary }}</div>
+
+<div class="usecase-grid">
+  {% for u in caps.use_cases %}
+  <div class="usecase">
+    <div class="usecase-head">
+      <span class="tiny muted">{{ area_label.get(u.area, u.area) }}</span>
+      <span class="sev {{ status_class[u.status] }}">{{ status_label[u.status] }}</span>
+    </div>
+    <strong>{{ u.title }}</strong>
+    <p class="tiny">{{ u.what_you_can_do }}</p>
+    {% if u.missing %}<p class="tiny muted">Manca: {{ u.missing|join("; ") }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if caps.kpis %}
+<h3>KPI per la control tower</h3>
+<div class="table-scroll">
+<table class="admin-table">
+  <thead><tr><th>KPI</th><th>Come si calcola</th><th>Stato</th><th>Cosa manca</th></tr></thead>
+  <tbody>
+    {% for k in caps.kpis %}
+    <tr>
+      <td><strong>{{ k.name }}</strong><div class="tiny muted">{{ k.definition }}</div></td>
+      <td class="tiny">{{ k.computed_as }}</td>
+      <td><span class="sev {{ status_class[k.status] }}">{{ status_label[k.status] }}</span></td>
+      <td class="tiny muted">{{ k.missing|join("; ") or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% set avail = caps.dimensions|selectattr("available")|list %}
+{% set missing_dims = caps.dimensions|rejectattr("available")|list %}
+<h3>Dimensioni per filtrare le analisi</h3>
+<div class="dim-columns">
+  <div>
+    <p class="tiny muted">Disponibili</p>
+    {% for d in avail %}<div class="dim"><span class="sev sev-ok">✓</span> <strong>{{ d.name }}</strong>{% if d.source %} <span class="mono tiny muted">{{ d.source }}</span>{% endif %}<div class="tiny muted">{{ d.note }}</div></div>
+    {% else %}<p class="tiny muted">Nessuna.</p>{% endfor %}
+  </div>
+  <div>
+    <p class="tiny muted">Utili ma assenti nei dati</p>
+    {% for d in missing_dims %}<div class="dim"><span class="sev sev-attenzione">—</span> <strong>{{ d.name }}</strong><div class="tiny muted">{{ d.note }}</div></div>
+    {% else %}<p class="tiny muted">Nessuna segnalata.</p>{% endfor %}
+  </div>
+</div>
+
+{% if caps.data_suggestions %}
+<h3>Integrazioni di dati consigliate</h3>
+<p class="tiny muted">Non sono obbligatorie: indicano quali dati aggiuntivi sbloccherebbero analisi oggi non possibili o parziali. Decidi tu se richiederli.</p>
+<div class="issue-list">
+  {% for s in caps.data_suggestions %}
+  <div class="issue {{ 'issue-attenzione' if s.priority == 'alta' else 'issue-info' }}">
+    <div class="issue-head"><span class="sev {{ 'sev-attenzione' if s.priority == 'alta' else 'sev-info' }}">priorità {{ s.priority }}</span> <strong>{{ s.what }}</strong></div>
+    <div class="issue-body">
+      <div><span class="muted">A cosa serve:</span> {{ s.why }}</div>
+      <div><span class="muted">Come ottenerlo:</span> {{ s.how }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="tiny muted">
+  {% if source == 'ai' %}Valutazione AI basata sul modello e sull'anteprima qui sopra: verrà salvata insieme al dataset.{% else %}Valutazione di base senza AI.{% endif %}
+  <button type="button" class="link-button" data-refresh>Rivaluta</button>
+</p>

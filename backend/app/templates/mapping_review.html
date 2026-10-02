@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Fase E/F — Revisione mapping AI</h1>
+  <h1>Revisione del mapping</h1>
   <p class="muted">
     Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}.
-    Ogni riga è una proposta dell'AI Mapping Service verso il modello OCEL 2.0: verifica la
-    <em>rationale</em>, correggi la decisione dove non ti convince (o modifica direttamente il
-    mapping proposto con "Modifica" se l'AI ha sbagliato target ma l'idea è giusta), poi conferma.
+    Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
+    gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
+    solo dove serve (sono già aperte le tabelle con proposte incerte). Poi guarda l'<strong>anteprima del
+    processo</strong> per verificare che il risultato abbia senso prima di confermare.
   </p>
 
   {% if blocked_message %}
@@ -23,9 +24,31 @@
   <form method="post" action="/ingestion/review">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
+    <h2 id="modello">Modello proposto</h2>
+    <div class="model-grid">
+      <div>
+        <h3 class="model-col-title">Oggetti ({{ model.objects|length }})</h3>
+        {% for g in model.objects %}{% set group_id = "obj|" ~ g.name %}{% include "_model_group.html" %}{% else %}
+        <p class="tiny muted">Nessun tipo di oggetto proposto.</p>{% endfor %}
+      </div>
+      <div>
+        <h3 class="model-col-title">Eventi ({{ model.events|length }})</h3>
+        {% for g in model.events %}{% set group_id = "evt|" ~ g.name %}{% include "_model_group.html" %}{% else %}
+        <p class="tiny muted">Nessun tipo di evento proposto.</p>{% endfor %}
+      </div>
+    </div>
+
+    <h2>Dettaglio per colonna</h2>
+    <p class="tiny muted">Ogni riga è una proposta per una colonna sorgente: verifica la motivazione, accetta o rifiuta,
+      oppure usa "Modifica" se l'idea è giusta ma il target è sbagliato.</p>
+
     {% for table_name, rows in by_table.items() %}
-    <section class="table-block">
-      <h2>{{ table_name }}</h2>
+    <details class="table-block" {{ 'open' if table_name in tables_to_check else '' }}>
+      <summary class="table-summary">
+        <span class="mono">{{ table_name }}</span>
+        {% set tp = rows|selectattr("status", "equalto", "proposed")|list|length %}
+        <span class="tiny muted">{{ rows|length }} colonne{% if tp %} · {{ tp }} da decidere{% endif %}{% if table_name in tables_to_check %} · <strong>proposte incerte</strong>{% endif %}</span>
+      </summary>
       <table class="mapping-table">
         <thead>
           <tr>
@@ -94,7 +117,7 @@
           {% endfor %}
         </tbody>
       </table>
-    </section>
+    </details>
     {% endfor %}
 
     <div class="actions">
@@ -105,8 +128,8 @@
         Accetta tutte (anche a bassa confidence)
       </button>
       <button type="submit" name="action" value="save" class="secondary">Salva e resta in revisione</button>
-      <button type="submit" name="action" value="finalize" class="primary">
-        Conferma mapping e genera il dataset
+      <button type="submit" name="action" value="preview" class="primary">
+        Anteprima del processo →
       </button>
     </div>
     <p class="tiny muted" style="margin-top:8px">
@@ -114,8 +137,9 @@
       "Accetta tutte (anche a bassa confidence)" fa lo stesso senza guardare la soglia: usalo solo
       dopo aver letto le rationale, per non generare un dataset con mapping sbagliati senza accorgertene.
       "Salva e resta in revisione" registra le scelte fatte finora senza generare il dataset, utile se
-      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Conferma mapping" genera il
-      dataset solo quando ogni riga ha una decisione.
+      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Anteprima del processo" salva le
+      scelte e mostra il processo che ne risulta e le analisi possibili: da lì confermi e generi il dataset
+      (serve una decisione su ogni riga).
     </p>
   </form>
 </div>

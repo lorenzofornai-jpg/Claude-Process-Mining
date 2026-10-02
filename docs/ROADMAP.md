@@ -32,11 +32,24 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   trattare le date segnaposto come mancanti in modo esplicito e tracciato.
 
 ## 3. Revisione rapida e comprensibile
-- ⬜ **Revisione a livello di modello** (tipi oggetto, tipi evento, relazioni)
-  invece che colonna per colonna; eccezioni a bassa confidenza a parte.
-- ⬜ **Anteprima del processo** prima di confermare: mappa dei flussi, varianti
-  principali, percorso di un oggetto reale.
-- ⬜ **Punteggio di prontezza** per ciascun obiettivo di analisi.
+- ✅ **Revisione a livello di modello**: in cima alla revisione i tipi di
+  oggetto (chiave) e di evento (data, collegamenti) con "Accetta tutto /
+  Rifiuta" per gruppo; il dettaglio per colonna è richiuso, aperto solo per le
+  tabelle con proposte incerte.
+- ✅ **Anteprima del processo** prima di confermare (senza AI): casi, eventi,
+  varianti, durata mediana e 90° percentile, percorso più frequente, attività
+  e passaggi con attese mediane, collo di bottiglia, un caso reale passo per
+  passo, dimensioni di analisi disponibili; punto di vista selezionabile.
+- ✅ **Cosa potrai analizzare** (una chiamata AI, in cache finché il mapping non
+  cambia, salvata con il dataset): process overview, control tower, dettaglio
+  KPI, root cause con stato possibile/parziale/non possibile; KPI con come si
+  calcolano e cosa manca; dimensioni disponibili e mancanti; integrazioni di
+  dati consigliate con priorità. Versione di base senza AI.
+- ⬜ Catalogo KPI di riferimento per processo da arricchire con gli esempi
+  dell'utente (oggi `REFERENCE_KPIS` in `services/analysis_capabilities.py`).
+- ⬜ Mostrare "Cosa potrai analizzare" anche al Data Analyst (pagina Analisi) e
+  in "Dataset per l'analisi".
+- ⬜ Mappa del processo grafica (oggi barre per attività e passaggi).
 
 ## 4. Limiti del motore OCEL attuale (debito tecnico)
 - ⬜ Eventi da colonna "attività"/tipo movimento (es. EKBE.VGABE), non solo
