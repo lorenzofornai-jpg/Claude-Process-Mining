@@ -1,7 +1,7 @@
-<div class="model-card {{ 'model-card-rejected' if g.rejected == g.total else '' }}">
+<div class="model-card {{ 'model-card-rejected' if g.rejected == g.total else '' }}" id="grp-{{ g.kind }}-{{ g.name|replace(' ', '_') }}">
   <div class="model-card-head">
     <strong>{{ g.name }}</strong>
-    <span class="tiny muted mono">{{ g.tables|join(", ") }}</span>
+    <span class="tiny mono">{% for t in g.tables %}<a href="#tab-{{ t }}" title="Vai al dettaglio delle colonne di {{ t }}">{{ t }}</a>{{ ", " if not loop.last }}{% endfor %}</span>
   </div>
   <div class="tiny model-card-body">
     {% if g.kind == "obj" %}

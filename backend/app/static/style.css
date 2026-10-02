@@ -299,7 +299,18 @@ tr.row-overridden { background: var(--brand-soft); }
   color: var(--text);
 }
 
-.actions { margin-top: 24px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* Righe di pulsanti: tutti della stessa larghezza (quella del testo piu' lungo) e su
+   una riga; su schermi stretti uno sotto l'altro a tutta larghezza. */
+.actions {
+  margin-top: 24px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  gap: 8px; width: max-content; max-width: 100%; align-items: stretch;
+}
+.actions > * { margin: 0; }
+.actions > form { display: flex; }
+.actions > .button-link, .actions > button, .actions > form > button {
+  width: 100%; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+}
+@media (max-width: 760px) { .actions { grid-auto-flow: row; width: 100%; } }
 
 .stat-row { display: flex; gap: 16px; margin: 20px 0 28px; flex-wrap: wrap; }
 .stat {
@@ -445,3 +456,5 @@ tr.row-overridden { background: var(--brand-soft); }
 button[disabled] { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 820px) { .preview-grid, .dim-columns { grid-template-columns: minmax(0, 1fr); } }
 #capabilities h3 { font-size: 15px; margin: 20px 0 6px; }
+.feeds { margin: 0 0 8px; }
+.model-card, .table-block { scroll-margin-top: 80px; }

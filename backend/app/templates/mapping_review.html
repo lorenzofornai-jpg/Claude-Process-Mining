@@ -15,7 +15,7 @@
   {% elif pending_count > 0 %}
   <div class="banner warning">
     {{ pending_count }} proposte non hanno ancora una decisione (nessuna è pre-accettata: usa
-    "Accetta tutte ≥ soglia" per quelle ad alta confidence, poi decidi le rimanenti una per una).
+    "Accetta le proposte ≥ {{ (threshold*100)|round|int }}%" per quelle ad alta confidence, poi decidi le rimanenti una per una).
   </div>
   {% else %}
   <div class="banner ok">Tutte le proposte hanno una decisione. Puoi generare il dataset per l'analisi.</div>
@@ -43,12 +43,18 @@
       oppure usa "Modifica" se l'idea è giusta ma il target è sbagliato.</p>
 
     {% for table_name, rows in by_table.items() %}
-    <details class="table-block" {{ 'open' if table_name in tables_to_check else '' }}>
+    <details class="table-block" id="tab-{{ table_name }}" {{ 'open' if table_name in tables_to_check else '' }}>
       <summary class="table-summary">
         <span class="mono">{{ table_name }}</span>
-        {% set tp = rows|selectattr("status", "equalto", "proposed")|list|length %}
-        <span class="tiny muted">{{ rows|length }} colonne{% if tp %} · {{ tp }} da decidere{% endif %}{% if table_name in tables_to_check %} · <strong>proposte incerte</strong>{% endif %}</span>
+        {% set tp = rows|selectattr("status", "equalto", "proposed")|list %}
+        {% set tl = tp|selectattr("confidence", "lt", threshold)|list|length %}
+        <span class="tiny muted">{{ rows|length }} {{ "riga" if rows|length == 1 else "righe" }}{% if tp %} · {{ tp|length }} da decidere{% if tl %}, {{ tl }} incerte{% endif %}{% endif %}</span>
       </summary>
+      {% if groups_by_table.get(table_name) %}
+      <p class="tiny muted feeds">Alimenta:
+        {% for kind, name in groups_by_table[table_name] %}<a href="#grp-{{ kind }}-{{ name|replace(' ', '_') }}">{{ "oggetto" if kind == "obj" else "evento" }} {{ name }}</a>{{ " · " if not loop.last }}{% endfor %}
+      </p>
+      {% endif %}
       <table class="mapping-table">
         <thead>
           <tr>
@@ -121,26 +127,31 @@
     {% endfor %}
 
     <div class="actions">
-      <button type="submit" name="action" value="bulk_accept" class="secondary">
-        Accetta tutte le proposte ≥ {{ (threshold*100)|round|int }}%
-      </button>
-      <button type="submit" name="action" value="bulk_accept_all" class="secondary">
-        Accetta tutte (anche a bassa confidence)
-      </button>
-      <button type="submit" name="action" value="save" class="secondary">Salva e resta in revisione</button>
+      <button type="submit" name="action" value="bulk_accept" class="secondary">Accetta le proposte ≥ {{ (threshold*100)|round|int }}%</button>
+      <button type="submit" name="action" value="bulk_accept_all" class="secondary">Accetta tutte le proposte</button>
+      <button type="submit" name="action" value="save" class="secondary">Salva e resta qui</button>
       <button type="submit" name="action" value="preview" class="primary">
         Anteprima del processo →
       </button>
     </div>
     <p class="tiny muted" style="margin-top:8px">
-      "Accetta tutte ≥ soglia" promuove in blocco le righe ad alta confidence ancora da decidere.
-      "Accetta tutte (anche a bassa confidence)" fa lo stesso senza guardare la soglia: usalo solo
+      "Accetta le proposte ≥ {{ (threshold*100)|round|int }}%" accetta in blocco le righe ad alta confidence ancora da decidere.
+      "Accetta tutte le proposte" fa lo stesso senza guardare la confidence: usalo solo
       dopo aver letto le rationale, per non generare un dataset con mapping sbagliati senza accorgertene.
-      "Salva e resta in revisione" registra le scelte fatte finora senza generare il dataset, utile se
+      "Salva e resta qui" registra le scelte fatte finora senza generare il dataset, utile se
       non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Anteprima del processo" salva le
       scelte e mostra il processo che ne risulta e le analisi possibili: da lì confermi e generi il dataset
       (serve una decisione su ogni riga).
     </p>
   </form>
 </div>
+<script>
+  // un link a una tabella del dettaglio la apre prima di scorrere fin li'
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest('a[href^="#tab-"]');
+    if (!a) return;
+    var target = document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1)));
+    if (target && target.tagName === "DETAILS") target.open = true;
+  });
+</script>
 {% endblock %}

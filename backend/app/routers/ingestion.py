@@ -577,23 +577,35 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
     for r in rows:
         r["target_label"] = _target_label(r)
 
+    order = _process_order(sess, rows)
     by_table: dict[str, list[dict]] = {}
-    for r in rows:
+    def group_pos(r):
+        g = _row_group(r)
+        if g is None:
+            return 1e9
+        return (order["events"] if g[0] == "evt" else order["objects"]).get(g[1], 1e9)
+    for r in sorted(rows, key=lambda r: (order["tables"].get(r["source_table"], 1e9), r["source_table"], group_pos(r))):
         by_table.setdefault(r["source_table"], []).append(r)
     # tabelle da aprire subito: quelle con proposte ancora da decidere a confidence bassa
     tables_to_check = {
         r["source_table"] for r in rows
         if r["status"] == "proposed" and r["confidence"] < AUTO_ACCEPT_CONFIDENCE_THRESHOLD
     }
+    # per ogni tabella, i gruppi del modello che alimenta (link dal dettaglio alle card)
+    groups_by_table: dict[str, list[tuple[str, str]]] = {}
+    for r in rows:
+        g = _row_group(r)
+        if g and g not in groups_by_table.setdefault(r["source_table"], []):
+            groups_by_table[r["source_table"]].append(g)
 
     pending_count = sum(1 for r in rows if r["status"] == "proposed")
 
     blocked_message = None
     if error == "pending" and pending_count > 0:
         blocked_message = (
-            f"Non ho generato il log: ci sono ancora {pending_count} proposte senza una decisione "
+            f"Non ho generato il dataset: ci sono ancora {pending_count} proposte senza una decisione "
             "esplicita (righe evidenziate in giallo qui sotto). Accettale, rifiutale o modificale "
-            "prima di confermare — oppure usa \"Accetta tutte ≥ soglia\" per sbrigare in blocco "
+            "prima di confermare — oppure usa \"Accetta le proposte ≥ soglia\" per sbrigare in blocco "
             "quelle ad alta confidence."
         )
 
@@ -607,7 +619,8 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "dataset_label": sess["dataset_label"],
             "by_table": by_table,
             "tables_to_check": tables_to_check,
-            "model": _model_summary(rows),
+            "groups_by_table": groups_by_table,
+            "model": _model_summary(rows, order),
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
             "ocel_elements": VALID_OCEL_ELEMENTS,
@@ -628,7 +641,55 @@ def _row_group(r: dict) -> tuple[str, str] | None:
     return None
 
 
-def _model_summary(rows: list[dict]) -> dict:
+def _process_order(sess: dict, rows: list[dict]) -> dict:
+    """Ordine di processo per la revisione: eventi per istante mediano (cosi' come
+    avvengono), oggetti per il primo evento che li coinvolge, tabelle per il primo
+    oggetto/evento che alimentano. Calcolato sui dati con il mapping corrente e
+    tenuto in cache finche' il mapping non cambia."""
+    used = _preview_rows(rows)
+    signature = _rows_signature(used, None)
+    cached = sess.get("process_order")
+    if cached and cached["signature"] == signature:
+        return cached["order"]
+    events_order: dict[str, float] = {}
+    objects_order: dict[str, float] = {}
+    try:
+        ocel, _, _ = build_ocel(sess["tables_data"], used)
+        times: dict[str, list[str]] = {}
+        for e in ocel["events"]:
+            times.setdefault(e["type"], []).append(e["time"])
+        ranked = sorted(times, key=lambda t: sorted(times[t])[len(times[t]) // 2])
+        events_order = {t: i for i, t in enumerate(ranked)}
+        obj_type = {o["id"]: o["type"] for o in ocel["objects"]}
+        linked_events: dict[str, set] = {}
+        for e in ocel["events"]:
+            for r in e["relationships"]:
+                t = obj_type.get(r["objectId"])
+                if t is not None:
+                    objects_order[t] = min(objects_order.get(t, 1e9), events_order[e["type"]])
+                    linked_events.setdefault(t, set()).add(e["type"])
+        # a parita' di primo evento viene prima l'oggetto collegato a piu' attivita' (il piu' centrale)
+        for t in objects_order:
+            objects_order[t] += 0.5 - len(linked_events.get(t, ())) / (2 * max(len(events_order), 1) + 1)
+    except Exception as exc:  # l'ordine e' un aiuto alla lettura: mai bloccare la revisione
+        print(f"Ordine di processo non calcolabile ({exc!r}): uso l'ordine alfabetico.")
+    tables_order: dict[str, float] = {}
+    for r in used:
+        g = _row_group(r)
+        if g is None:
+            continue
+        if g[0] == "evt":  # conta la tabella da cui nasce l'evento (quella della sua data)
+            pos = events_order.get(g[1]) if r["ocel_element"] == "event_type.timestamp" else None
+        else:
+            pos = objects_order.get(g[1])
+        if pos is not None:
+            tables_order[r["source_table"]] = min(tables_order.get(r["source_table"], 1e9), pos)
+    order = {"events": events_order, "objects": objects_order, "tables": tables_order}
+    sess["process_order"] = {"signature": signature, "order": order}
+    return order
+
+
+def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
     """Il modello proposto visto dall'alto: per ogni tipo di oggetto/evento le sue
     righe di mapping, cosi' l'utente decide per gruppo invece che colonna per colonna."""
     groups: dict[tuple[str, str], dict] = {}
@@ -661,8 +722,12 @@ def _model_summary(rows: list[dict]) -> dict:
                 d["links"].append(r["related_object_type"])
         else:
             d["attributes"] += 1
-    objects = sorted((g for g in groups.values() if g["kind"] == "obj"), key=lambda g: g["name"])
-    events = sorted((g for g in groups.values() if g["kind"] == "evt"), key=lambda g: g["name"])
+    order = order or {"events": {}, "objects": {}}
+
+    def key(g, positions):  # ordine di processo; gruppi rifiutati in fondo
+        return (g["rejected"] == g["total"], positions.get(g["name"], 1e9), g["name"])
+    objects = sorted((g for g in groups.values() if g["kind"] == "obj"), key=lambda g: key(g, order["objects"]))
+    events = sorted((g for g in groups.values() if g["kind"] == "evt"), key=lambda g: key(g, order["events"]))
     return {"objects": objects, "events": events}
 
 
