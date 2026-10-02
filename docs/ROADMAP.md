@@ -36,37 +36,16 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   oggetto (chiave) e di evento (data, collegamenti) con "Accetta tutto /
   Rifiuta" per gruppo; il dettaglio per colonna è richiuso, aperto solo per le
   tabelle con proposte incerte.
-- ✅ **Anteprima del processo** prima di confermare (senza AI), volutamente
-  ridotta a ciò che serve a verificare il mapping: casi, eventi, attività
-  riconosciute con volumi, un caso reale, dimensioni disponibili; punto di
-  vista selezionabile (proposto l'oggetto che nasce con la prima attività).
-  Varianti, tempi e colli di bottiglia restano all'analisi.
-- ✅ **KPI per il management**: Claude riconosce la famiglia di processo e
-  propone i 5-7 KPI / casi di valore più rilevanti nel linguaggio del C-level, per obiettivo
-  (cassa e capitale circolante, costi ed efficienza, rischio e compliance,
-  clienti e fornitori, ricavi e margini): responsabile, domanda del management,
-  valore, riferimento indicativo, cosa aggiunge il process mining, osservabile /
-  in parte / non osservabile con i dati attuali e cosa manca. Libreria di
-  riferimento in `services/business_kpi_library.py` (AR, AP, P2P, O2C), da
-  arricchire con gli esempi degli utenti.
 - ✅ **Mapping più veloce e visibile**: prima un modello comune breve (oggetti ed
   eventi di tutte le tabelle), poi una chiamata per tabella in parallelo con quel
   modello come vocabolario; la pagina di attesa mostra le tabelle fatte e in corso.
-- ✅ **Altri KPI su richiesta**: il data engineer scrive i KPI che gli servono
-  oltre a quelli proposti; Claude risponde solo se saranno analizzabili
-  (sì / in parte / no), cosa manca e quali dati integrare. I KPI richiesti
-  restano in anteprima, si rivalutano se cambia il mapping e si salvano con il
-  dataset.
-- ✅ **Cosa potrai analizzare** (una chiamata AI, in cache finché il mapping non
-  cambia, salvata con il dataset): process overview, control tower, dettaglio
-  KPI, root cause con stato possibile/parziale/non possibile; KPI con come si
-  calcolano e cosa manca; dimensioni disponibili e mancanti; integrazioni di
-  dati consigliate con priorità. Versione di base senza AI.
-- ⬜ Arricchire la libreria KPI con altri processi (Record-to-Report, Hire-to-Retire,
-  Plan-to-Produce...) e con gli esempi degli utenti.
-- ⬜ Mostrare "Cosa potrai analizzare" anche al Data Analyst (pagina Analisi) e
-  in "Dataset per l'analisi".
-- ⬜ Mappa del processo grafica (oggi barre per attività e passaggi).
+- ✖ **Anteprima del processo e "KPI e analisi possibili"**: provate e tolte dal
+  Modulo 1. Rallentavano la generazione del dataset e anticipavano ragionamenti
+  che appartengono all'analisi. Dalla revisione si conferma e si genera il dataset.
+  Da riprendere nel modulo di analisi: process overview filtrabile per
+  dimensioni, control tower sui KPI più significativi (libreria di riferimento
+  in `services/business_kpi_library.py`, da arricchire con gli esempi degli
+  utenti), dettaglio KPI, root cause, suggerimenti di dati da integrare.
 
 ## 4. Limiti del motore OCEL attuale (debito tecnico)
 - ⬜ Eventi da colonna "attività"/tipo movimento (es. EKBE.VGABE), non solo

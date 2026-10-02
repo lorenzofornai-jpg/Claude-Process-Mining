@@ -6,8 +6,8 @@
     Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}.
     Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
     gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
-    solo dove serve (sono già aperte le tabelle con proposte incerte). Poi guarda l'<strong>anteprima del
-    processo</strong> per verificare che il risultato abbia senso prima di confermare.
+    solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione,
+    conferma e genera il dataset.
   </p>
 
   {% if blocked_message %}
@@ -140,8 +140,9 @@
       <button type="submit" name="action" value="bulk_accept" class="secondary">Accetta le proposte ≥ {{ (threshold*100)|round|int }}%</button>
       <button type="submit" name="action" value="bulk_accept_all" class="secondary">Accetta tutte le proposte</button>
       <button type="submit" name="action" value="save" class="secondary">Salva e resta qui</button>
-      <button type="submit" name="action" value="preview" class="primary">
-        Anteprima del processo →
+      <button type="submit" name="action" value="finalize" class="primary" {{ 'disabled' if pending_count else '' }}
+              title="{{ 'Serve una decisione su ogni riga' if pending_count else '' }}">
+        Conferma e genera il dataset
       </button>
     </div>
     <p class="tiny muted" style="margin-top:8px">
@@ -149,9 +150,8 @@
       "Accetta tutte le proposte" fa lo stesso senza guardare la confidence: usalo solo
       dopo aver letto le rationale, per non generare un dataset con mapping sbagliati senza accorgertene.
       "Salva e resta qui" registra le scelte fatte finora senza generare il dataset, utile se
-      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Anteprima del processo" salva le
-      scelte e mostra il processo che ne risulta e le analisi possibili: da lì confermi e generi il dataset
-      (serve una decisione su ogni riga).
+      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Conferma e genera il dataset" salva le
+      scelte e genera il dataset per l'analisi: si attiva quando ogni riga ha una decisione.
     </p>
   </form>
 </div>

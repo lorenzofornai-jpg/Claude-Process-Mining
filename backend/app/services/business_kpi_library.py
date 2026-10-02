@@ -1,5 +1,7 @@
 """Libreria di riferimento dei KPI / casi di valore di business per i processi
-piu' noti, usata per guidare la valutazione "KPI tipici del processo".
+piu' noti. Oggi non e' usata dal Modulo 1 (la valutazione dei KPI in anteprima
+e' stata tolta: appartiene all'analisi); resta come base per la control tower
+del modulo di analisi.
 
 Non e' un elenco da copiare: Claude riconosce la famiglia di processo (anche da
 nome processo, assessment e tabelle) e adatta i KPI, aggiungendone altri se

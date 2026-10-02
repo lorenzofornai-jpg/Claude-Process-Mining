@@ -36,10 +36,6 @@ from app import state
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper
 from app.routers.assessment import assessment_status, load_assessment, mapping_context
 from app.services.profiling import compact_for_mapping, profile_tables
-from app.services.preview import build_preview, summary_for_ai
-from app.services.analysis_capabilities import (
-    assess_capabilities, check_requested_kpis, fallback_capabilities, merge_requested,
-)
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import build_ocel, compile_defs, merge_ocel
@@ -878,9 +874,6 @@ async def submit_review(
             return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
         return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
-    if action == "preview":
-        return RedirectResponse(url=f"/ingestion/preview?workspace_id={workspace_id}", status_code=303)
-
     if action == "finalize":
         still_pending = [r for r in rows if r["status"] == "proposed"]
         if still_pending:
@@ -893,13 +886,8 @@ async def submit_review(
     return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
 
 
-def _preview_rows(rows: list[dict]) -> list[dict]:
-    """Righe usate per l'anteprima: tutto tranne i rifiuti (anche le proposte non
-    ancora decise, cosi' l'anteprima e' utile anche a meta' revisione)."""
-    return [r for r in rows if r["status"] != "rejected"]
-
-
 def _rows_signature(rows: list[dict], case_type: str | None) -> str:
+    """Impronta del mapping: l'ordine di processo in cache si ricalcola solo se cambia."""
     import hashlib
     key = json.dumps(
         [[r["source_table"], r["source_column"], r["ocel_element"], r.get("object_type"), r.get("event_type"),
@@ -907,105 +895,6 @@ def _rows_signature(rows: list[dict], case_type: str | None) -> str:
         ensure_ascii=False,
     )
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
-
-
-@router.get("/ingestion/preview", response_class=HTMLResponse)
-def preview_page(request: Request, workspace_id: str, case: str | None = None):
-    user, denied = _require_process_access(request, workspace_id)
-    if denied:
-        return denied
-    sess = _load_session(user.id, workspace_id)
-    rows = sess.get("mapping_rows")
-    if rows is None:
-        return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
-    used = _preview_rows(rows)
-    if case:  # scelta esplicita dell'utente: resta finche' non la cambia
-        sess["preview_case_user"] = case
-    preview = build_preview(sess["tables_data"], used, case or sess.get("preview_case_user"))
-    sess["preview_case"] = preview["case_type"]
-    sess["preview_summary"] = summary_for_ai(preview, used)
-    sess["preview_signature"] = _rows_signature(used, preview["case_type"])
-    return templates.TemplateResponse(
-        "preview.html", {
-            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
-            "preview": preview, "pending_count": sum(1 for r in rows if r["status"] == "proposed"), "step": 4,
-        }
-    )
-
-
-@router.get("/ingestion/preview/capabilities", response_class=HTMLResponse)
-async def preview_capabilities(request: Request, workspace_id: str, refresh: int = 0):
-    """Frammento HTML "Cosa potrai analizzare", caricato dalla pagina di anteprima.
-    Ricalcolato (chiamata AI) solo se il mapping o l'oggetto principale sono cambiati."""
-    user, denied = _require_process_access(request, workspace_id)
-    if denied:
-        return denied
-    sess = _load_session(user.id, workspace_id)
-    summary = sess.get("preview_summary")
-    if summary is None:
-        return HTMLResponse("", status_code=204)
-    cached = sess.get("capabilities")
-    if not refresh and cached and cached["signature"] == sess["preview_signature"]:
-        caps, source = cached["data"], cached["source"]
-    else:
-        source = "ai"
-        caps = None
-        if AI_MAPPER == "claude":
-            try:
-                caps = (await run_in_threadpool(assess_capabilities, sess["context"], summary)).model_dump()
-            except Exception as exc:
-                print(f"Valutazione analisi possibili non riuscita ({exc!r}): uso la versione di base.")
-        if caps is None:
-            caps, source = fallback_capabilities(summary).model_dump(), "base"
-        # KPI chiesti in precedenza dal data engineer: si rivalutano sul mapping attuale
-        previous = [k["name"] for k in (cached or {}).get("data", {}).get("requested_kpis", [])]
-        caps["requested_kpis"] = []
-        if previous and source == "ai":
-            try:
-                check = await run_in_threadpool(check_requested_kpis, sess["context"], summary, "\n".join(previous))
-                caps["requested_kpis"] = [v.model_dump() for v in check.verdicts]
-            except Exception as exc:
-                print(f"Rivalutazione KPI richiesti non riuscita ({exc!r}).")
-        sess["capabilities"] = {"signature": sess["preview_signature"], "data": caps, "source": source}
-    return templates.TemplateResponse(
-        "_capabilities.html", {"request": request, "caps": caps, "source": source, "workspace_id": workspace_id}
-    )
-
-
-@router.post("/ingestion/preview/kpi-check", response_class=HTMLResponse)
-async def preview_kpi_check(request: Request, workspace_id: str = Form(...), kpi_request: str = Form("")):
-    """Il data engineer chiede altri KPI oltre ai 5-7 proposti: per ognuno Claude dice
-    solo se sara' osservabile con questi dati e quali dati integrare altrimenti."""
-    user, denied = _require_process_access(request, workspace_id)
-    if denied:
-        return denied
-    sess = _load_session(user.id, workspace_id)
-    cached = sess.get("capabilities")
-    summary = sess.get("preview_summary")
-    if summary is None or not cached or cached["signature"] != sess.get("preview_signature"):
-        return HTMLResponse('<p class="tiny muted">Anteprima cambiata: ricarica la pagina.</p>')
-    caps, source = cached["data"], cached["source"]
-    kpi_error = None
-    text = kpi_request.strip()[:1000]
-    if not text:
-        kpi_error = "Scrivi almeno un KPI da verificare."
-    elif AI_MAPPER != "claude":
-        kpi_error = "La verifica di altri KPI richiede l'AI, non attiva in questa installazione."
-    else:
-        try:
-            check = await run_in_threadpool(check_requested_kpis, sess["context"], summary, text)
-            caps["requested_kpis"] = merge_requested(
-                caps.get("requested_kpis", []), [v.model_dump() for v in check.verdicts]
-            )
-        except Exception as exc:
-            print(f"Verifica KPI richiesti non riuscita ({exc!r}).")
-            kpi_error = "Verifica non riuscita: riprova tra poco."
-    return templates.TemplateResponse(
-        "_capabilities.html", {
-            "request": request, "caps": caps, "source": source, "workspace_id": workspace_id,
-            "kpi_error": kpi_error, "kpi_request": text if kpi_error else "",
-        }
-    )
 
 
 def _finalize(workspace_id: str, sess: dict, user: User) -> None:
@@ -1082,10 +971,6 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 workspace_id=workspace_id, ingestion_config_id=config.id,
                 pinned_version=1, linked_by=user.name, approved_by=user.name,
             ))
-
-        caps = sess.get("capabilities")
-        if caps and caps["signature"] == _rows_signature(_preview_rows(rows), sess.get("preview_case")):
-            config.analysis_capabilities = {**caps["data"], "source": caps["source"]}
 
         for od in object_defs.values():
             db.add(ObjectTypeDef(
