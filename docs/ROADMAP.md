@@ -39,6 +39,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ **Mapping più veloce e visibile**: prima un modello comune breve (oggetti ed
   eventi di tutte le tabelle), poi una chiamata per tabella in parallelo con quel
   modello come vocabolario; la pagina di attesa mostra le tabelle fatte e in corso.
+- ✅ **Tetto di spesa del mapping AI** (default 0,50 € per elaborazione,
+  `AI_MAPPING_BUDGET_EUR`): limiti di output per chiamata calcolati prima di
+  chiamare Claude, effort basso, risposta compatta (solo colonne utili, chiavi
+  corte); se il dataset è troppo grande si ferma prima di spendere. Costo
+  mostrato in attesa e in revisione.
+- ⬜ **Mapping misto**: regole + dizionario SAP open source per ciò che si
+  riconosce con certezza, Claude solo per le tabelle/colonne dubbie.
 - ✖ **Anteprima del processo e "KPI e analisi possibili"**: provate e tolte dal
   Modulo 1. Rallentavano la generazione del dataset e anticipavano ragionamenti
   che appartengono all'analisi. Dalla revisione si conferma e si genera il dataset.

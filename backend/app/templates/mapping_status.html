@@ -32,7 +32,7 @@
     </li>
   </ol>
   {% endif %}
-  <p class="tiny muted">In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
+  <p class="tiny muted">{% if progress and progress.budget_eur %}Spesa AI finora € {{ "%.2f"|format(progress.spent_eur)|replace(".", ",") }} su un limite di € {{ "%.2f"|format(progress.budget_eur)|replace(".", ",") }} · {% endif %}In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
     tabelle molto larghe richiedono più tempo. Se resta fermo sullo stesso punto per molti minuti, controlla
     nel terminale del server le righe «ClaudeAIMapper».{% endif %}</p>
   {% endif %}

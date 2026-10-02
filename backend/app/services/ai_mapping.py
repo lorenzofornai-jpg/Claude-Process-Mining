@@ -21,13 +21,14 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from app.config import ANTHROPIC_MODEL
+from app.config import AI_MAPPING_BUDGET_EUR, AI_MAPPING_EFFORT, ANTHROPIC_MODEL, USD_PER_EUR
 from app.connectors.base import TableSchema
 from app.services import catalog
 
@@ -272,24 +273,32 @@ def out_has_timestamp(proposals: list[MappingProposal], table_name: str) -> bool
 # Profile - lo stesso materiale che avrebbe un revisore umano.
 # ---------------------------------------------------------------------------
 
-class LLMFieldMapping(BaseModel):
-    source_table: str
-    source_column: str
-    ocel_element: Literal[
-        "object_type.key", "object_type.attribute",
-        "event_type.timestamp", "event_type.attribute", "e2o_relationship",
-    ]
-    object_type: Optional[str] = None
-    event_type: Optional[str] = None
-    attribute_name: Optional[str] = None
-    qualifier: Optional[str] = None
-    related_object_type: Optional[str] = None
-    confidence: float
-    rationale: str
+# Output compatto: una chiamata per tabella, chiavi corte e solo le colonne utili.
+# Le chiavi lunghe ripetute per ogni colonna (source_table, ocel_element, ...)
+# costavano da sole piu' token dei contenuti.
+_ELEMENT = {
+    "key": "object_type.key",
+    "obj_attr": "object_type.attribute",
+    "timestamp": "event_type.timestamp",
+    "evt_attr": "event_type.attribute",
+    "relation": "e2o_relationship",
+}
 
 
-class LLMMappingResponse(BaseModel):
-    proposals: list[LLMFieldMapping]
+class LLMColumnMapping(BaseModel):
+    col: str                                   # colonna sorgente
+    el: Literal["key", "obj_attr", "timestamp", "evt_attr", "relation"]
+    obj: Optional[str] = None                  # object_type
+    evt: Optional[str] = None                  # event_type
+    attr: Optional[str] = None                 # attribute_name
+    q: Optional[str] = None                    # qualifier
+    rel: Optional[str] = None                  # related_object_type
+    conf: float
+    why: str = ""                              # rationale (vuota se confidence alta)
+
+
+class LLMTableMapping(BaseModel):
+    columns: list[LLMColumnMapping]
 
 
 class LLMSkeletonObject(BaseModel):
@@ -311,10 +320,9 @@ class LLMSkeleton(BaseModel):
 
 _SKELETON_SYSTEM_PROMPT = """\
 Sei l'AI Mapping Service di una piattaforma di process mining. Ricevi le tabelle sorgente di un
-processo (nomi, colonne, tipi, pochi valori di esempio, eventuale nota dell'utente) e il contesto di
-processo (assessment, attivita' BPMN, data_profile con chiavi candidate, colonne data e relazioni
-misurate). Definisci SOLO lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra'
-poi usato tabella per tabella per mappare ogni colonna:
+processo (nomi, colonne, tipi, eventuale nota dell'utente) e il contesto di processo (assessment,
+attivita' BPMN, data_profile con chiavi candidate, colonne data e relazioni misurate). Definisci SOLO
+lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usato tabella per tabella:
 - object_types: i tipi di oggetto di business (nome in inglese, leggibile, es. "Purchase Order"),
   la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
 - event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
@@ -323,123 +331,189 @@ Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi. 
 tabelle. Non inventare colonne. Risposta breve: niente spiegazioni.
 """
 
-
 _MAPPING_SYSTEM_PROMPT = """\
-Sei l'AI Mapping Service di una piattaforma enterprise di process mining.
-Il tuo compito e' proporre, per OGNI colonna di OGNI tabella sorgente ricevuta, un mapping verso un
-log OCEL 2.0 (object-centric event log). Non hai accesso a documentazione esterna: ragiona solo dai
-nomi di tabella/colonna, dai tipi inferiti, dai valori di esempio, dalle statistiche (null_ratio,
-distinct_ratio), dal contesto di processo fornito e, quando presente, dalla nota utente per tabella
-(campo "user_description": testo libero scritto da un data engineer che conosce il sistema sorgente,
-raccolto apposta prima di questa chiamata). Trattala come informazione affidabile e prioritaria
-rispetto a un'inferenza fatta solo da nomi/valori - specialmente su schemi con nomenclatura opaca
-(es. tabelle SAP come EKKO/EBELN) dove il nome da solo non basta a distinguere, ad esempio, una
-tabella anagrafica da una transazionale. Se assente per una tabella, ragiona come faresti senza:
-non e' un requisito, e' un aiuto quando c'e'.
+Sei l'AI Mapping Service di una piattaforma enterprise di process mining. Ricevi UNA tabella sorgente
+e proponi il mapping delle sue colonne verso un log OCEL 2.0 (object-centric event log). Ragiona dai
+nomi di tabella/colonna, dai tipi, dai valori di esempio, dalle statistiche (null_ratio,
+distinct_ratio) e dal contesto di processo. La nota utente sulla tabella ("user_description"), se
+presente, e' affidabile e prioritaria rispetto all'inferenza dai soli nomi (utile su nomi opachi come
+quelli SAP).
 
-Il "process_context" puo' includere "assessment" (checklist compilata dal data engineer: obiettivi e
-domande di business, perimetro, sistemi, oggetto principale, eventi di inizio/fine, varianti note,
-disponibilita' di storico modifiche, granularita' dei timestamp, campi personalizzati) e
-"bpmn_activities" (nomi delle attivita' letti dal disegno del processo). Usali cosi':
-- l'oggetto principale e gli altri oggetti indicati orientano la scelta degli object_type e delle chiavi;
-- quando una colonna data corrisponde a un'attivita' del BPMN o agli eventi di inizio/fine indicati,
-  chiama l'event_type con lo stesso nome (in inglese se il resto del modello e' in inglese, ma
-  riconoscibile), cosi' il log e' leggibile da chi conosce il processo;
-- dai priorita' (confidence piu' alta, rationale che lo cita) alle colonne utili agli obiettivi e alle
-  domande di business dichiarati;
-- i campi personalizzati descritti dall'utente vanno interpretati come indicato nella loro descrizione.
-Se assenti, ragiona come faresti senza.
+Contesto ("process_context"):
+- "assessment" (obiettivi, oggetto principale, eventi di inizio/fine, granularita' dei timestamp,
+  campi personalizzati) e "bpmn_activities": orientano oggetti, chiavi e nomi degli eventi (usa i nomi
+  delle attivita' BPMN quando una data corrisponde a un'attivita');
+- "data_profile": evidenze MISURATE per questa tabella: candidate_keys (migliori object_type.key),
+  date_columns, relationships (colonna -> chiave di un'altra tabella: candidate e2o_relationship).
+"already_defined_model" e' il modello comune dell'intero dataset: riusa ESATTAMENTE quei nomi per
+oggetti ed eventi. "known_pattern", se presente, e' un mapping gia' validato da un umano per una
+tabella con lo stesso nome: seguilo (confidence alta) salvo evidenze contrarie.
 
-Il "process_context" puo' includere anche "data_profile": evidenze MISURATE sui dati completi (non
-inferenze): "candidate_keys" (colonne senza vuoti ne' ripetizioni che identificano le righe di ogni
-tabella), "date_columns" (con has_time, percentuale di valori presenti, intervallo di date) e
-"relationships" (colonna figlio -> chiave padre con % di righe che trovano corrispondenza). Usale come
-prova forte: le candidate_keys sono le migliori object_type.key; ogni relationship e' un candidato
-naturale per una e2o_relationship (evento della tabella figlio -> oggetto della tabella padre); una
-colonna data quasi sempre vuota genera pochi eventi, dillo nella rationale.
+Elemento ("el") per ogni colonna mappata; piu' righe per la stessa colonna se serve:
+- "key": identifica un oggetto di business (obj = tipo oggetto);
+- "obj_attr": attributo stabile dell'oggetto (obj, attr);
+- "timestamp": data/ora di un evento di processo (evt; obj = oggetto a cui l'evento si riferisce,
+  di norma quello definito dalla tabella). Piu' date plausibili = eventi distinti;
+- "evt_attr": attributo della singola occorrenza dell'evento (evt, attr), es. utente, importo;
+- "relation": la colonna collega l'evento della riga a un oggetto di un ALTRO tipo
+  (evt, rel = tipo oggetto collegato, q = qualifier breve in inglese, es. "for order").
 
-Ogni tabella puo' includere anche "known_pattern": una lista di mapping gia' proposti da un umano
-in una struttura precedente confermata per una tabella con questo stesso nome esatto (una "wiki" di
-pattern gia' validati, alimentata dal catalogo dell'app). Quando presente, trattalo come un priore
-forte per default (confidence alta), non come un semplice suggerimento: usa lo stesso ocel_element/
-object_type/event_type/qualifier per le colonne che coincidono. Adattalo (o scostatene con una
-confidence piu' bassa e la rationale che spiega perche') solo se le colonne o i valori di questa
-tabella mostrano chiaramente che il contesto e' diverso da quello della struttura precedente. Se
-"known_pattern" copre solo alcune colonne della tabella attuale, ragiona normalmente sulle restanti.
-Se assente, ragiona come faresti senza: e' un aiuto opzionale, non un requisito.
-
-Per ciascuna colonna scegli una o piu' di queste categorie (ocel_element) - piu' di una riga per la
-stessa colonna e' corretto quando contribuisce a piu' aspetti del modello (es. componente di chiave
-composita E relazione verso un altro oggetto):
-
-- "object_type.key": la colonna (da sola o in combinazione con altre dello stesso tipo oggetto)
-  identifica univocamente un'istanza di un tipo di oggetto di business (es. numero ordine).
-- "object_type.attribute": descrive un attributo stabile dell'oggetto (es. nome fornitore).
-- "event_type.timestamp": la colonna e' la data/ora di un evento di processo. Una tabella
-  transazionale puo' avere piu' timestamp plausibili: se cosi', proponi event type distinti,
-  ciascuno con la propria confidence, invece di sceglierne uno a caso.
-- "event_type.attribute": descrive un attributo specifico dell'occorrenza dell'evento (es. utente
-  che ha eseguito la transazione, importo di quella transazione).
-- "e2o_relationship": la colonna collega l'evento (generato dalla riga corrente) a un oggetto di un
-  ALTRO tipo (es. una fattura che referenzia l'ordine d'acquisto). In questo caso valorizza anche
-  event_type, related_object_type e un qualifier breve in inglese (es. "for order",
-  "receives against").
-
-Regole:
-- Sii onesto sulla confidence (0.0-1.0): alta (>0.85) solo se il pattern e' inequivocabile, media
-  (0.6-0.85) se plausibile ma con alternative ragionevoli, bassa (<0.6) se ambiguo o se stai
-  indovinando - in questi casi la rationale deve spiegare l'ambiguita' come faresti a un revisore
-  umano che deve decidere se accettare o correggere.
-- Non inventare colonne o tabelle che non ti sono state fornite.
-- rationale sempre in italiano, una frase sola, concreta (cita nomi di colonna/valori quando aiuta).
-- Se una tabella e' puramente anagrafica/di supporto senza una data plausibile, non forzare un
-  event_type.timestamp: assegna solo object_type.key/attribute a quella tabella.
+Regole per contenere costi e lavoro di revisione:
+- Mappa SOLO le colonne utili al process mining: chiavi, date di processo, collegamenti, e gli
+  attributi utili come dimensioni di analisi (categorie, organizzazione, area, paese, controparte,
+  utente, stato, importi, quantita'). OMETTI le colonne tecniche o ridondanti (mandante, contatori,
+  flag interni, testi duplicati, date di aggiornamento tecnico): una colonna omessa viene ignorata.
+- conf (0.0-1.0) onesta: >0.85 solo se inequivocabile, 0.6-0.85 plausibile, <0.6 ambigua.
+- why: in italiano, massimo 12 parole, solo se conf <= 0.85 (spiega il dubbio al revisore);
+  stringa vuota se conf > 0.85.
+- Ometti i campi non pertinenti all'elemento scelto. Non inventare colonne.
+- Tabella anagrafica senza date plausibili: niente "timestamp".
 """
+
+# Prezzi in USD per milione di token (input, output). Modello sconosciuto: si usa
+# il listino piu' alto tra quelli noti, cosi' il tetto di spesa resta prudente.
+_PRICES_USD_PER_MTOK = {
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+_FALLBACK_PRICE = (5.0, 25.0)
+_CHARS_PER_TOKEN = 3.0          # stima prudente per JSON con testo italiano
+_MIN_OUTPUT_PER_COLUMN = 25     # sotto questa soglia il mapping non sarebbe affidabile
+_SKELETON_MAX_TOKENS = 6000
+
+
+class MappingBudgetError(RuntimeError):
+    """Il dataset e' troppo grande per il tetto di spesa del mapping AI."""
+
+
+def _tokens(text: str) -> int:
+    return int(len(text) / _CHARS_PER_TOKEN) + 50
+
+
+def _profile_for_table(profile: dict | None, table: str) -> dict | None:
+    """Solo la parte del profilo misurato che riguarda questa tabella."""
+    if not profile:
+        return None
+    return {
+        "candidate_keys": {k: v for k, v in profile.get("candidate_keys", {}).items() if k == table},
+        "date_columns": {k: v for k, v in profile.get("date_columns", {}).items() if k == table},
+        "relationships": [r for r in profile.get("relationships", [])
+                          if r.startswith(f"{table}.") or f"-> {table}." in r],
+    }
 
 
 class ClaudeAIMapper(AIMapper):
-    """Implementazione reale via Anthropic API (stessa interfaccia del mock)."""
+    """Implementazione reale via Anthropic API (stessa interfaccia del mock).
+
+    Costo sotto controllo: prima di chiamare Claude si stima l'input di ogni
+    chiamata e si assegna a ciascuna un limite di output (max_tokens) tale che
+    il costo massimo possibile dell'intero mapping stia nel tetto
+    AI_MAPPING_BUDGET_EUR. Se il dataset e' troppo grande per il tetto, si
+    ferma prima di spendere (MappingBudgetError)."""
+
+    PARALLEL_CALLS = 6
 
     def __init__(self, model: str | None = None):
         import anthropic  # import locale: il pacchetto non deve essere richiesto se non si usa questa classe
 
         self._client = anthropic.Anthropic()
         self._model = model or ANTHROPIC_MODEL
+        self._price_in, self._price_out = _PRICES_USD_PER_MTOK.get(self._model, _FALLBACK_PRICE)
+        self._lock = threading.Lock()
+        self.spent_usd = 0.0
+        self.last_missing_tables: list[str] = []
+
+    @property
+    def budget_usd(self) -> float:
+        return AI_MAPPING_BUDGET_EUR * USD_PER_EUR
+
+    @property
+    def spent_eur(self) -> float:
+        return self.spent_usd / USD_PER_EUR
 
     @staticmethod
     def _known_pattern_for(table_name: str, current_columns: list[str]) -> list[dict] | None:
-        """Traduce il catalogo dinamico (services/catalog.py) in un formato compatto
-        per il prompt: solo cio' che serve a Claude per riconoscere e riusare il
-        pattern, non i metadati interni (confidence/based_on_template).
-
-        current_columns filtra a monte i falsi positivi da coincidenza di nome
-        (dynamic_lookup ritorna None se le colonne non si sovrappongono a
-        sufficienza): non ci si affida solo al giudizio di Claude nel prompt
-        per accorgersi che una tabella con lo stesso nome ha in realta' un
-        contenuto diverso."""
+        """Pattern gia' confermato in catalogo per una tabella con lo stesso nome
+        (None se le colonne non si sovrappongono a sufficienza)."""
         dynamic = catalog.dynamic_lookup(table_name, current_columns)
         if dynamic is None:
             return None
         _, rules = dynamic
         return [
-            {
-                "column": r["col"],
-                "ocel_element": r["el"],
-                "object_type": r.get("object_type"),
-                "event_type": r.get("event_type"),
-                "qualifier": r.get("qualifier"),
-                "related_object_type": r.get("related_object_type"),
-            }
+            {"column": r["col"], "ocel_element": r["el"], "object_type": r.get("object_type"),
+             "event_type": r.get("event_type"), "qualifier": r.get("qualifier"),
+             "related_object_type": r.get("related_object_type")}
             for r in rules
         ]
 
-    # Limite di output per singola chiamata (una tabella alla volta: basta e avanza
-    # anche per tabelle SAP con molte colonne; lo streaming evita timeout HTTP).
-    MAX_OUTPUT_TOKENS = 32000
-    # Chiamate per tabella in parallelo. Una sola chiamata per tutte le tabelle
-    # produceva decine di migliaia di token in sequenza (10-20 minuti su 7 tabelle SAP).
-    PARALLEL_CALLS = 6
+    # ---- costi -------------------------------------------------------------
+    def _cost(self, tokens_in: int, tokens_out: int) -> float:
+        return (tokens_in * self._price_in + tokens_out * self._price_out) / 1_000_000
 
+    def _record(self, usage) -> None:
+        tokens_in = (usage.input_tokens or 0) + (getattr(usage, "cache_creation_input_tokens", 0) or 0) * 1.25 \
+            + (getattr(usage, "cache_read_input_tokens", 0) or 0) * 0.1
+        with self._lock:
+            self.spent_usd += self._cost(int(tokens_in), usage.output_tokens or 0)
+
+    def _stream(self, system: str, content: str, max_tokens: int, output_format):
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+            output_config={"effort": AI_MAPPING_EFFORT},
+            output_format=output_format,
+        ) as stream:
+            response = stream.get_final_message()
+        self._record(response.usage)
+        print(
+            f"ClaudeAIMapper: stop_reason={response.stop_reason}, token in/out="
+            f"{response.usage.input_tokens}/{response.usage.output_tokens} (max {max_tokens}), "
+            f"spesa finora € {self.spent_eur:.3f}"
+        )
+        if response.stop_reason != "end_turn" or response.parsed_output is None:
+            raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
+        return response.parsed_output
+
+    # ---- payload -----------------------------------------------------------
+    def _table_content(self, t: TableSchema, context_profile: dict, descriptions: dict[str, str],
+                       vocabulary: dict | None) -> str:
+        context = {k: v for k, v in context_profile.items() if k != "data_profile"}
+        context["data_profile"] = _profile_for_table(context_profile.get("data_profile"), t.name)
+        payload = {
+            "process_context": context,
+            "already_defined_model": vocabulary,
+            "table": {
+                "name": t.name,
+                "row_count": t.row_count,
+                "user_description": descriptions.get(t.name),
+                "known_pattern": self._known_pattern_for(t.name, [c.name for c in t.columns]),
+                "columns": [
+                    {"name": c.name, "type": c.inferred_type, "samples": c.sample_values[:3],
+                     "null_ratio": c.null_ratio, "distinct_ratio": c.distinct_ratio}
+                    for c in t.columns
+                ],
+            },
+        }
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+    @staticmethod
+    def _skeleton_content(tables: list[TableSchema], context_profile: dict, descriptions: dict[str, str]) -> str:
+        payload = {
+            "process_context": context_profile,
+            "tables": [
+                {"name": t.name, "rows": t.row_count, "user_description": descriptions.get(t.name),
+                 "columns": [f"{c.name}:{c.inferred_type}" for c in t.columns]}
+                for t in tables
+            ],
+        }
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+    # ---- mapping -----------------------------------------------------------
     def propose_mapping(
         self,
         tables: list[TableSchema],
@@ -448,38 +522,89 @@ class ClaudeAIMapper(AIMapper):
         vocabulary: dict | None = None,
         progress=None,
     ) -> list[MappingProposal]:
-        """Due fasi:
-        1. modello comune (una chiamata breve): tipi di oggetto con chiave e tabella
-           che li definisce, tipi di evento con tabella e colonna data - cosi' i nomi
-           restano coerenti tra tabelle anche se le chiamate successive sono separate;
-        2. una chiamata per tabella, in parallelo, con il modello comune come vocabolario.
-        Le tabelle senza proposte vengono richieste una seconda volta; quelle ancora
-        scoperte finiscono in self.last_missing_tables, che la revisione mostra.
-        progress(dict) riceve l'avanzamento per la pagina di attesa."""
+        """1. modello comune (chiamata breve) per avere nomi coerenti tra tabelle;
+        2. una chiamata per tabella, in parallelo, con un limite di output
+           calcolato dal tetto di spesa. Le tabelle non riuscite si ritentano solo
+           se il budget residuo lo consente; le altre finiscono in last_missing_tables."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        table_descriptions = table_descriptions or {}
+        descriptions = table_descriptions or {}
         mappable = [t for t in tables if t.columns]
-        self.last_missing_tables: list[str] = []
         report = progress or (lambda info: None)
-        state = {"phase": "model", "total": len(mappable), "done": [], "running": []}
+        state = {"phase": "model", "total": len(mappable), "done": [], "running": [],
+                 "budget_eur": AI_MAPPING_BUDGET_EUR, "spent_eur": 0.0}
         report(dict(state))
 
-        if vocabulary is None and len(mappable) > 1:
+        # --- piano di spesa, prima di chiamare Claude
+        use_skeleton = vocabulary is None and len(mappable) > 1
+        sk_content = self._skeleton_content(mappable, context_profile, descriptions) if use_skeleton else ""
+        sk_cost = self._cost(_tokens(_SKELETON_SYSTEM_PROMPT + sk_content), _SKELETON_MAX_TOKENS) if use_skeleton else 0.0
+        # il vocabolario reale arriva dopo: lo si stima con un margine pari a una piccola risposta
+        vocab_tokens = 1500 if use_skeleton else _tokens(json.dumps(vocabulary or {}))
+        table_in = {
+            t.name: _tokens(_MAPPING_SYSTEM_PROMPT + self._table_content(t, context_profile, descriptions, None)) + vocab_tokens
+            for t in mappable
+        }
+        input_cost = self._cost(sum(table_in.values()), 0)
+        out_budget_tokens = (self.budget_usd - sk_cost - input_cost) / self._price_out * 1_000_000
+        total_cols = sum(len(t.columns) for t in mappable) or 1
+        per_col = out_budget_tokens / total_cols
+        if per_col < _MIN_OUTPUT_PER_COLUMN:
+            raise MappingBudgetError(
+                f"Con {len(mappable)} tabelle e {total_cols} colonne il mapping AI supererebbe il limite di "
+                f"€ {AI_MAPPING_BUDGET_EUR:.2f} per elaborazione. Carica meno tabelle (o solo le colonne "
+                f"che servono) e riprova; il limite si cambia con AI_MAPPING_BUDGET_EUR nel file .env."
+            )
+        max_out = {t.name: max(1024, min(32000, int(per_col * len(t.columns)))) for t in mappable}
+        print(f"ClaudeAIMapper: piano di spesa ≤ € {AI_MAPPING_BUDGET_EUR:.2f}, ~{int(per_col)} token di output per colonna")
+
+        if use_skeleton:
             try:
-                vocabulary = self._skeleton(mappable, context_profile, table_descriptions)
+                sk = self._stream(_SKELETON_SYSTEM_PROMPT, sk_content, _SKELETON_MAX_TOKENS, LLMSkeleton)
+                vocabulary = {
+                    "object_types": {o.name: {"table": o.table, "key_columns": o.key_columns} for o in sk.object_types},
+                    "event_types": [{"name": e.name, "table": e.table, "timestamp_column": e.timestamp_column}
+                                    for e in sk.event_types],
+                }
             except Exception as exc:
                 print(f"ClaudeAIMapper: modello comune non riuscito ({exc!r}), procedo senza.")
 
         def one(t: TableSchema) -> list[MappingProposal]:
-            return [p for p in self._call([t], context_profile, table_descriptions, vocabulary) if p.source_table == t.name]
+            parsed = self._stream(_MAPPING_SYSTEM_PROMPT, self._table_content(t, context_profile, descriptions, vocabulary),
+                                  max_out[t.name], LLMTableMapping)
+            known = {c.name for c in t.columns}
+            return [
+                MappingProposal(
+                    source_table=t.name, source_column=m.col, ocel_element=_ELEMENT[m.el],
+                    object_type=m.obj, event_type=m.evt, attribute_name=m.attr, qualifier=m.q,
+                    related_object_type=m.rel, confidence=m.conf,
+                    rationale=m.why or "Mapping evidente da nome e valori della colonna.",
+                    based_on_template=None,
+                )
+                for m in parsed.columns if m.col in known
+            ]
 
         proposals: list[MappingProposal] = []
         pending = list(mappable)
         for attempt in (1, 2):
+            if attempt == 2:
+                # secondo tentativo solo se il budget residuo copre il caso peggiore
+                affordable = []
+                reserve = self.budget_usd - self.spent_usd
+                for t in pending:
+                    worst = self._cost(table_in[t.name], max_out[t.name])
+                    if worst <= reserve:
+                        affordable.append(t)
+                        reserve -= worst
+                pending_skipped = [t for t in pending if t not in affordable]
+                pending = affordable
+            else:
+                pending_skipped = []
             if not pending:
+                pending = pending_skipped
                 break
-            state.update(phase="tables" if attempt == 1 else "retry", running=[t.name for t in pending])
+            state.update(phase="tables" if attempt == 1 else "retry", running=[t.name for t in pending],
+                         spent_eur=round(self.spent_eur, 3))
             report(dict(state))
             failed: list[TableSchema] = []
             with ThreadPoolExecutor(max_workers=min(self.PARALLEL_CALLS, len(pending))) as pool:
@@ -497,135 +622,13 @@ class ClaudeAIMapper(AIMapper):
                         state["done"] = state["done"] + [t.name]
                     else:
                         failed.append(t)
+                    state["spent_eur"] = round(self.spent_eur, 3)
                     report(dict(state))
-            pending = failed
+            pending = failed + pending_skipped
         self.last_missing_tables = [t.name for t in pending]
+        print(f"ClaudeAIMapper: mapping completato, spesa € {self.spent_eur:.3f} (limite € {AI_MAPPING_BUDGET_EUR:.2f})")
         if not proposals:
             raise RuntimeError("Claude non ha prodotto nessuna proposta di mapping")
-        # ordine stabile per tabella, come caricate
         order = {t.name: i for i, t in enumerate(mappable)}
         proposals.sort(key=lambda p: order.get(p.source_table, len(order)))
         return proposals
-
-    def _skeleton(self, tables: list[TableSchema], context_profile: dict, table_descriptions: dict[str, str]) -> dict:
-        """Modello comune del dataset in una chiamata breve (solo nomi, chiavi e date)."""
-        payload = {
-            "process_context": context_profile,
-            "tables": [
-                {
-                    "name": t.name,
-                    "row_count": t.row_count,
-                    "user_description": table_descriptions.get(t.name),
-                    "columns": [
-                        {"name": c.name, "inferred_type": c.inferred_type, "sample_values": c.sample_values[:3],
-                         "distinct_ratio": c.distinct_ratio}
-                        for c in t.columns
-                    ],
-                }
-                for t in tables
-            ],
-        }
-        with self._client.messages.stream(
-            model=self._model,
-            max_tokens=16000,
-            system=_SKELETON_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-            output_format=LLMSkeleton,
-        ) as stream:
-            response = stream.get_final_message()
-        print(
-            f"ClaudeAIMapper: modello comune su {len(tables)} tabelle, stop_reason={response.stop_reason}, "
-            f"token in/out={response.usage.input_tokens}/{response.usage.output_tokens}"
-        )
-        if response.stop_reason != "end_turn" or response.parsed_output is None:
-            raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
-        sk = response.parsed_output
-        return {
-            "object_types": {o.name: {"table": o.table, "key_columns": o.key_columns} for o in sk.object_types},
-            "event_types": [{"name": e.name, "table": e.table, "timestamp_column": e.timestamp_column}
-                            for e in sk.event_types],
-        }
-
-    def _call(
-        self,
-        tables: list[TableSchema],
-        context_profile: dict,
-        table_descriptions: dict[str, str],
-        vocabulary: dict | None,
-    ) -> list[MappingProposal]:
-        payload = {
-            "process_context": context_profile,
-            "tables": [
-                {
-                    "name": t.name,
-                    "row_count": t.row_count,
-                    # Nota libera dell'utente sul contenuto della tabella, raccolta nel
-                    # passo "Descrivi le tabelle" prima di questa chiamata: opzionale,
-                    # presente solo se l'utente l'ha compilata (vedi system prompt).
-                    "user_description": table_descriptions.get(t.name),
-                    # "Wiki" di mapping gia' confermati dall'utente in strutture precedenti
-                    # (pulsante "Aggiungi al catalogo" nel registro strutture), per una
-                    # tabella con questo stesso nome esatto: null se non c'e' niente in
-                    # catalogo per questo nome (vedi system prompt su come usarlo).
-                    "known_pattern": self._known_pattern_for(t.name, [c.name for c in t.columns]),
-                    "columns": [
-                        {
-                            "name": c.name,
-                            "inferred_type": c.inferred_type,
-                            "sample_values": c.sample_values,
-                            "null_ratio": c.null_ratio,
-                            "distinct_ratio": c.distinct_ratio,
-                        }
-                        for c in t.columns
-                    ],
-                }
-                for t in tables
-            ],
-        }
-        instructions = "Schema delle tabelle sorgente e contesto di processo:\n\n"
-        if vocabulary:
-            payload["already_defined_model"] = vocabulary
-            instructions = (
-                "Questa richiesta riguarda SOLO le tabelle in \"tables\": proponi il mapping di ogni loro "
-                "colonna. \"already_defined_model\" e' il modello comune dell'intero dataset (tipi di oggetto "
-                "con la tabella che li definisce, tipi di evento con tabella e colonna data): riusa ESATTAMENTE "
-                "quei nomi per object_type, related_object_type ed event_type quando si riferiscono alla "
-                "stessa cosa, cosi' i collegamenti tra tabelle restano coerenti. Le colonne che referenziano "
-                "oggetti definiti in altre tabelle diventano e2o_relationship verso quei tipi.\n\n" + instructions
-            )
-
-        with self._client.messages.stream(
-            model=self._model,
-            max_tokens=self.MAX_OUTPUT_TOKENS,
-            system=_MAPPING_SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": instructions + json.dumps(payload, indent=2, ensure_ascii=False),
-            }],
-            output_format=LLMMappingResponse,
-        ) as stream:
-            response = stream.get_final_message()
-        print(
-            f"ClaudeAIMapper: {len(tables)} tabelle, stop_reason={response.stop_reason}, "
-            f"token in/out={response.usage.input_tokens}/{response.usage.output_tokens}"
-        )
-        if response.stop_reason != "end_turn" or response.parsed_output is None:
-            raise RuntimeError(f"risposta non completa (stop_reason={response.stop_reason})")
-
-        parsed = response.parsed_output
-        return [
-            MappingProposal(
-                source_table=p.source_table,
-                source_column=p.source_column,
-                ocel_element=p.ocel_element,
-                object_type=p.object_type,
-                event_type=p.event_type,
-                attribute_name=p.attribute_name,
-                qualifier=p.qualifier,
-                related_object_type=p.related_object_type,
-                confidence=p.confidence,
-                rationale=p.rationale,
-                based_on_template=None,
-            )
-            for p in parsed.proposals
-        ]

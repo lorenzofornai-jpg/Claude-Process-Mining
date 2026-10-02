@@ -52,7 +52,18 @@ AUTO_ACCEPT_CONFIDENCE_THRESHOLD = 0.85
 # non e' pensato per l'uso normale, solo per non bloccare chi non ha ancora
 # configurato una chiave.
 AI_MAPPER = os.environ.get("AI_MAPPER", "claude")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
+# Tetto di spesa del mapping AI per ogni elaborazione (modello comune + tutte le
+# tabelle): prima di chiamare Claude si calcola un limite di output per chiamata
+# tale che il costo massimo possibile resti sotto questa cifra. Se il dataset e'
+# troppo grande ci si ferma prima di spendere.
+AI_MAPPING_BUDGET_EUR = float(os.environ.get("AI_MAPPING_BUDGET_EUR", "0.50"))
+# Cambio prudente (i listini sono in dollari): un valore piu' basso del reale
+# rende il tetto piu' severo, mai piu' largo.
+USD_PER_EUR = float(os.environ.get("USD_PER_EUR", "1.05"))
+# Profondita' di ragionamento per il mapping: "low" basta per classificare
+# colonne ed e' molto piu' veloce ed economico.
+AI_MAPPING_EFFORT = os.environ.get("AI_MAPPING_EFFORT", "low")
 # Modello del controllo di pertinenza dati/processo che precede il mapping
 # (services/relevance.py): chiamata piccola, si puo' puntare a un modello piu'
 # economico via .env (es. claude-haiku-4-5).

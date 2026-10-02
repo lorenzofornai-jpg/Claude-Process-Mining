@@ -3,7 +3,8 @@
 <div class="card wide">
   <h1>Revisione del mapping</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}.
+    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}{% if mapping_cost_eur is not none %}
+    · Costo AI del mapping: € {{ "%.2f"|format(mapping_cost_eur)|replace(".", ",") }} (limite € {{ "%.2f"|format(mapping_budget_eur)|replace(".", ",") }}){% endif %}.
     Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
     gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
     solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione,
