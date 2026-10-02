@@ -473,3 +473,8 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 .kpi-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .kpi-key { font-weight: 600; color: var(--text); margin-right: 4px; }
 @media (max-width: 820px) { .kpi-list, .kpi-summary { grid-template-columns: minmax(0, 1fr); } }
+.kpi-name { font-size: 15px; }
+.kpi-question { margin: 2px 0; font-size: 13.5px; font-style: italic; color: var(--text); }
+.kpi-missing { color: var(--error); }
+.kpi-details summary { cursor: pointer; color: var(--muted); margin-top: 2px; }
+.kpi-details > div { margin-top: 3px; }

@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.config import ANTHROPIC_MODEL
+from app.services.business_kpi_library import LIBRARY
 
 Status = Literal["possibile", "parziale", "non_possibile"]
 
@@ -31,18 +32,24 @@ class UseCase(BaseModel):
     missing: list[str]
 
 
-KpiArea = Literal["tempi", "qualita_conformita", "efficienza_automazione", "finanza_costi", "servizio_controparti"]
+BusinessObjective = Literal[
+    "cassa_capitale_circolante", "costi_efficienza", "rischio_compliance", "clienti_fornitori", "ricavi_margini",
+]
 
 
 class Kpi(BaseModel):
-    area: KpiArea
-    name: str
-    why_relevant: str        # perche' conta per il business, una frase
+    objective: BusinessObjective   # obiettivo di business a cui il KPI risponde
+    name: str                      # nome di business, come lo usa il management (es. "DSO", "Touchless collection rate")
+    owner: str                     # chi lo segue (CFO, COO, CPO, Credit Manager...)
+    executive_question: str        # la domanda che si pone il C-level
+    business_value: str            # leva di valore: cosa si guadagna migliorandolo, in termini economici/operativi
+    benchmark: str                 # riferimento indicativo di mercato o "" se non significativo
+    process_mining_view: str       # cosa aggiunge il process mining rispetto a un report tradizionale
     definition: str
-    computed_as: str         # con quali eventi/attributi del modello
-    status: Status           # possibile = osservabile con questi dati
-    missing: list[str]       # dati che servirebbero (vuoto se osservabile)
-    breakdowns: list[str]    # dimensioni disponibili con cui scomporlo
+    computed_as: str               # con quali eventi/attributi del modello (o cosa servirebbe)
+    status: Status                 # possibile = osservabile con questi dati
+    missing: list[str]             # dati che servirebbero (vuoto se osservabile)
+    breakdowns: list[str]          # dimensioni disponibili con cui scomporlo
 
 
 class Dimension(BaseModel):
@@ -60,6 +67,7 @@ class DataSuggestion(BaseModel):
 
 
 class Capabilities(BaseModel):
+    process_family: str          # famiglia di processo riconosciuta (es. "Accounts Receivable")
     summary: str
     use_cases: list[UseCase]
     kpis: list[Kpi]
@@ -67,56 +75,52 @@ class Capabilities(BaseModel):
     data_suggestions: list[DataSuggestion]
 
 
-# Esempi di riferimento per famiglia di processo: guidano la scelta dei KPI
-# senza imporli (l'AI li adatta al processo reale e ai dati disponibili).
-REFERENCE_KPIS = {
-    "Purchase-to-Pay": [
-        "Lead time ordine -> entrata merce", "Lead time fattura -> pagamento", "Lead time end-to-end (RdA/ordine -> pagamento)",
-        "% pagamenti in ritardo / in anticipo rispetto alla scadenza", "% fatture senza ordine o con ordine creato dopo la fattura (maverick buying)",
-        "% three-way match al primo colpo", "Modifiche d'ordine (prezzo, quantita', data) per ordine", "% fatture bloccate e tempo di sblocco",
-        "% attivita' automatiche vs manuali", "Sconti cassa persi",
-    ],
-    "Order-to-Cash / Crediti": [
-        "DSO", "Lead time ordine -> consegna -> fattura -> incasso", "% incassi in ritardo e ritardo medio",
-        "% fatture con nota di credito", "Solleciti per fattura", "% ordini consegnati in tempo e completi (OTIF)",
-        "Blocchi di credito e tempo di rilascio", "% partite aperte scadute per fascia",
-    ],
-}
-
 _SYSTEM = """\
-Sei un esperto di process mining che affianca un data engineer nella preparazione di un dataset
-OCEL 2.0 (object-centric). Ricevi: nome del processo, assessment (obiettivi, domande di business,
-oggetto principale, sistemi, disponibilita' di storico modifiche e orari), il modello di dati che sta
-per essere generato (tipi di oggetto con attributi, tipi di evento con attributi e oggetti collegati),
-statistiche reali dell'anteprima (casi, eventi per tipo, passaggi frequenti, tempi, varianti) e gli
-attributi candidati a dimensioni di analisi (con numero di valori distinti ed esempi).
+Sei un partner di una societa' di consulenza esperto di process mining e di performance management.
+Prepari, per un dataset OCEL 2.0 che un data engineer sta per generare, la parte "KPI e analisi
+possibili" che verra' letta anche dal management (CFO, COO, CPO, Credit Manager).
 
-Valuta in modo ONESTO cosa sara' possibile analizzare con QUESTI dati, per un utente di business:
-- use_cases: breve (4-5 voci); includi sempre process_overview (performance: tempi, volumi, colli di bottiglia,
-  filtrabili per dimensioni), control_tower (KPI principali), kpi_detail (dettaglio per KPI/caso d'uso),
-  root_cause (analisi delle cause rispetto alle dimensioni disponibili) e, se sensato, conformance.
-  status = possibile solo se eventi e attributi necessari ci sono davvero; parziale se manca qualcosa
-  ma si ottiene un risultato utile; non_possibile altrimenti. In missing scrivi cosa manca in concreto.
-- kpis: e' la parte piu' importante. Elenca 12-18 KPI TIPICI E RILEVANTI per questo processo, come
-  li userebbe un process owner o un controller, coprendo le aree: tempi, qualita_conformita,
-  efficienza_automazione, finanza_costi, servizio_controparti (usa solo le aree sensate per il
-  processo; gli esempi di riferimento sono ispirazione, non un elenco da copiare). Includi anche i
-  KPI importanti che NON sono osservabili con questi dati: servono a capire cosa manca.
-  Per ognuno: why_relevant (perche' conta, una frase concreta), definition, computed_as (con quali
-  eventi/attributi del modello si calcola; per i non osservabili cosa servirebbe), status
-  (possibile = osservabile con questi dati, parziale = solo in parte o con approssimazioni,
-  non_possibile), missing (dati mancanti precisi), breakdowns (dimensioni DISPONIBILI con cui
-  scomporlo, max 4). Ordina per area e, dentro l'area, per rilevanza.
-- dimensions: le dimensioni di filtro disponibili (dagli attributi candidati, con nome leggibile e
-  source "Tipo.attributo") E quelle tipiche del processo che mancano (available=false), es. per il P2P
-  categoria merceologica, area geografica del fornitore, area/organizzazione del buyer, tipo documento.
-- data_suggestions: integrazioni di dati che sbloccano KPI o casi d'uso importanti oggi non possibili o
-  parziali (es. storico modifiche, anagrafica fornitori con paese, scadenze di pagamento, tipo utente
-  per l'automazione); how indica tabelle/campi tipici del sistema dichiarato (es. SAP: LFA1.LAND1,
-  CDHDR/CDPOS, BSEG.ZFBDT) se il sistema e' noto, altrimenti in modo generico. Ordina per priorita'.
-- summary: 2-3 frasi per l'utente: cosa potra' fare subito e il limite principale.
-Scrivi tutto in italiano, in linguaggio comprensibile a un utente di business. Non inventare dati che
-non risultano dal modello.
+Ricevi: nome del processo, assessment (obiettivi, domande di business, oggetto principale, sistemi,
+storico modifiche, orari), il modello di dati (tipi di oggetto con attributi, tipi di evento con
+attributi e oggetti collegati), statistiche reali dell'anteprima e gli attributi candidati a dimensioni.
+Ricevi anche una libreria di riferimento di KPI di business per i processi piu' noti.
+
+1. Riconosci la famiglia di processo (process_family) da nome, assessment, tabelle e attivita' (es.
+   tabelle SAP BSID/BSAD/KNA1 -> Accounts Receivable; EKKO/EKBE/RBKP -> Purchase-to-Pay; VBAK/LIKP/VBRK
+   -> Order-to-Cash). Le informazioni dell'utente possono essere scarse: usa la tua conoscenza del
+   processo per proporre comunque i KPI che contano.
+2. kpis: e' la parte piu' importante. 10-14 KPI / casi di valore che un C-level considera prioritari per
+   QUESTO processo, nel suo linguaggio e con i suoi obiettivi di miglioramento (capitale circolante,
+   costo per transazione, automazione, rischio, esperienza di clienti e fornitori, ricavi). Parti dalla
+   libreria per la famiglia riconosciuta (es. per Accounts Receivable: DSO, touchless collection,
+   payment terms mismatch...) e completala; NON limitarti a tempi di attraversamento e colli di
+   bottiglia: quelli sono strumenti, non obiettivi. Includi i KPI importanti NON osservabili con questi
+   dati: mostrano cosa manca. Per ognuno:
+   - objective: l'obiettivo di business; name: il nome usato dal management; owner: chi lo segue;
+   - executive_question: la domanda che si pone il C-level, in prima persona;
+   - business_value: cosa vale migliorarlo, in termini economici/operativi concreti (es. "ogni giorno
+     di DSO in meno libera cassa pari a un giorno di fatturato");
+   - benchmark: un riferimento indicativo di mercato se esiste ed e' ragionevolmente noto (es. range
+     tipici o best-in-class), dichiarandolo come indicativo; stringa vuota se non lo sai;
+   - process_mining_view: cosa aggiunge il process mining (es. quali varianti, clienti, aree o
+     utenti spiegano il valore del KPI; dove intervenire);
+   - definition, computed_as (con quali eventi/attributi del modello; per i non osservabili cosa
+     servirebbe), status (possibile = osservabile con questi dati; parziale = solo in parte o con
+     approssimazioni; non_possibile), missing (dati mancanti precisi), breakdowns (dimensioni
+     DISPONIBILI con cui scomporlo, max 4).
+   Ordina per objective e, dentro l'obiettivo, per rilevanza per il management.
+3. use_cases: breve (4-5 voci): process_overview, control_tower, kpi_detail, root_cause e, se sensato,
+   conformance; status possibile/parziale/non_possibile e cosa manca.
+4. dimensions: dimensioni di filtro disponibili (dagli attributi candidati, nome leggibile, source
+   "Tipo.attributo") e quelle che il management si aspetterebbe ma mancano (available=false), es.
+   segmento/area cliente, paese, business unit, categoria merceologica, organizzazione acquisti.
+5. data_suggestions: integrazioni di dati che rendono osservabili i KPI piu' preziosi oggi non
+   osservabili o parziali; why deve citare quali KPI sblocca; how con tabelle/campi tipici del sistema
+   dichiarato (es. SAP: BSEG.ZFBDT, KNB1.ZTERM, CDHDR/CDPOS, USR02.USTYP) se noto. Ordina per priorita'.
+6. summary: 2-3 frasi rivolte al management: cosa si potra' misurare subito, il valore in gioco e il
+   limite principale dei dati.
+Scrivi in italiano (i nomi dei KPI possono restare nella forma inglese usata nella pratica, es. DSO,
+touchless). Non inventare dati che non risultano dal modello.
 """
 
 
@@ -129,7 +133,7 @@ def assess_capabilities(process_context: dict, model_summary: dict) -> Capabilit
         "assessment": process_context.get("assessment"),
         "bpmn_activities": process_context.get("bpmn_activities"),
         "dataset_model_and_preview": model_summary,
-        "reference_kpi_examples": REFERENCE_KPIS,
+        "business_kpi_library": LIBRARY,
     }
     with client.messages.stream(
         model=ANTHROPIC_MODEL,
@@ -152,6 +156,7 @@ def fallback_capabilities(model_summary: dict) -> Capabilities:
     has_flow = len(activities) >= 2 and model_summary.get("cases", 0) > 0
     dim_names = [d["attribute"] for d in dims]
     return Capabilities(
+        process_family="",
         summary="Valutazione automatica di base (AI non disponibile): elenca solo ciò che si deduce "
                 "direttamente dal modello. KPI di processo e suggerimenti di integrazione richiedono l'AI.",
         use_cases=[
@@ -163,8 +168,10 @@ def fallback_capabilities(model_summary: dict) -> Capabilities:
                     what_you_can_do="Confronto di tempi e varianti tra i valori delle dimensioni disponibili.",
                     missing=[] if dims else ["attributi descrittivi (categorie, organizzazione, controparte)"]),
         ],
-        kpis=[Kpi(area="tempi", name="Tempo di attraversamento",
-                  why_relevant="Misura quanto dura il processo dall'inizio alla fine per ogni caso.",
+        kpis=[Kpi(objective="costi_efficienza", name="Tempo di attraversamento", owner="Process owner",
+                  executive_question="Quanto dura il processo dall'inizio alla fine?",
+                  business_value="Tempi più brevi riducono costi e capitale immobilizzato.", benchmark="",
+                  process_mining_view="Mostra quali varianti e quali casi allungano i tempi.",
                   definition="Tempo dal primo all'ultimo evento di ogni caso",
                   computed_as=f"{activities[0]} → {activities[-1]}" if has_flow else "—",
                   status="possibile" if has_flow else "non_possibile", missing=[], breakdowns=dim_names[:4])],

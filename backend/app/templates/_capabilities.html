@@ -1,7 +1,8 @@
 {% set status_label = {"possibile": "osservabile", "parziale": "in parte", "non_possibile": "non osservabile"} %}
 {% set status_class = {"possibile": "sev-ok", "parziale": "sev-attenzione", "non_possibile": "sev-bloccante"} %}
-{% set area_label = {"tempi": "Tempi", "qualita_conformita": "Qualità e conformità", "efficienza_automazione": "Efficienza e automazione",
-                     "finanza_costi": "Finanza e costi", "servizio_controparti": "Servizio e controparti"} %}
+{% set objective_label = {"cassa_capitale_circolante": "Cassa e capitale circolante", "costi_efficienza": "Costi ed efficienza",
+                          "rischio_compliance": "Rischio e compliance", "clienti_fornitori": "Clienti e fornitori",
+                          "ricavi_margini": "Ricavi e margini"} %}
 {% set uc_label = {"process_overview": "Process overview", "control_tower": "Control tower", "kpi_detail": "Dettaglio KPI",
                    "root_cause": "Root cause analysis", "conformance": "Conformità", "altro": "Altro"} %}
 {% set uc_status = {"possibile": "possibile", "parziale": "parziale", "non_possibile": "non possibile"} %}
@@ -12,8 +13,8 @@
 {% set n_ok = caps.kpis|selectattr("status", "equalto", "possibile")|list|length %}
 {% set n_part = caps.kpis|selectattr("status", "equalto", "parziale")|list|length %}
 {% set n_no = caps.kpis|selectattr("status", "equalto", "non_possibile")|list|length %}
-<h3>KPI tipici del processo</h3>
-<p class="tiny muted">I KPI che un process owner userebbe per questo processo e quali potrai osservare con i dati caricati.</p>
+<h3>KPI per il management{% if caps.process_family %} · {{ caps.process_family }}{% endif %}</h3>
+<p class="tiny muted">I KPI e i casi di valore su cui il management misura questo processo, e quali potrai osservare con i dati caricati.</p>
 <div class="kpi-summary">
   <div class="kpi-count"><span class="stat-value">{{ caps.kpis|length }}</span><span class="stat-label">KPI rilevanti</span></div>
   <div class="kpi-count"><span class="stat-value">{{ n_ok }}</span><span class="stat-label"><span class="sev sev-ok">osservabili</span></span></div>
@@ -21,22 +22,29 @@
   <div class="kpi-count"><span class="stat-value">{{ n_no }}</span><span class="stat-label"><span class="sev sev-bloccante">non osservabili</span></span></div>
 </div>
 
-{% for area in ["tempi", "qualita_conformita", "efficienza_automazione", "finanza_costi", "servizio_controparti"] %}
-{% set kpis = caps.kpis|selectattr("area", "equalto", area)|list %}
+{% for obj in ["cassa_capitale_circolante", "costi_efficienza", "rischio_compliance", "clienti_fornitori", "ricavi_margini"] %}
+{% set kpis = caps.kpis|selectattr("objective", "equalto", obj)|list %}
 {% if kpis %}
-<h4 class="kpi-area">{{ area_label[area] }}</h4>
+<h4 class="kpi-area">{{ objective_label[obj] }}</h4>
 <div class="kpi-list">
   {% for k in kpis %}
   <div class="kpi-card kpi-{{ k.status }}">
     <div class="kpi-head">
-      <strong>{{ k.name }}</strong>
+      <strong class="kpi-name">{{ k.name }}</strong>
       <span class="sev {{ status_class[k.status] }}">{{ status_label[k.status] }}</span>
     </div>
-    <div class="tiny">{{ k.why_relevant }}</div>
-    <div class="tiny muted"><span class="kpi-key">Definizione</span> {{ k.definition }}</div>
-    <div class="tiny muted"><span class="kpi-key">{{ "Si calcola con" if k.status != "non_possibile" else "Servirebbe" }}</span> {{ k.computed_as }}</div>
-    {% if k.missing %}<div class="tiny"><span class="kpi-key">Manca</span> {{ k.missing|join("; ") }}</div>{% endif %}
-    {% if k.breakdowns and k.status != "non_possibile" %}<div class="tiny muted"><span class="kpi-key">Per</span> {{ k.breakdowns|join(", ") }}</div>{% endif %}
+    <div class="tiny muted">{{ k.owner }}</div>
+    <p class="kpi-question">“{{ k.executive_question }}”</p>
+    <div class="tiny"><span class="kpi-key">Valore</span> {{ k.business_value }}</div>
+    {% if k.benchmark %}<div class="tiny"><span class="kpi-key">Riferimento</span> {{ k.benchmark }} <span class="tiny muted">(indicativo)</span></div>{% endif %}
+    <div class="tiny"><span class="kpi-key">Con il process mining</span> {{ k.process_mining_view }}</div>
+    {% if k.missing %}<div class="tiny kpi-missing"><span class="kpi-key">Manca</span> {{ k.missing|join("; ") }}</div>{% endif %}
+    <details class="kpi-details">
+      <summary class="tiny">Definizione e calcolo</summary>
+      <div class="tiny muted"><span class="kpi-key">Definizione</span> {{ k.definition }}</div>
+      <div class="tiny muted"><span class="kpi-key">{{ "Si calcola con" if k.status != "non_possibile" else "Servirebbe" }}</span> {{ k.computed_as }}</div>
+      {% if k.breakdowns and k.status != "non_possibile" %}<div class="tiny muted"><span class="kpi-key">Per</span> {{ k.breakdowns|join(", ") }}</div>{% endif %}
+    </details>
   </div>
   {% endfor %}
 </div>
@@ -46,7 +54,7 @@
 
 {% if caps.data_suggestions %}
 <h3>Dati da integrare per osservare più KPI</h3>
-<p class="tiny muted">Non sono obbligatori: indicano quali dati aggiuntivi renderebbero osservabili KPI oggi mancanti o parziali. Decidi tu se richiederli.</p>
+<p class="tiny muted">Non sono obbligatori: indicano quali dati aggiuntivi renderebbero osservabili i KPI oggi mancanti o parziali. Decidi tu se richiederli.</p>
 <div class="issue-list">
   {% for s in caps.data_suggestions %}
   <div class="issue {{ 'issue-attenzione' if s.priority == 'alta' else 'issue-info' }}">

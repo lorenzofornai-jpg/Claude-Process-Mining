@@ -41,17 +41,21 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   riconosciute con volumi, un caso reale, dimensioni disponibili; punto di
   vista selezionabile (proposto l'oggetto che nasce con la prima attività).
   Varianti, tempi e colli di bottiglia restano all'analisi.
-- ✅ **KPI tipici del processo** (12-18, per area: tempi, qualità e conformità,
-  efficienza e automazione, finanza e costi, servizio e controparti) con perché
-  contano, definizione, come si calcolano, osservabile / in parte / non
-  osservabile con i dati attuali, cosa manca e dimensioni per scomporli.
+- ✅ **KPI per il management**: Claude riconosce la famiglia di processo e
+  propone 10-14 KPI / casi di valore nel linguaggio del C-level, per obiettivo
+  (cassa e capitale circolante, costi ed efficienza, rischio e compliance,
+  clienti e fornitori, ricavi e margini): responsabile, domanda del management,
+  valore, riferimento indicativo, cosa aggiunge il process mining, osservabile /
+  in parte / non osservabile con i dati attuali e cosa manca. Libreria di
+  riferimento in `services/business_kpi_library.py` (AR, AP, P2P, O2C), da
+  arricchire con gli esempi degli utenti.
 - ✅ **Cosa potrai analizzare** (una chiamata AI, in cache finché il mapping non
   cambia, salvata con il dataset): process overview, control tower, dettaglio
   KPI, root cause con stato possibile/parziale/non possibile; KPI con come si
   calcolano e cosa manca; dimensioni disponibili e mancanti; integrazioni di
   dati consigliate con priorità. Versione di base senza AI.
-- ⬜ Catalogo KPI di riferimento per processo da arricchire con gli esempi
-  dell'utente (oggi `REFERENCE_KPIS` in `services/analysis_capabilities.py`).
+- ⬜ Arricchire la libreria KPI con altri processi (Record-to-Report, Hire-to-Retire,
+  Plan-to-Produce...) e con gli esempi degli utenti.
 - ⬜ Mostrare "Cosa potrai analizzare" anche al Data Analyst (pagina Analisi) e
   in "Dataset per l'analisi".
 - ⬜ Mappa del processo grafica (oggi barre per attività e passaggi).
