@@ -306,7 +306,8 @@ tr.row-overridden { background: var(--brand-soft); }
   gap: 8px; width: max-content; max-width: 100%; align-items: stretch;
 }
 .actions > * { margin: 0; }
-.actions > form { display: flex; }
+.actions > form { display: flex !important; }  /* vince anche su eventuali style inline */
+.actions > form > button { flex: 1; }
 .actions > .button-link, .actions > button, .actions > form > button {
   width: 100%; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center;
 }

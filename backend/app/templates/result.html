@@ -63,7 +63,7 @@
   <div class="actions">
     <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica dataset OCEL 2.0 (JSON)</a>
     {% if structure_status != "approved" %}
-    <form method="post" action="/ingestion/structures/{{ result.ingestion_config_id }}/promote" style="display:inline">
+    <form method="post" action="/ingestion/structures/{{ result.ingestion_config_id }}/promote">
       <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
       <button type="submit" class="primary">Utilizza per l'analisi</button>
     </form>
