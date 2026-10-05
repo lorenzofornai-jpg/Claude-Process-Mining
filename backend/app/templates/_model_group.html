@@ -8,6 +8,12 @@
       <div>Chiave: <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">senza chiave</span>{% endif %}</div>
     {% else %}
       <div>Data/ora: <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">senza data</span>{% endif %}</div>
+      {% if g.activity %}
+      <div>Attività dalla colonna <span class="mono">{{ g.activity.column }}</span>:
+        {% if g.activity.names is none %}ogni valore è già il nome dell'attività{% else %}{{ g.activity.names|join(", ") or "—" }}{% endif %}{% if g.activity.excluded %}
+        <span class="muted">· esclusi: <span class="mono">{{ g.activity.excluded|join(", ") }}</span></span>{% endif %}{% if g.activity.unnamed %}
+        <span class="sev sev-attenzione">senza nome: {{ g.activity.unnamed|join(", ") }}</span>{% endif %}</div>
+      {% endif %}
       <div>Collegato a: {{ g.links|join(", ") if g.links else "solo all'oggetto della sua tabella" }}</div>
     {% endif %}
     <div class="muted">{{ g.attributes }} {{ "attributo" if g.attributes == 1 else "attributi" }} · {{ g.total }} {{ "riga" if g.total == 1 else "righe" }} di mapping</div>

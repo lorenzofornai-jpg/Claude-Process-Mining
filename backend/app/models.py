@@ -197,6 +197,8 @@ class EventTypeDef(Base):
     name: Mapped[str] = mapped_column(String(150))  # es. "Post Goods Receipt"
     source_table: Mapped[str] = mapped_column(String(200))
     timestamp_column: Mapped[str] = mapped_column(String(200))
+    # colonna da cui si legge l'attivita' di ogni riga (es. EKBE.VGABE); None = una sola attivita'
+    activity_column: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     config: Mapped["IngestionConfig"] = relationship(back_populates="event_types")
 
@@ -212,12 +214,15 @@ class FieldMapping(Base):
 
     ocel_element: Mapped[str] = mapped_column(String(50))
     # object_type.key | object_type.attribute | event_type.timestamp |
-    # event_type.attribute | e2o_relationship | o2o_relationship
+    # event_type.attribute | event_type.activity | e2o_relationship | o2o_relationship
     object_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     event_type: Mapped[str | None] = mapped_column(String(150), nullable=True)
     attribute_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     qualifier: Mapped[str | None] = mapped_column(String(100), nullable=True)
     related_object_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # solo per event_type.activity: {valore della colonna: nome attivita'} ("" = escluso);
+    # None = i valori sono gia' nomi di attivita'
+    activity_values: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     proposal_source: Mapped[str] = mapped_column(String(20), default="ai")  # ai|user|template
     confidence: Mapped[float] = mapped_column(Float, default=0.0)

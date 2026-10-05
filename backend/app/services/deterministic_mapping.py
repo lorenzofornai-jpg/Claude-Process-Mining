@@ -24,9 +24,11 @@ TEMPLATE_LABELS = {
 }
 
 
-def _rule(col, el, conf, rationale, object_type=None, event_type=None, related=None, qualifier=None):
+def _rule(col, el, conf, rationale, object_type=None, event_type=None, related=None, qualifier=None,
+          activity_values=None):
     return dict(col=col, el=el, object_type=object_type, event_type=event_type,
-                related_object_type=related, qualifier=qualifier, conf=conf, rationale=rationale)
+                related_object_type=related, qualifier=qualifier, conf=conf, rationale=rationale,
+                activity_values=activity_values)
 
 
 def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
@@ -55,6 +57,15 @@ def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
             if col in actual:
                 rules.append(_rule(actual[col], "event_type.attribute", 0.88,
                                    f"Dizionario SAP: {code}.{col} = {descr}.", event_type=evt))
+    activity = entry.get("activity")
+    if activity and activity["column"] in actual and any(
+        r["el"] == "event_type.timestamp" and r["event_type"] == activity["event"] for r in rules
+    ):
+        codes = ", ".join(f"{k} {v}" for k, v in activity["values"].items())
+        rules.append(_rule(actual[activity["column"]], "event_type.activity", 0.92,
+                           f"Dizionario SAP: {code}.{activity['column']} dice quale operazione è registrata "
+                           f"in ogni riga ({codes}): ogni codice è un'attività distinta.",
+                           event_type=activity["event"], activity_values=dict(activity["values"])))
     for evt, related, qualifier in entry["relations"]:
         rules.append(_rule(None, "e2o_relationship", 0.9,
                            f"Dizionario SAP: l'attività «{evt}» riguarda {related}.",
@@ -95,6 +106,18 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
             objects.setdefault(p.object_type, []).append(p.source_column)
     event_table = {p.event_type: p.source_table for p in proposals if p.ocel_element == "event_type.timestamp"}
     columns = {t.name: {c.name for c in t.columns} for t in tables}
+
+    # codici della colonna attivita' gia' coperti da un'altra tabella del dataset: esclusi
+    for p in proposals:
+        if p.ocel_element != "event_type.activity" or p.based_on_template != SAP_TEMPLATE_ID or not p.activity_values:
+            continue
+        found = sap_dictionary.lookup(p.source_table, list(columns.get(p.source_table, ())))
+        covered = (found[1].get("activity") or {}).get("covered_by", {}) if found else {}
+        for value, other_event in covered.items():
+            if other_event in event_table and p.activity_values.get(value):
+                p.activity_values = {**p.activity_values, value: ""}
+                p.rationale += (f" Il codice {value} è escluso: lo stesso fatto arriva già da "
+                                f"«{other_event}» ({event_table[other_event]}).")
 
     kept = []
     for p in proposals:

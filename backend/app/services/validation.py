@@ -29,7 +29,8 @@ HOME_QUALIFIER = "involves"
 def _check_missing_timestamps(skip_log: list[SkipRecord]) -> dict:
     by_type = defaultdict(int)
     for s in skip_log:
-        by_type[s.event_type] += 1
+        if s.kind == "timestamp":
+            by_type[s.event_type] += 1
     total = sum(by_type.values())
     details = "; ".join(f"{k}: {v} righe scartate" for k, v in by_type.items()) or "nessuna riga scartata"
     return {
@@ -114,11 +115,63 @@ def _check_event_distribution(ocel: dict) -> dict:
     }
 
 
-def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord]) -> list[dict]:
+def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dict]:
+    """Esiti per i tipi di evento con colonna attivita': quali attivita' ne sono
+    nate, quali valori sono rimasti senza traduzione (tenuti con il codice),
+    quali righe sono state escluse o non avevano il valore."""
+    activities = {
+        group: produced for group, produced in (stats.get("activities") or {}).items()
+        if list(produced) != [group]
+    }
+    unmapped = stats.get("unmapped_activity_values") or {}
+    excluded: dict[str, int] = defaultdict(int)
+    missing: dict[str, int] = defaultdict(int)
+    for s in skip_log:
+        if s.kind == "excluded":
+            excluded[s.event_type] += 1
+        elif s.kind == "activity":
+            missing[s.event_type] += 1
+    if not activities and not excluded and not missing:
+        return []
+
+    results = [{
+        "check_name": "Attività lette da una colonna (informativo)",
+        "severity": "info",
+        "passed": True,
+        "details": "; ".join(
+            f"{group}: " + ", ".join(f"{a} ({n})" for a, n in sorted(produced.items(), key=lambda x: -x[1]))
+            for group, produced in activities.items()
+        ) + ("; righe escluse nel mapping: " + ", ".join(f"{g}: {n}" for g, n in excluded.items()) if excluded else ""),
+        "affected_count": sum(sum(p.values()) for p in activities.values()),
+    }]
+    if unmapped:
+        results.append({
+            "check_name": "Valori della colonna attività senza nome",
+            "severity": "warning",
+            "passed": False,
+            "details": "; ".join(
+                f"{group}: " + ", ".join(f"{v} ({n} righe)" for v, n in values.items())
+                for group, values in unmapped.items()
+            ) + ". Restano nel dataset con il codice: dagli un nome (o escludili) nella revisione del mapping.",
+            "affected_count": sum(sum(v.values()) for v in unmapped.values()),
+        })
+    if missing:
+        results.append({
+            "check_name": "Colonna attività vuota",
+            "severity": "warning",
+            "passed": False,
+            "details": "; ".join(f"{g}: {n} righe senza valore, nessun evento generato" for g, n in missing.items()),
+            "affected_count": sum(missing.values()),
+        })
+    return results
+
+
+def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict | None = None) -> list[dict]:
     return [
         _check_missing_timestamps(skip_log),
         _check_events_before_case_start(ocel),
         _check_orphan_objects(ocel),
         _check_case_without_creation_event(ocel),
+        *_check_activity_columns(skip_log, stats or {}),
         _check_event_distribution(ocel),
     ]

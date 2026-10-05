@@ -36,6 +36,11 @@ from __future__ import annotations
 #   joins: [(evento di un'altra tabella, tipo oggetto collegato, colonna di join, qualifier)]
 #       la tabella fa da ponte: per ogni evento si cercano qui le righe con lo
 #       stesso valore della colonna di join e si collegano gli oggetti di quelle righe
+#   activity (facoltativo): l'attivita' di ogni riga si legge da una colonna "tipo"
+#       {"event": evento di questa tabella, "column": colonna, "values": {codice: attivita'},
+#        "covered_by": {codice: evento di un'altra tabella}}: un codice "coperto" da
+#       un'altra tabella presente nel dataset si esclude, per non contare due volte
+#       lo stesso fatto (es. la fattura da EKBE e da RBKP)
 SAP_TABLES: dict[str, dict] = {
     # ------------------------------------------------------------ Purchase-to-Pay
     "EBAN": {
@@ -92,6 +97,15 @@ SAP_TABLES: dict[str, dict] = {
             ("Post Purchase Order History", "Purchase Order Item", "for item"),
         ],
         "joins": [],
+        "activity": {
+            "event": "Post Purchase Order History", "column": "VGABE",
+            "values": {
+                "1": "Post Goods Receipt", "2": "Post Invoice Receipt", "3": "Post Subsequent Debit/Credit",
+                "4": "Post Down Payment", "6": "Post Goods Issue for Stock Transfer",
+                "8": "Post Delivery for Stock Transfer", "9": "Post Service Entry Sheet",
+            },
+            "covered_by": {"2": "Post Supplier Invoice"},
+        },
     },
     "MSEG": {
         "label": "Movimenti merci (posizioni)",

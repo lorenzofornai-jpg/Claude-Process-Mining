@@ -130,6 +130,7 @@ def dynamic_lookup(table_name: str, current_columns: list[str] | None = None) ->
                 event_type=r.event_type,
                 qualifier=r.qualifier,
                 related_object_type=r.related_object_type,
+                activity_values=r.activity_values,
                 # confidence fissa e alta: e' un pattern confermato da un umano in una
                 # struttura promossa, non una proposta AI grezza (il campo r.confidence
                 # e' quello della proposta originale, spesso pre-correzione).

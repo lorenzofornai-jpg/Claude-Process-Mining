@@ -10,6 +10,18 @@ README): gli attributi oggetto non sono time-varying (nessuna storia dei
 cambiamenti, solo snapshot), i valori attributo restano stringhe, le
 relazioni object-to-object non sono modellate (si usano solo E2O, che sono
 cio' che serve per la process discovery multi-oggetto).
+
+Eventi da colonna "attivita'": un tipo di evento del mapping (event_type)
+puo' avere, oltre alla data, una colonna che dice cosa e' successo in ogni
+riga (tipo movimento, azione, stato, causale; in SAP EKBE.VGABE). Allora
+l'event_type del mapping e' solo il gruppo che porta data, collegamenti e
+attributi, e l'attivita' di ogni evento si legge dal valore della colonna:
+- activity_values = {valore: nome attivita'}: traduzione dei codici;
+  un valore tradotto con "" e' escluso deliberatamente (tracciato negli
+  scarti); un valore non presente nella tabella resta, con il nome
+  "<gruppo> [<colonna>=<valore>]", cosi' nessun evento sparisce in silenzio;
+- activity_values = None: il valore e' gia' il nome dell'attivita' (export
+  gia' in forma di event log: caso, attivita', data).
 """
 from __future__ import annotations
 
@@ -31,6 +43,23 @@ class EventTypeDefCompiled:
     source_table: str
     timestamp_column: str
     attribute_columns: list[str] = field(default_factory=list)
+    activity_column: str | None = None
+    activity_values: dict[str, str] | None = None
+
+    def activity_for(self, row: dict) -> tuple[str | None, str]:
+        """(nome attivita', esito) per una riga: esito e' "ok", "unmapped"
+        (valore senza traduzione, tenuto con il codice), "excluded" o "missing"."""
+        if not self.activity_column:
+            return self.name, "ok"
+        value = _clean(row.get(self.activity_column))
+        if value == "":
+            return None, "missing"
+        if self.activity_values is None:
+            return value, "ok"
+        if value in self.activity_values:
+            name = (self.activity_values[value] or "").strip()
+            return (name, "ok") if name else (None, "excluded")
+        return f"{self.name} [{self.activity_column}={value}]", "unmapped"
 
 
 @dataclass
@@ -39,6 +68,36 @@ class SkipRecord:
     source_table: str
     reason: str
     row_preview: dict
+    # "timestamp": data mancante/illeggibile (problema di qualita');
+    # "excluded": valore della colonna attivita' escluso deliberatamente nel mapping;
+    # "activity": colonna attivita' vuota
+    kind: str = "timestamp"
+
+
+def _clean(raw) -> str:
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    return "" if s == "nan" else s
+
+
+def parse_activity_values(text: str | None) -> dict[str, str] | None:
+    """Testo della revisione ("valore = attivita'" per riga) -> tabella di
+    traduzione. Testo vuoto = i valori sono gia' nomi di attivita' (None)."""
+    if not text or not text.strip():
+        return None
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        value, name = line.split("=", 1)
+        if value.strip():
+            out[value.strip()] = name.strip()
+    return out or None
+
+
+def format_activity_values(values: dict[str, str] | None) -> str:
+    return "\n".join(f"{k} = {v}" for k, v in (values or {}).items())
 
 
 def compile_defs(confirmed: list[dict]) -> tuple[dict[str, ObjectTypeDefCompiled], dict[str, EventTypeDefCompiled]]:
@@ -66,6 +125,12 @@ def compile_defs(confirmed: list[dict]) -> tuple[dict[str, ObjectTypeDefCompiled
             object_defs[m["object_type"]].attribute_columns.append(m["source_column"])
         elif m["ocel_element"] == "event_type.attribute" and m["event_type"] in event_defs:
             event_defs[m["event_type"]].attribute_columns.append(m["source_column"])
+        elif m["ocel_element"] == "event_type.activity" and m["event_type"] in event_defs:
+            ed = event_defs[m["event_type"]]
+            if ed.source_table == m["source_table"] and m.get("source_column"):
+                ed.activity_column = m["source_column"]
+                values = m.get("activity_values")
+                ed.activity_values = {str(k).strip(): v for k, v in values.items()} if values else None
 
     return object_defs, event_defs
 
@@ -133,20 +198,42 @@ def build_ocel(
     events: list[dict] = []
     skip_log: list[SkipRecord] = []
     event_counter = 0
+    # attivita' prodotte da ogni tipo di evento del mapping, con il numero di eventi
+    activities: dict[str, dict[str, int]] = {}
+    unmapped: dict[str, dict[str, int]] = {}
+    attrs_by_activity: dict[str, list[str]] = {}
 
     for evt_def in event_defs.values():
         home_object_def = next((o for o in object_defs.values() if o.source_table == evt_def.source_table), None)
         own_rules = [m for m in relationship_rules if m["event_type"] == evt_def.name]
+        produced = activities.setdefault(evt_def.name, {})
 
         for row in tables_data.get(evt_def.source_table, []):
+            preview = {k: row.get(k) for k in list(row)[:4]}
+            activity, outcome = evt_def.activity_for(row)
+            if activity is None:
+                value = _clean(row.get(evt_def.activity_column))
+                skip_log.append(SkipRecord(
+                    event_type=evt_def.name, source_table=evt_def.source_table,
+                    reason=(f"valore '{value}' di '{evt_def.activity_column}' escluso nel mapping"
+                            if outcome == "excluded" else f"colonna attività '{evt_def.activity_column}' vuota"),
+                    row_preview=preview, kind="excluded" if outcome == "excluded" else "activity",
+                ))
+                continue
             ts = _parse_time(row.get(evt_def.timestamp_column))
             if ts is None:
                 skip_log.append(SkipRecord(
                     event_type=evt_def.name, source_table=evt_def.source_table,
                     reason=f"timestamp mancante o non parsabile in colonna '{evt_def.timestamp_column}'",
-                    row_preview={k: row.get(k) for k in list(row)[:4]},
+                    row_preview=preview,
                 ))
                 continue
+            produced[activity] = produced.get(activity, 0) + 1
+            if outcome == "unmapped":
+                value = _clean(row.get(evt_def.activity_column))
+                bucket = unmapped.setdefault(evt_def.name, {})
+                bucket[value] = bucket.get(value, 0) + 1
+            attrs_by_activity.setdefault(activity, list(evt_def.attribute_columns))
 
             event_counter += 1
             event_id = f"e{event_counter}"
@@ -171,7 +258,7 @@ def build_ocel(
 
             events.append({
                 "id": event_id,
-                "type": evt_def.name,
+                "type": activity,
                 "time": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "attributes": attrs,
                 "relationships": relationships,
@@ -184,9 +271,13 @@ def build_ocel(
             {"name": od.name, "attributes": [{"name": c, "type": "string"} for c in od.attribute_columns]}
             for od in object_defs.values()
         ],
+        # un tipo di evento senza colonna attivita' compare sempre, anche senza eventi
         "eventTypes": [
-            {"name": ed.name, "attributes": [{"name": c, "type": "string"} for c in ed.attribute_columns]}
-            for ed in event_defs.values()
+            {"name": name, "attributes": [{"name": c, "type": "string"} for c in cols]}
+            for name, cols in {
+                **{ed.name: ed.attribute_columns for ed in event_defs.values() if not ed.activity_column},
+                **attrs_by_activity,
+            }.items()
         ],
         "objects": list(objects.values()),
         "events": events,
@@ -196,8 +287,12 @@ def build_ocel(
         "object_count": len(objects),
         "event_count": len(events),
         "object_types": len(object_defs),
-        "event_types": len(event_defs),
-        "skipped_count": len(skip_log),
+        "event_types": len(ocel["eventTypes"]),
+        "skipped_count": sum(1 for s in skip_log if s.kind != "excluded"),
+        # per tipo di evento del mapping: attivita' prodotte con il numero di eventi,
+        # e i valori della colonna attivita' tenuti senza traduzione
+        "activities": {k: v for k, v in activities.items() if v},
+        "unmapped_activity_values": unmapped,
     }
     return ocel, skip_log, stats
 

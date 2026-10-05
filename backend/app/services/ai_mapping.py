@@ -49,6 +49,9 @@ class MappingProposal:
     confidence: float
     rationale: str
     based_on_template: str | None
+    # solo per event_type.activity: {valore della colonna: nome attivita'} ("" = escluso);
+    # None = i valori della colonna sono gia' nomi di attivita'
+    activity_values: dict[str, str] | None = None
 
 
 class AIMapper(ABC):
@@ -168,6 +171,7 @@ def proposals_from_rules(table: TableSchema, rules: list[dict], based_on_templat
             confidence=rule["conf"],
             rationale=rule["rationale"],
             based_on_template=based_on_template,
+            activity_values=rule.get("activity_values"),
         )
         for rule in rules
     ]
@@ -188,10 +192,11 @@ class HeuristicAIMapper(AIMapper):
             if known:
                 proposals.extend(proposals_from_rules(table, *known))
             else:
-                proposals.extend(self._generic_fallback(table))
+                activity_cols = ((context_profile or {}).get("data_profile") or {}).get("activity_columns", {})
+                proposals.extend(self._generic_fallback(table, activity_cols.get(table.name, {})))
         return deterministic_mapping.finalize(proposals, tables)
 
-    def _generic_fallback(self, table: TableSchema) -> list[MappingProposal]:
+    def _generic_fallback(self, table: TableSchema, activity_cols: dict[str, list[str]] | None = None) -> list[MappingProposal]:
         """Euristica generica per tabelle non presenti nel catalogo.
 
         Piu' cauta: chiavi/timestamp riconosciuti per pattern di nome con
@@ -210,7 +215,7 @@ class HeuristicAIMapper(AIMapper):
         # nome coerente con un pattern chiave, si prende solo la piu' vicina
         # all'unicita' totale invece di comporre una chiave fragile con piu'
         # colonne quasi-uniche per caso (es. nome+citta'+via di un'anagrafe).
-        key_candidates = [c for c in table.columns if c.distinct_ratio > 0.95 and c.inferred_type != "float"]
+        key_candidates = [c for c in table.columns if c.distinct_ratio > 0.95 and c.inferred_type not in ("float", "date")]
         name_matched_candidates = [c for c in key_candidates if ID_LIKE_PATTERN.search(c.name)]
         if name_matched_candidates:
             key_cols = name_matched_candidates
@@ -252,6 +257,19 @@ class HeuristicAIMapper(AIMapper):
                     rationale="Tabella non presente nel catalogo: nessun pattern noto per classificare questa colonna come attributo oggetto o evento. Richiede revisione manuale.",
                     based_on_template=None,
                 ))
+        # colonna attivita' rilevata dal profilo: i suoi valori diventano le attivita' dell'evento
+        timestamp = next((p for p in out if p.ocel_element == "event_type.timestamp"), None)
+        if timestamp and activity_cols:
+            col, values = next(iter(activity_cols.items()))
+            out = [p for p in out if not (p.source_column == col and p.ocel_element == "object_type.attribute")]
+            out.append(MappingProposal(
+                source_table=table.name, source_column=col, ocel_element="event_type.activity",
+                object_type=None, event_type=timestamp.event_type, attribute_name=None, qualifier=None,
+                related_object_type=None, confidence=0.55,
+                rationale=(f"Il profilo dei dati indica che {col} distingue operazioni diverse ({len(values)} valori): "
+                           "ogni valore diventa un'attività. Dai un nome leggibile ai codici o escludi quelli non di processo."),
+                based_on_template=None, activity_values={v: v for v in values},
+            ))
         return out
 
 
@@ -274,19 +292,26 @@ _ELEMENT = {
     "key": "object_type.key",
     "obj_attr": "object_type.attribute",
     "timestamp": "event_type.timestamp",
+    "activity": "event_type.activity",
     "evt_attr": "event_type.attribute",
     "relation": "e2o_relationship",
 }
 
 
+class LLMActivityValue(BaseModel):
+    v: str                                     # valore della colonna
+    act: str                                   # nome attivita' ("" = non e' un'attivita' di processo)
+
+
 class LLMColumnMapping(BaseModel):
     col: str                                   # colonna sorgente
-    el: Literal["key", "obj_attr", "timestamp", "evt_attr", "relation"]
+    el: Literal["key", "obj_attr", "timestamp", "activity", "evt_attr", "relation"]
     obj: Optional[str] = None                  # object_type
     evt: Optional[str] = None                  # event_type
     attr: Optional[str] = None                 # attribute_name
     q: Optional[str] = None                    # qualifier
     rel: Optional[str] = None                  # related_object_type
+    values: Optional[list[LLMActivityValue]] = None  # solo per "activity"
     conf: float
     why: str = ""                              # rationale (vuota se confidence alta)
 
@@ -320,7 +345,10 @@ lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usat
 - object_types: i tipi di oggetto di business (nome in inglese, leggibile, es. "Purchase Order"),
   la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
 - event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
-  tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi.
+  tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi. Se il
+  data_profile indica per la tabella una colonna attivita' (activity_columns: tipo movimento, azione,
+  stato, causale), quella data genera UN solo evento "contenitore" (nome generico, es. "Order History"):
+  le singole attivita' verranno lette dai valori della colonna, tabella per tabella.
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
 (riconosciute senza AI): non ripeterlo, ma riusa ESATTAMENTE quei nomi quando una tabella si riferisce
 agli stessi oggetti. Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi.
@@ -340,7 +368,9 @@ Contesto ("process_context"):
   campi personalizzati) e "bpmn_activities": orientano oggetti, chiavi e nomi degli eventi (usa i nomi
   delle attivita' BPMN quando una data corrisponde a un'attivita');
 - "data_profile": evidenze MISURATE per questa tabella: candidate_keys (migliori object_type.key),
-  date_columns, relationships (colonna -> chiave di un'altra tabella: candidate e2o_relationship).
+  date_columns, relationships (colonna -> chiave di un'altra tabella: candidate e2o_relationship),
+  activity_columns (colonna -> tutti i suoi valori distinti: probabile colonna che dice quale
+  operazione e' registrata in ogni riga).
 "already_defined_model" e' il modello comune dell'intero dataset: riusa ESATTAMENTE quei nomi per
 oggetti ed eventi. "known_pattern", se presente, e' un mapping gia' validato da un umano per una
 tabella con lo stesso nome: seguilo (confidence alta) salvo evidenze contrarie.
@@ -352,7 +382,13 @@ Elemento ("el") per ogni colonna mappata; piu' righe per la stessa colonna se se
   di norma quello definito dalla tabella). Piu' date plausibili = eventi distinti;
 - "evt_attr": attributo della singola occorrenza dell'evento (evt, attr), es. utente, importo;
 - "relation": la colonna collega l'evento della riga a un oggetto di un ALTRO tipo
-  (evt, rel = tipo oggetto collegato, q = qualifier breve in inglese, es. "for order").
+  (evt, rel = tipo oggetto collegato, q = qualifier breve in inglese, es. "for order");
+- "activity": la colonna dice QUALE operazione e' avvenuta nella riga (tipo movimento, azione, stato,
+  causale): evt = lo stesso evento del "timestamp" della tabella, values = un elemento per OGNI valore
+  in activity_columns, {v: valore, act: nome attivita' leggibile in inglese, allineato al BPMN se
+  presente}; act "" per i valori che non sono attivita' di processo. Se i valori sono gia' nomi di
+  attivita' leggibili, values con act = v. Usalo solo se la colonna e' in activity_columns o il suo
+  significato e' inequivocabile.
 
 Regole per contenere costi e lavoro di revisione:
 - Mappa SOLO le colonne utili al process mining: chiavi, date di processo, collegamenti, e gli
@@ -398,6 +434,7 @@ def _profile_for_table(profile: dict | None, table: str) -> dict | None:
         "date_columns": {k: v for k, v in profile.get("date_columns", {}).items() if k == table},
         "relationships": [r for r in profile.get("relationships", [])
                           if r.startswith(f"{table}.") or f"-> {table}." in r],
+        "activity_columns": profile.get("activity_columns", {}).get(table, {}),
     }
 
 
@@ -444,7 +481,8 @@ class ClaudeAIMapper(AIMapper):
         return [
             {"column": r["col"], "ocel_element": r["el"], "object_type": r.get("object_type"),
              "event_type": r.get("event_type"), "qualifier": r.get("qualifier"),
-             "related_object_type": r.get("related_object_type")}
+             "related_object_type": r.get("related_object_type"),
+             **({"activity_values": r["activity_values"]} if r.get("activity_values") else {})}
             for r in rules
         ]
 
@@ -622,6 +660,7 @@ class ClaudeAIMapper(AIMapper):
                     related_object_type=m.rel, confidence=m.conf,
                     rationale=m.why or "Mapping evidente da nome e valori della colonna.",
                     based_on_template=None,
+                    activity_values=({x.v: x.act for x in m.values} or None) if m.el == "activity" and m.values else None,
                 )
                 for m in parsed.columns if m.col in known_cols
             ]

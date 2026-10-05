@@ -6,6 +6,10 @@ risponde alle domande che di solito emergono solo a progetto avanzato:
 - le tabelle si collegano tra loro? quante righe restano orfane?
 - le date sono utilizzabili (ora presente, valori segnaposto, futuro, batch a
   mezzanotte) e coprono il perimetro dichiarato nell'assessment?
+- una tabella con una data e' in realta' un log di operazioni diverse, con una
+  colonna "tipo" (azione, stato, causale, tipo movimento) che dice cosa e'
+  successo in ogni riga? Vale per qualunque sistema: storico stati di un CRM,
+  audit trail, movimenti con causale, export gia' in forma di event log.
 
 Ogni problema e' espresso come issue con severita', impatto sull'analisi e
 cosa fare. Una sintesi compatta (chiavi, colonne data, collegamenti) viene
@@ -54,6 +58,18 @@ ID_HINT_RE = re.compile(
     re.I,
 )
 DECIMAL_RE = re.compile(r"^-?\d+[.,]\d+$")
+# nomi tipici di una colonna che dice cosa e' successo nella riga
+ACTIVITY_HINT_RE = re.compile(
+    r"(activit|attivit|action|azione|event|step|fase|phase|status|stato|state|^type$|_type$|^tipo|_tipo|"
+    r"operation|operazion|causal|reason_code|movement|moviment|transaction|transazion|change|"
+    r"vgabe|bewtp|bwart|blart|vorgang|tcode)",
+    re.I,
+)
+# colonne di utenti/persone: poche modalita' testuali, ma non sono attivita'
+USER_HINT_RE = re.compile(
+    r"(user|utente|ernam|usnam|aenam|_by$|owner|operator|operatore|agent|person|name|nome|resource|risorsa)", re.I
+)
+MAX_ACTIVITY_VALUES = 40
 
 
 def _key_candidates(df: pd.DataFrame, exclude: set[str]) -> list[str]:
@@ -210,6 +226,21 @@ def profile_tables(
                                      "Verifica che l'estrazione copra tutto il periodo dichiarato nell'assessment."))
 
     relationships = _find_relationships(frames, {t["name"]: t["key"] for t in tables})
+
+    for t in tables:
+        df = frames[t["name"]]
+        dates = {d["column"] for d in t["dates"]}
+        t["activity_columns"] = _activity_candidates(df, dates, t["key"], relationships, t["name"])
+        for a in t["activity_columns"]:
+            shown = ", ".join(a["values"][:6]) + ("…" if len(a["values"]) > 6 else "")
+            issues.append(_issue(
+                "attenzione" if a["name_hint"] else "info", t["name"],
+                f"{a['column']}: probabile colonna attività ({len(a['values'])} valori: {shown})",
+                "Le righe di questa tabella sembrano operazioni diverse distinte da questa colonna. Se diventano "
+                "un'unica attività, passi diversi del processo si confondono e tempi e varianti risultano sbagliati.",
+                "Nel mapping verrà proposta come colonna attività: ogni valore diventa un'attività con un nome "
+                "leggibile, da confermare (o escludere) in revisione.",
+            ))
     for r in relationships:
         if r["coverage_pct"] < COVERAGE_WARN * 100:
             issues.append(_issue("attenzione", r["child_table"],
@@ -236,6 +267,61 @@ def profile_tables(
     return {"tables": tables, "relationships": relationships, "issues": issues, "counts": counts,
             "verdict": {"level": verdict[0], "label": verdict[1]},
             "total_rows": sum(t["rows"] for t in tables)}
+
+
+def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | None,
+                         relationships: list[dict], table: str) -> list[dict]:
+    """Colonne che con buona probabilita' dicono quale operazione e' registrata in
+    ogni riga. Servono tre cose: una data (la riga e' un evento), una colonna con
+    poche modalita' quasi sempre valorizzata, e una tabella che si comporta da log
+    (senza chiave propria, oppure con piu' righe per lo stesso oggetto collegato).
+    Il nome della colonna (stato, azione, tipo movimento...) e' un indizio forte;
+    senza nome indicativo contano solo valori testuali (etichette, non codici)."""
+    n = len(df)
+    if not dates or n < 4:
+        return []
+    repeated_link = any(
+        r["child_table"] == table and df[r["child_column"].split("+")].duplicated().any()
+        for r in relationships if all(c in df.columns for c in r["child_column"].split("+"))
+    )
+    if key and not repeated_link:
+        return []  # una riga per oggetto: uno stato qui e' un attributo, non una sequenza di attivita'
+    links = {col for r in relationships if r["child_table"] == table for col in r["child_column"].split("+")}
+    out = []
+    for c in df.columns:
+        if c in dates or (key and c in key) or USER_HINT_RE.search(c):
+            continue
+        name_hint = bool(ACTIVITY_HINT_RE.search(c))
+        if not name_hint and (c in links or ID_HINT_RE.search(c)):
+            continue  # riferimento a un oggetto (numero ordine, id caso...), non un'operazione
+        s = df[c].dropna().astype(str).str.strip()
+        s = s[s != ""]
+        if len(s) < 0.9 * n:
+            continue
+        distinct = s.unique()
+        if not 2 <= len(distinct) <= MAX_ACTIVITY_VALUES or len(distinct) > 0.5 * n:
+            continue
+        if s.str.match(DECIMAL_RE).mean() > 0.5:
+            continue
+        labels = s.str.contains(r"[A-Za-zÀ-ÿ]").mean() > 0.9 and s.str.len().mean() >= 4
+        if not (name_hint or labels):
+            continue
+        # due colonne che si determinano a vicenda (es. EKBE.VGABE e BEWTP) dicono la stessa cosa:
+        # si segnala solo la prima
+        if any(_same_partition(df, c, o["column"]) for o in out):
+            continue
+        counts = s.value_counts()
+        out.append({"column": c, "name_hint": name_hint, "values": [str(v) for v in counts.index],
+                    "counts": {str(k): int(v) for k, v in counts.items()}})
+    # con una colonna dal nome indicativo, le altre (solo etichette testuali) sono quasi sempre dimensioni
+    if any(o["name_hint"] for o in out):
+        out = [o for o in out if o["name_hint"]]
+    return out
+
+
+def _same_partition(df: pd.DataFrame, a: str, b: str) -> bool:
+    pair = df[[a, b]].dropna().astype(str)
+    return bool(len(pair)) and pair.groupby(a)[b].nunique().max() == 1 and pair.groupby(b)[a].nunique().max() == 1
 
 
 def _find_relationships(frames: dict[str, pd.DataFrame], keys: dict[str, list[str] | None]) -> list[dict]:
@@ -304,4 +390,9 @@ def compact_for_mapping(profile: dict) -> dict:
             f"{r['child_table']}.{r['child_column']} -> {r['parent_table']}.{r['parent_column']} ({r['coverage_pct']}% collegate)"
             for r in profile["relationships"]
         ],
+        # colonne che distinguono operazioni diverse nella stessa tabella: tutti i valori distinti
+        "activity_columns": {
+            t["name"]: {a["column"]: a["values"] for a in t.get("activity_columns", [])}
+            for t in profile["tables"] if t.get("activity_columns")
+        },
     }

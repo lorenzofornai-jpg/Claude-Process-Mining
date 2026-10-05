@@ -8,7 +8,9 @@ progetto di process mining su Purchase-to-Pay:
 - LFA1  (anagrafica fornitori)
 - EKKO  (testata ordine d'acquisto)
 - EKPO  (righe ordine d'acquisto)
-- EKBE  (storico ordine: qui solo i movimenti di entrata merce, VGABE='1')
+- EKBE  (storico ordine: entrate merce VGABE='1', fatture VGABE='2' e qualche
+          addebito successivo VGABE='3': la colonna VGABE dice quale operazione
+          e' registrata in ogni riga, come in SAP)
 - RBKP  (testata fattura fornitore)
 - RSEG  (righe fattura, collegate all'ordine)
 - BSAK  (partite fornitore compensate: il "pagamento")
@@ -27,6 +29,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 random.seed(7)
+# generatore separato per le righe EKBE di fattura/addebito: le altre tabelle
+# restano identiche a quelle generate prima che EKBE le contenesse
+extra = random.Random(11)
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "data" / "sap_p2p_sample"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,6 +64,7 @@ CURRENCY = "EUR"
 TAX_CODES = ["V1", "V2"]
 
 lfa1, ekko, ekpo, ekbe, rbkp, rseg, bsak = [], [], [], [], [], [], []
+history_line: dict[tuple[str, str], int] = {}  # ultima ZEILE di storico per riga ordine
 
 for i, (name, land, ort) in enumerate(VENDOR_NAMES, start=1):
     lfa1.append({
@@ -144,6 +150,27 @@ for i in range(1, n_pos + 1):
         for li in line_infos:
             if random.random() < 0.9:  # non tutte le righe finiscono sempre in fattura insieme
                 buzei += 1
+                # la fattura compare anche nello storico ordine (VGABE 2), come in SAP
+                history_line[(ebeln, li["ebelp"])] = history_line.get((ebeln, li["ebelp"]), 1) + 1
+                ekbe.append({
+                    "MANDT": MANDT, "EBELN": ebeln, "EBELP": li["ebelp"],
+                    "ZEILE": f"{history_line[(ebeln, li['ebelp'])]:04d}", "VGABE": "2",
+                    "GJAHR": "2026", "BELNR": belnr,
+                    "BUDAT": (invoice_date + timedelta(days=1)).strftime("%Y%m%d"),
+                    "MENGE": li["menge"], "DMBTR": round(li["netwr"], 2),
+                    "BEWTP": "Q", "ERNAM": extra.choice(BUYERS),
+                })
+                # ~8% delle righe fatturate riceve un addebito/accredito successivo (VGABE 3)
+                if extra.random() < 0.08:
+                    history_line[(ebeln, li["ebelp"])] += 1
+                    ekbe.append({
+                        "MANDT": MANDT, "EBELN": ebeln, "EBELP": li["ebelp"],
+                        "ZEILE": f"{history_line[(ebeln, li['ebelp'])]:04d}", "VGABE": "3",
+                        "GJAHR": "2026", "BELNR": str(5105600000 + len(ekbe)),
+                        "BUDAT": (invoice_date + timedelta(days=extra.randint(10, 30))).strftime("%Y%m%d"),
+                        "MENGE": 0, "DMBTR": round(li["netwr"] * extra.uniform(0.01, 0.05), 2),
+                        "BEWTP": "N", "ERNAM": extra.choice(BUYERS),
+                    })
                 rseg.append({
                     "MANDT": MANDT, "BELNR": belnr, "GJAHR": "2026", "BUZEI": f"{buzei:03d}",
                     "EBELN": ebeln, "EBELP": li["ebelp"],

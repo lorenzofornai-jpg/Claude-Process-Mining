@@ -61,8 +61,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   utenti), dettaglio KPI, root cause, suggerimenti di dati da integrare.
 
 ## 4. Limiti del motore OCEL attuale (debito tecnico)
-- ⬜ Eventi da colonna "attività"/tipo movimento (es. EKBE.VGABE), non solo
-  una colonna data = un evento.
+- ✅ **Eventi da colonna "attività"** (5 ottobre 2026): oltre alla data, un
+  tipo di evento può avere una colonna che dice cosa è successo in ogni riga
+  (tipo movimento, azione, stato, causale; in SAP EKBE.VGABE), con una tabella
+  valore → nome attività modificabile in revisione. Vale per qualunque
+  sistema: storico stati, audit trail, movimenti con causale, export già in
+  forma di event log. Il profilo dei dati segnala le probabili colonne
+  attività; dizionario SAP, euristica e Claude le propongono; i codici senza
+  nome restano nel dataset e sono segnalati nel report di qualità. Emerso
+  provando pm4py: tutto EKBE finiva in un'unica attività generica.
 - ⬜ Change log (CDHDR/CDPOS, audit trail) → eventi di modifica.
 - ⬜ Storia degli attributi degli oggetti nel tempo (oggi timestamp fittizio 1970).
 - ⬜ Relazioni oggetto-oggetto (OCEL 2.0).

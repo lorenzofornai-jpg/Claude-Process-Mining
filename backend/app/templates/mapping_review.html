@@ -130,6 +130,14 @@
                   <label>Related object type
                     <input type="text" name="field_related_object_type_{{ r.row_id }}" value="{{ r.related_object_type or '' }}">
                   </label>
+                  {% if r.ocel_element == "event_type.activity" %}
+                  <label class="edit-wide">Attività per valore
+                    <textarea name="field_activity_values_{{ r.row_id }}" rows="{{ [ (r.activity_values or {})|length + 1, 3 ]|max }}"
+                              placeholder="1 = Post Goods Receipt">{{ r.activity_values|activity_values_text }}</textarea>
+                    <span class="tiny muted">Una riga per valore: <span class="mono">valore = nome attività</span>. Lascia il nome vuoto
+                      per escludere quel valore; i valori non elencati restano con il codice. Tutto vuoto: i valori sono già nomi di attività.</span>
+                  </label>
+                  {% endif %}
                 </div>
               </details>
             </td>

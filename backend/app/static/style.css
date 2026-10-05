@@ -290,7 +290,8 @@ tr.row-overridden { background: var(--brand-soft); }
   font-size: 11px;
   color: var(--muted);
 }
-.edit-fields input, .edit-fields select {
+.edit-fields .edit-wide { grid-column: 1 / -1; }
+.edit-fields input, .edit-fields select, .edit-fields textarea {
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

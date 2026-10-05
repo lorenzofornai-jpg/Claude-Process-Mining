@@ -31,7 +31,8 @@ benefici per chi usa l'app).
 | Assessment del processo | `routers/assessment.py`, `services/assessment.py` (domande come dati), `templates/assessment.html`: checklist compilata dal Data Engineer + documenti (BPMN → nomi attività); risposte passate come `process_context` ad AI Mapping e controllo di pertinenza. Checklist leggibile in `docs/assessment-checklist.md`, idee successive in `docs/ROADMAP.md` |
 | B/C/D. Acquisizione + tabelle | `connectors/file_connector.py`, `templates/upload.html` |
 | Struttura doppione | in `handle_upload`: se tabelle e colonne caricate coincidono con una struttura già in uso del processo (`_find_identical_structure`), ci si ferma prima di controllo pertinenza e mapping AI e si propone di aggiornare quella (Sostituisci/Incrementa) con gli stessi file, o di creare comunque una nuova struttura |
-| Profilo dei dati (zero token) | `services/profiling.py`, `templates/profile.html`, `GET /ingestion/profile`: dopo l'upload, prima di pertinenza e mapping AI. Chiavi candidate, duplicati, collegamenti tra tabelle (% collegate/orfane), qualità delle date (ora, segnaposto, futuro, batch, perimetro); ogni problema con impatto e cosa fare. `compact_for_mapping()` passa chiavi/date/collegamenti all'AI come `data_profile` |
+| Profilo dei dati (zero token) | `services/profiling.py`, `templates/profile.html`, `GET /ingestion/profile`: dopo l'upload, prima di pertinenza e mapping AI. Chiavi candidate, duplicati, collegamenti tra tabelle (% collegate/orfane), qualità delle date (ora, segnaposto, futuro, batch, perimetro), probabili colonne attività (`_activity_candidates`: una colonna tipo/azione/stato/causale in una tabella che si comporta da log); ogni problema con impatto e cosa fare. `compact_for_mapping()` passa chiavi/date/collegamenti/colonne attività all'AI come `data_profile` |
+| Attività da colonna | elemento `event_type.activity` (`FieldMapping.activity_values`: valore → nome attività, `""` = escluso, nessuna tabella = valori già nomi di attività). In `services/transformation.py` il tipo di evento del mapping diventa il gruppo che porta data, collegamenti e attributi, e l'attività di ogni evento si legge dalla colonna; i valori senza nome restano con il codice e sono segnalati nel report di qualità. Proposto dal dizionario SAP (EKBE.VGABE, con esclusione dei codici già coperti da un'altra tabella, es. le fatture da RBKP), dall'euristica e da Claude (dai valori distinti del profilo); modificabile in revisione |
 | Controllo pertinenza dati/processo | `services/relevance.py`: subito dopo l'upload, una chiamata Claude piccola (solo nomi tabelle/colonne + 2 esempi, effort basso, modello `RELEVANCE_CHECK_MODEL`) dice se i dati sono del processo giusto; se "non coerente" il mapping AI parte solo dopo conferma esplicita |
 | Mapping misto e tetto di spesa | `services/deterministic_mapping.py` (catalogo + modello di esempio + `services/sap_dictionary.py`), poi `ClaudeAIMapper` in `services/ai_mapping.py` solo per le tabelle non riconosciute, entro `AI_MAPPING_BUDGET_USD` (default 0,50 $) |
 | Revisione per modello | `_model_summary`/`_row_group`/`_process_order` e azioni `group_accept|…` in `routers/ingestion.py`, `templates/_model_group.html`; dalla revisione `finalize` genera il dataset (l'anteprima con KPI è stata tolta: appartiene all'analisi) |
@@ -397,6 +398,9 @@ strutturali del disegno:
   schema dati come possibilità futura.
 - **Attributi oggetto non time-varying**: presi come snapshot, non come
   storia di cambiamenti (OCEL 2.0 lo supporterebbe).
+- **Un'attività per riga**: una colonna attività sceglie l'attività di ogni
+  riga (`event_type.activity`), ma una riga non genera due attività diverse
+  dalla stessa data.
 - **Revisione HITL: correzione dei campi target di una proposta esistente**,
   non creazione libera di un mapping da zero. In `mapping_review.html` ogni
   riga ha un pannello "Modifica" (ocel_element, object_type, event_type,
@@ -439,7 +443,8 @@ segnala correttamente le anomalie iniettate.
 
 `scripts/generate_sap_p2p.py` genera lo stesso processo P2P ma con nomi di
 tabella/campo SAP reali (`LFA1`, `EKKO`, `EKPO`, `EKBE`, `RBKP`, `RSEG`,
-`BSAK`), date in formato `YYYYMMDD` a 8 cifre, ~100 ordini d'acquisto e
+`BSAK`; in `EKBE` entrate merce, fatture e addebiti successivi distinti da
+`VGABE`, come in SAP), date in formato `YYYYMMDD` a 8 cifre, ~100 ordini d'acquisto e
 910 righe totali — pensato per stressare l'app su volume e su una
 nomenclatura senza suffissi inglesi (`EBELN`, `LIFNR`, `BELNR`... invece di
 `order_id`, `vendor_id`...), che il mapper euristico generico non aveva mai

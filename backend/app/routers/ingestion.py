@@ -39,12 +39,13 @@ from app.routers.assessment import assessment_status, load_assessment, mapping_c
 from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
-from app.services.transformation import build_ocel, compile_defs, merge_ocel
+from app.services.transformation import build_ocel, compile_defs, format_activity_values, merge_ocel, parse_activity_values
 from app.services.validation import run_data_quality_checks
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+templates.env.filters["activity_values_text"] = format_activity_values
 
 UPLOAD_DIR = DATA_DIR / "uploads"
 OUTPUT_DIR = DATA_DIR / "output"
@@ -153,7 +154,7 @@ def _field_mapping_row_to_dict(r: FieldMapping) -> dict:
         "source_table": r.source_table, "source_column": r.source_column,
         "ocel_element": r.ocel_element, "object_type": r.object_type, "event_type": r.event_type,
         "attribute_name": r.attribute_name, "qualifier": r.qualifier,
-        "related_object_type": r.related_object_type,
+        "related_object_type": r.related_object_type, "activity_values": r.activity_values,
     }
 
 
@@ -226,7 +227,7 @@ def ingestion_dashboard(request: Request):
 EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
 VALID_OCEL_ELEMENTS = [
     "object_type.key", "object_type.attribute",
-    "event_type.timestamp", "event_type.attribute", "e2o_relationship",
+    "event_type.timestamp", "event_type.activity", "event_type.attribute", "e2o_relationship",
 ]
 
 
@@ -239,6 +240,16 @@ def _target_label(r: dict) -> str:
         return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
     if el == "event_type.timestamp":
         return f'Timestamp evento → "{v("event_type")}"'
+    if el == "event_type.activity":
+        values = r.get("activity_values")
+        if not values:
+            return f'Attività da colonna → "{v("event_type")}": ogni valore è già il nome dell\'attività'
+        present = r.get("present_values")
+        items = [(k, values.get(k)) for k in present] if present is not None else list(values.items())
+        shown = [f"{k} → {n}" if n else (f"{k} → (escluso)" if n is not None else f"{k} → (senza nome)")
+                 for k, n in items[:6]]
+        more = f" (+{len(items) - 6})" if len(items) > 6 else ""
+        return f'Attività da colonna → "{v("event_type")}": ' + ", ".join(shown) + more
     if el == "event_type.attribute":
         return f'Attributo evento → "{v("event_type")}".{v("attribute_name")}'
     if el == "e2o_relationship":
@@ -537,7 +548,8 @@ def _run_ai_mapping(
             d["original_ai_proposal"] = {
                 "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
                 "attribute_name": p.attribute_name, "qualifier": p.qualifier,
-                "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
+                "related_object_type": p.related_object_type, "activity_values": p.activity_values,
+                "confidence": p.confidence, "rationale": p.rationale,
             }
             rows.append(d)
 
@@ -585,7 +597,8 @@ def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[s
             d["original_ai_proposal"] = {
                 "ocel_element": p.ocel_element, "object_type": p.object_type, "event_type": p.event_type,
                 "attribute_name": p.attribute_name, "qualifier": p.qualifier,
-                "related_object_type": p.related_object_type, "confidence": p.confidence, "rationale": p.rationale,
+                "related_object_type": p.related_object_type, "activity_values": p.activity_values,
+                "confidence": p.confidence, "rationale": p.rationale,
             }
             rows.append(d)
         sess["mapping_missing_tables"] = _tables_without_proposals(tables, rows)
@@ -634,6 +647,11 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
         # manda alla pagina di attesa, e' quella che sa cosa fare in ogni stato.
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     for r in rows:
+        if r["ocel_element"] == "event_type.activity":
+            # valori presenti nei dati caricati: la tabella di traduzione (es. dal dizionario SAP)
+            # puo' prevedere anche codici che in questa estrazione non compaiono
+            data = sess.get("tables_data", {}).get(r["source_table"], [])
+            r["present_values"] = sorted({str(x.get(r["source_column"]) or "").strip() for x in data} - {"", "nan"})
         r["target_label"] = _target_label(r)
 
     order = _process_order(sess, rows)
@@ -719,10 +737,12 @@ def _process_order(sess: dict, rows: list[dict]) -> dict:
     events_order: dict[str, float] = {}
     objects_order: dict[str, float] = {}
     try:
-        ocel, _, _ = build_ocel(sess["tables_data"], used)
+        ocel, _, stats = build_ocel(sess["tables_data"], used)
+        # le attivita' lette da una colonna contano per il tipo di evento del mapping che le genera
+        group_of = {a: g for g, produced in stats["activities"].items() for a in produced}
         times: dict[str, list[str]] = {}
         for e in ocel["events"]:
-            times.setdefault(e["type"], []).append(e["time"])
+            times.setdefault(group_of.get(e["type"], e["type"]), []).append(e["time"])
         ranked = sorted(times, key=lambda t: sorted(times[t])[len(times[t]) // 2])
         events_order = {t: i for i, t in enumerate(ranked)}
         obj_type = {o["id"]: o["type"] for o in ocel["objects"]}
@@ -731,8 +751,9 @@ def _process_order(sess: dict, rows: list[dict]) -> dict:
             for r in e["relationships"]:
                 t = obj_type.get(r["objectId"])
                 if t is not None:
-                    objects_order[t] = min(objects_order.get(t, 1e9), events_order[e["type"]])
-                    linked_events.setdefault(t, set()).add(e["type"])
+                    group = group_of.get(e["type"], e["type"])
+                    objects_order[t] = min(objects_order.get(t, 1e9), events_order[group])
+                    linked_events.setdefault(t, set()).add(group)
         # a parita' di primo evento viene prima l'oggetto collegato a piu' attivita' (il piu' centrale)
         for t in objects_order:
             objects_order[t] += 0.5 - len(linked_events.get(t, ())) / (2 * max(len(events_order), 1) + 1)
@@ -784,11 +805,22 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                 d.setdefault(bucket + "keys", []).append(r["source_column"])
             elif el == "event_type.timestamp":
                 d.setdefault(bucket + "timestamps", []).append(f"{r['source_table']}.{r['source_column']}")
+            elif el == "event_type.activity":
+                values = r.get("activity_values")
+                present = r.get("present_values")
+                if values and present is not None:
+                    values = {k: values.get(k) for k in present}
+                d[bucket + "activity"] = {
+                    "column": r["source_column"],
+                    "names": sorted({n for n in values.values() if n}) if values else None,
+                    "excluded": sorted(k for k, n in values.items() if n == "") if values else [],
+                    "unnamed": sorted(k for k, n in values.items() if n is None) if values else [],
+                }
             elif el == "e2o_relationship" and r.get("related_object_type"):
                 links = d.setdefault(bucket + "links", [])
                 if r["related_object_type"] not in links:
                     links.append(r["related_object_type"])
-        if el not in ("object_type.key", "event_type.timestamp", "e2o_relationship"):
+        if el not in ("object_type.key", "event_type.timestamp", "event_type.activity", "e2o_relationship"):
             d["all_attributes"] = d.get("all_attributes", 0) + 1
             if r["status"] != "rejected":
                 d["attributes"] += 1
@@ -796,6 +828,7 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
         if d["rejected"] == d["total"]:
             for k in ("keys", "timestamps", "links"):
                 d[k] = d.get("all_" + k, [])
+            d["activity"] = d.get("all_activity")
             d["attributes"] = d.get("all_attributes", 0)
     order = order or {"events": {}, "objects": {}}
     for g in groups.values():
@@ -833,6 +866,12 @@ async def submit_review(
             submitted = submitted.strip() or None
             if submitted != r.get(field):
                 r[field] = submitted
+                changed = True
+        submitted = form.get(f"field_activity_values_{r['row_id']}")
+        if submitted is not None and r["ocel_element"] == "event_type.activity":
+            values = parse_activity_values(submitted)
+            if values != (r.get("activity_values") or None):
+                r["activity_values"] = values
                 changed = True
         # una correzione manuale prevale sulla decisione radio: la riga resta
         # "nel mapping" ma tracciata come intervento umano, non proposta AI accettata
@@ -904,7 +943,7 @@ def _rows_signature(rows: list[dict], case_type: str | None) -> str:
     import hashlib
     key = json.dumps(
         [[r["source_table"], r["source_column"], r["ocel_element"], r.get("object_type"), r.get("event_type"),
-          r.get("attribute_name"), r.get("related_object_type")] for r in rows] + [case_type],
+          r.get("attribute_name"), r.get("related_object_type"), r.get("activity_values")] for r in rows] + [case_type],
         ensure_ascii=False,
     )
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
@@ -915,7 +954,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     confirmed = [r for r in rows if r["status"] in ("confirmed", "overridden")]
 
     ocel, skip_log, stats = build_ocel(sess["tables_data"], confirmed)
-    dq_results = run_data_quality_checks(ocel, skip_log)
+    dq_results = run_data_quality_checks(ocel, skip_log, stats)
     object_defs, event_defs = compile_defs(confirmed)
     schema_fp = _schema_fingerprint(sess["tables_schema"])
     edit_config_id = sess.get("edit_config_id")
@@ -994,6 +1033,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
             db.add(EventTypeDef(
                 ingestion_config_id=config.id, name=ed.name,
                 source_table=ed.source_table, timestamp_column=ed.timestamp_column,
+                activity_column=ed.activity_column,
             ))
 
         for r in rows:
@@ -1003,7 +1043,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 source_table=r["source_table"], source_column=r["source_column"],
                 ocel_element=r["ocel_element"], object_type=r["object_type"], event_type=r["event_type"],
                 attribute_name=r["attribute_name"], qualifier=r["qualifier"],
-                related_object_type=r["related_object_type"],
+                related_object_type=r["related_object_type"], activity_values=r.get("activity_values"),
                 proposal_source="user" if overridden else "ai",
                 confidence=r["confidence"], rationale=r["rationale"],
                 based_on_template=r["based_on_template"],
@@ -1270,7 +1310,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
             "event_count": len(ocel["events"]),
         }
     stats["update_mode"] = mode
-    dq_results = run_data_quality_checks(ocel, skip_log)
+    dq_results = run_data_quality_checks(ocel, skip_log, stats)
 
     ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"
     ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")
