@@ -16,6 +16,7 @@ from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
 from app.models import ProcessAssessment, ProcessDocument, ProcessWorkspace
 from app.services import assessment as A
+from app.services import documents as D
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -48,6 +49,30 @@ def load_assessment(workspace_id: str) -> tuple[dict, list[ProcessDocument]]:
         db.close()
 
 
+def _ensure_text(docs: list[ProcessDocument]) -> None:
+    """Legge il testo dei documenti caricati prima che l'app lo facesse (una volta sola)."""
+    missing = [d for d in docs if d.extracted_text is None]
+    if not missing:
+        return
+    db = SessionLocal()
+    try:
+        for d in missing:
+            row = db.get(ProcessDocument, d.id)
+            path = Path(d.file_path)
+            row.extracted_text = d.extracted_text = D.extract_text(path) if path.exists() else ""
+        db.commit()
+    finally:
+        db.close()
+
+
+def documents_for_mapping(workspace_id: str) -> list[dict]:
+    """Testo dei documenti di supporto del processo, per scegliere i brani da dare all'AI."""
+    _, docs = load_assessment(workspace_id)
+    _ensure_text(docs)
+    return [{"filename": d.filename, "doc_type": d.doc_type, "text": d.extracted_text}
+            for d in docs if d.extracted_text]
+
+
 def mapping_context(workspace_id: str) -> dict:
     """Contesto di processo (nome + assessment + attivita' BPMN) per AI Mapping e controllo di pertinenza."""
     db = SessionLocal()
@@ -77,6 +102,7 @@ def _page(request, user, workspace_id, saved=False, error=None, status_code=200)
     finally:
         db.close()
     answers, docs = load_assessment(workspace_id)
+    _ensure_text(docs)
     return templates.TemplateResponse(
         "assessment.html",
         {
@@ -152,13 +178,14 @@ async def upload_document(
             path.write_bytes(data)
             activities = None
             file_type = doc_type
+            text = D.extract_text(path)
             if path.suffix.lower() in (".bpmn", ".xml"):
                 activities = A.extract_bpmn_activities(path)
                 if activities:
                     file_type = "bpmn"
             db.add(ProcessDocument(
                 workspace_id=workspace_id, doc_type=file_type, filename=name, file_path=str(path),
-                size_bytes=len(data), bpmn_activities=activities, uploaded_by=user.name,
+                size_bytes=len(data), bpmn_activities=activities, extracted_text=text, uploaded_by=user.name,
             ))
         db.commit()
     finally:

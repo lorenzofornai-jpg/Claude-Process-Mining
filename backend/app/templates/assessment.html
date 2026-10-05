@@ -102,9 +102,11 @@
   <section class="assessment-section" id="documenti">
     <h2>6. Documenti di supporto</h2>
     <p class="tiny muted why">
-      Perché serve: manuali, procedure e disegni del processo spiegano cosa significano tabelle, campi e stati.
-      Dai file BPMN vengono letti i nomi delle attività, che l'AI usa come riferimento per chiamare gli eventi
-      del dataset; gli altri documenti restano a disposizione per i prossimi passi (report lacune, richiesta di estrazione).
+      Perché serve: data dictionary, manuali, procedure e disegni del processo spiegano cosa significano tabelle,
+      campi e codici, soprattutto quelli personalizzati. Dai file BPMN vengono letti i nomi delle attività, che l'AI
+      usa per chiamare gli eventi del dataset; dagli altri documenti (PDF, Word, PowerPoint, Excel, CSV, testo) viene
+      letto il testo, e prima del mapping all'AI arrivano solo i brani che citano le tabelle caricate, le loro colonne
+      o i loro codici. Immagini e disegni (PNG, JPG, Visio, draw.io) non hanno testo leggibile.
       Salva le risposte sopra prima di caricare documenti.
     </p>
 
@@ -117,6 +119,11 @@
           <td>
             <a href="/ingestion/assessment/documents/{{ d.id }}?workspace_id={{ workspace_id }}">{{ d.filename }}</a>
             <div class="tiny muted">{{ (d.size_bytes / 1024)|round|int }} KB</div>
+            {% if d.extracted_text %}
+            <div class="tiny muted">Testo letto: {{ "{:,}".format(d.extracted_text|length).replace(",", ".") }} caratteri, usati come contesto per il mapping</div>
+            {% elif d.extracted_text is not none and not d.bpmn_activities %}
+            <div class="tiny muted">Nessun testo leggibile (immagine, disegno o formato non supportato): non usato dall'AI</div>
+            {% endif %}
             {% if d.bpmn_activities %}
             <div class="tiny">Attività lette dal BPMN ({{ d.bpmn_activities|length }}): {{ d.bpmn_activities[:12]|join(", ") }}{% if d.bpmn_activities|length > 12 %}, …{% endif %}</div>
             {% endif %}

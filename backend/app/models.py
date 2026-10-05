@@ -321,5 +321,8 @@ class ProcessDocument(Base):
     # Attivita'/eventi letti da un file BPMN (nomi di task, eventi di inizio/fine):
     # passati all'AI Mapping come riferimento per nominare gli event type.
     bpmn_activities: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Testo letto dal documento (services/documents.py), da cui si scelgono i brani
+    # passati all'AI Mapping. None = non ancora letto; "" = nessun testo leggibile.
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

@@ -30,7 +30,7 @@ from pydantic import BaseModel
 
 from app.config import AI_MAPPING_BUDGET_USD, AI_MAPPING_EFFORT, ANTHROPIC_MODEL
 from app.connectors.base import TableSchema
-from app.services import catalog, deterministic_mapping
+from app.services import catalog, deterministic_mapping, documents
 
 ID_LIKE_PATTERN = re.compile(r"(_number|_no|_id)$", re.IGNORECASE)
 
@@ -345,7 +345,9 @@ _SKELETON_SYSTEM_PROMPT = """\
 Sei l'AI Mapping Service di una piattaforma di process mining. Ricevi le tabelle sorgente di un
 processo (nomi, colonne, tipi, eventuale nota dell'utente) e il contesto di processo (assessment,
 attivita' BPMN, data_profile con chiavi candidate, colonne data e relazioni misurate). Definisci SOLO
-lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usato tabella per tabella:
+lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usato tabella per tabella.
+"document_excerpts", se presente, contiene per tabella brani dei documenti del cliente (data dictionary,
+manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabella.
 - object_types: i tipi di oggetto di business (nome in inglese, leggibile, es. "Purchase Order"),
   la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
 - event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
@@ -367,7 +369,9 @@ e proponi il mapping delle sue colonne verso un log OCEL 2.0 (object-centric eve
 nomi di tabella/colonna, dai tipi, dai valori di esempio, dalle statistiche (null_ratio,
 distinct_ratio) e dal contesto di processo. La nota utente sulla tabella ("user_description"), se
 presente, e' affidabile e prioritaria rispetto all'inferenza dai soli nomi (utile su nomi opachi come
-quelli SAP).
+quelli SAP). "document_excerpts", se presente, sono brani dei documenti del cliente (data dictionary,
+manuali, procedure; "doc" = file di provenienza) che citano questa tabella, le sue colonne o i suoi codici:
+affidabili come la nota utente per il significato di colonne, codici e stati, e per i nomi delle attivita'.
 
 Contesto ("process_context"):
 - "assessment" (obiettivi, oggetto principale, eventi di inizio/fine, granularita' dei timestamp,
@@ -528,8 +532,9 @@ class ClaudeAIMapper(AIMapper):
     # ---- payload -----------------------------------------------------------
     def _table_content(self, t: TableSchema, context_profile: dict, descriptions: dict[str, str],
                        vocabulary: dict | None) -> str:
-        context = {k: v for k, v in context_profile.items() if k != "data_profile"}
+        context = {k: v for k, v in context_profile.items() if k not in ("data_profile", "document_excerpts")}
         context["data_profile"] = _profile_for_table(context_profile.get("data_profile"), t.name)
+        excerpts = (context_profile.get("document_excerpts") or {}).get(t.name)
         payload = {
             "process_context": context,
             "already_defined_model": vocabulary,
@@ -537,6 +542,7 @@ class ClaudeAIMapper(AIMapper):
                 "name": t.name,
                 "row_count": t.row_count,
                 "user_description": descriptions.get(t.name),
+                **({"document_excerpts": excerpts} if excerpts else {}),
                 "known_pattern": self._known_pattern_for(t.name, [c.name for c in t.columns]),
                 "columns": [
                     {"name": c.name, "type": c.inferred_type, "samples": c.sample_values[:3],
@@ -551,8 +557,13 @@ class ClaudeAIMapper(AIMapper):
     @staticmethod
     def _skeleton_content(tables: list[TableSchema], context_profile: dict, descriptions: dict[str, str],
                           vocabulary: dict | None = None) -> str:
+        context = {k: v for k, v in context_profile.items() if k != "document_excerpts"}
+        names = {t.name for t in tables}
+        excerpts = {k: v for k, v in (context_profile.get("document_excerpts") or {}).items() if k in names}
+        if excerpts:
+            context["document_excerpts"] = documents.for_skeleton(excerpts)
         payload = {
-            "process_context": context_profile,
+            "process_context": context,
             "already_defined_model": vocabulary,
             "tables": [
                 {"name": t.name, "rows": t.row_count, "user_description": descriptions.get(t.name),

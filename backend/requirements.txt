@@ -10,3 +10,5 @@ python-dotenv==1.0.1
 bcrypt==4.2.0
 itsdangerous==2.2.0
 pm4py==2.7.23.8
+pypdf==6.19.0
+openpyxl==3.1.5

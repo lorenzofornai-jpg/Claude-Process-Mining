@@ -5,7 +5,9 @@
   <p class="muted">
     Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}{% if mapping_known_tables %}
     · Riconosciute senza AI: {{ mapping_known_tables|join(", ") }}{% endif %}{% if mapping_cost_usd is not none %}
-    · Costo AI del mapping: {{ "%.2f"|format(mapping_cost_usd)|replace(".", ",") }} $ (limite {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $){% endif %}.
+    · Costo AI del mapping: {{ "%.2f"|format(mapping_cost_usd)|replace(".", ",") }} $ (limite {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $){% endif %}{% if document_context %}
+    · Contesto dai documenti: {% if document_context.excerpts %}{{ document_context.excerpts }} {{ "brano" if document_context.excerpts == 1 else "brani" }} da {{ document_context.docs|join(", ") }}
+      (per {{ document_context.tables|join(", ") }}){% else %}nessun brano dei documenti cita queste tabelle{% endif %}{% endif %}.
     Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
     gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
     solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione,

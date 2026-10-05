@@ -35,7 +35,8 @@ from app.models import (
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
-from app.routers.assessment import assessment_status, load_assessment, mapping_context
+from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
+from app.services.documents import select_excerpts
 from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
@@ -499,6 +500,21 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
             status_code=400,
         )
 
+    # brani dei documenti di supporto che citano queste tabelle (scelti senza AI)
+    mappable = _without_empty_columns(tables_schema)
+    activity_cols = (sess["context"].get("data_profile") or {}).get("activity_columns", {})
+    excerpts = await run_in_threadpool(select_excerpts, documents_for_mapping(workspace_id), [
+        {"name": t.name, "columns": [c.name for c in t.columns],
+         "activity_values": [v for vals in activity_cols.get(t.name, {}).values() for v in vals]}
+        for t in mappable
+    ])
+    if excerpts["by_table"]:
+        sess["context"]["document_excerpts"] = excerpts["by_table"]
+    else:
+        sess["context"].pop("document_excerpts", None)
+    sess["document_context"] = {"docs": excerpts["used_docs"], "excerpts": excerpts["excerpt_count"],
+                                "tables": sorted(excerpts["by_table"])}
+
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"
     sess["mapping_error"] = None
@@ -700,6 +716,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "dataset_label": sess["dataset_label"],
             "mapping_cost_usd": sess.get("mapping_cost_usd"), "mapping_budget_usd": AI_MAPPING_BUDGET_USD,
             "mapping_known_tables": sess.get("mapping_known_tables") or [],
+            "document_context": _document_context(sess),
             "mapping_budget_skipped": sess.get("mapping_budget_skipped") or [],
             "template_labels": TEMPLATE_LABELS,
             "by_table": by_table,
@@ -714,6 +731,17 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "step": 3,
         },
     )
+
+
+def _document_context(sess: dict) -> dict | None:
+    """Brani dei documenti arrivati davvero a Claude: solo con il mapper Claude e solo
+    per le tabelle non riconosciute dalle regole (le altre non passano dall'AI)."""
+    if sess.get("mapping_cost_usd") is None or "document_context" not in sess:
+        return None
+    known = set(sess.get("mapping_known_tables") or [])
+    by_table = {t: v for t, v in (sess["context"].get("document_excerpts") or {}).items() if t not in known}
+    return {"excerpts": sum(len(v) for v in by_table.values()), "tables": sorted(by_table),
+            "docs": sorted({e["doc"] for v in by_table.values() for e in v})}
 
 
 def _row_group(r: dict) -> tuple[str, str] | None:

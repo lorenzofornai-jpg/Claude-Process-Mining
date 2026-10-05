@@ -86,5 +86,9 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ⬜ **Tracciabilità**: ogni evento riporta tabella e riga di origine.
 
 ## Altre idee
-- ⬜ Uso del contenuto dei documenti caricati (data dictionary, manuali) come
-  contesto per il mapping, non solo i nomi delle attività BPMN.
+- ✅ **Contenuto dei documenti come contesto per il mapping** (5 ottobre 2026):
+  dai documenti dell'assessment (PDF, Word, PowerPoint, Excel, CSV, testo) si
+  legge il testo; prima del mapping si scelgono senza AI i brani che citano
+  ogni tabella, le sue colonne o i suoi codici (max ~2.500 caratteri per
+  tabella) e solo quelli arrivano a Claude. In revisione si vede quanti brani
+  e da quali documenti. Immagini e disegni restano esclusi (nessun testo).
