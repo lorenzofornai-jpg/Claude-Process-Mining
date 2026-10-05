@@ -109,37 +109,38 @@
               </label>
               <details class="edit-mapping">
                 <summary>Modifica</summary>
-                <div class="edit-fields">
-                  <label>Tipo mapping
-                    <select name="field_ocel_element_{{ r.row_id }}">
-                      {% for opt in ocel_elements %}
-                      <option value="{{ opt }}" {{ 'selected' if r.ocel_element == opt else '' }}>{{ opt }}</option>
+                <div class="edit-fields" data-row="{{ r.row_id }}">
+                  {% set shown = fields_by_element.get(r.ocel_element, []) %}
+                  <label class="edit-wide">Questa colonna è…
+                    <select name="field_ocel_element_{{ r.row_id }}" class="edit-element">
+                      {% for opt, label in element_labels.items() %}
+                      <option value="{{ opt }}" {{ 'selected' if r.ocel_element == opt else '' }}>{{ label }}</option>
                       {% endfor %}
                     </select>
                   </label>
-                  <label>Object type
-                    <input type="text" name="field_object_type_{{ r.row_id }}" value="{{ r.object_type or '' }}">
+                  <label data-field="object_type" {{ '' if 'object_type' in shown else 'hidden' }}>Oggetto
+                    <input type="text" list="dl-objects" name="field_object_type_{{ r.row_id }}" value="{{ r.object_type or '' }}">
                   </label>
-                  <label>Event type
-                    <input type="text" name="field_event_type_{{ r.row_id }}" value="{{ r.event_type or '' }}">
+                  <label data-field="event_type" {{ '' if 'event_type' in shown else 'hidden' }}>Evento
+                    <input type="text" list="dl-events" name="field_event_type_{{ r.row_id }}" value="{{ r.event_type or '' }}">
                   </label>
-                  <label>Attribute name
-                    <input type="text" name="field_attribute_name_{{ r.row_id }}" value="{{ r.attribute_name or '' }}">
+                  <label data-field="attribute_name" {{ '' if 'attribute_name' in shown else 'hidden' }}>Nome dell'attributo
+                    <input type="text" name="field_attribute_name_{{ r.row_id }}" value="{{ r.attribute_name or '' }}" placeholder="{{ r.source_column }}">
                   </label>
-                  <label>Qualifier
-                    <input type="text" name="field_qualifier_{{ r.row_id }}" value="{{ r.qualifier or '' }}">
+                  <label data-field="related_object_type" {{ '' if 'related_object_type' in shown else 'hidden' }}>Oggetto collegato
+                    <input type="text" list="dl-objects" name="field_related_object_type_{{ r.row_id }}" value="{{ r.related_object_type or '' }}">
                   </label>
-                  <label>Related object type
-                    <input type="text" name="field_related_object_type_{{ r.row_id }}" value="{{ r.related_object_type or '' }}">
+                  <label data-field="qualifier" {{ '' if 'qualifier' in shown else 'hidden' }}>Tipo di legame <span class="tiny muted">(es. for customer)</span>
+                    <input type="text" name="field_qualifier_{{ r.row_id }}" value="{{ r.qualifier or '' }}" placeholder="for …">
                   </label>
-                  {% if r.ocel_element == "event_type.activity" %}
-                  <label class="edit-wide">Attività per valore
+                  <label class="edit-wide" data-field="activity_values" {{ '' if 'activity_values' in shown else 'hidden' }}>Attività per valore
                     <textarea name="field_activity_values_{{ r.row_id }}" rows="{{ [ (r.activity_values or {})|length + 1, 3 ]|max }}"
                               placeholder="1 = Post Goods Receipt">{{ r.activity_values|activity_values_text }}</textarea>
                     <span class="tiny muted">Una riga per valore: <span class="mono">valore = nome attività</span>. Lascia il nome vuoto
                       per escludere quel valore; i valori non elencati restano con il codice. Tutto vuoto: i valori sono già nomi di attività.</span>
                   </label>
-                  {% endif %}
+                  <p class="tiny muted edit-wide">Gli oggetti e gli eventi si scelgono dall'elenco di quelli già nel modello; un nome nuovo ne crea uno nuovo.
+                    Le modifiche si salvano con "Salva e resta qui" o con una decisione.</p>
                 </div>
               </details>
             </td>
@@ -149,6 +150,9 @@
       </table>
     </details>
     {% endfor %}
+
+    <datalist id="dl-objects">{% for n in known_objects %}<option value="{{ n }}">{% endfor %}</datalist>
+    <datalist id="dl-events">{% for n in known_events %}<option value="{{ n }}">{% endfor %}</datalist>
 
     <div class="actions">
       <button type="submit" name="action" value="bulk_accept" class="secondary">Accetta le proposte ≥ {{ (threshold*100)|round|int }}%</button>
@@ -188,6 +192,16 @@
     action.type = "hidden"; action.name = "action"; action.value = "save";
     form.appendChild(action);
     form.submit();
+  });
+  // nel pannello Modifica si vedono solo i campi che servono al tipo scelto
+  var FIELDS = {{ fields_by_element|tojson }};
+  document.addEventListener("change", function (e) {
+    if (!e.target.matches("select.edit-element")) return;
+    var box = e.target.closest(".edit-fields");
+    var shown = FIELDS[e.target.value] || [];
+    box.querySelectorAll("[data-field]").forEach(function (el) {
+      el.hidden = shown.indexOf(el.dataset.field) < 0;
+    });
   });
   document.addEventListener("click", function (e) {
     var a = e.target.closest('a[href^="#tab-"]');

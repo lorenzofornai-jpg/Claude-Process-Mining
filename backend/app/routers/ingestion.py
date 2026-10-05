@@ -40,7 +40,10 @@ from app.services.documents import select_excerpts
 from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
-from app.services.transformation import build_ocel, compile_defs, format_activity_values, merge_ocel, parse_activity_values
+from app.services.transformation import (
+    FIELDS_BY_ELEMENT, build_ocel, compile_defs, format_activity_values, merge_ocel, normalize_row,
+    parse_activity_values, qualifier_for,
+)
 from app.services.validation import run_data_quality_checks
 
 router = APIRouter()
@@ -230,6 +233,17 @@ VALID_OCEL_ELEMENTS = [
     "object_type.key", "object_type.attribute",
     "event_type.timestamp", "event_type.time", "event_type.activity", "event_type.attribute", "e2o_relationship",
 ]
+
+# come si presenta ogni tipo di riga nel pannello "Modifica" della revisione
+ELEMENT_LABELS = {
+    "object_type.key": "la chiave di un oggetto",
+    "object_type.attribute": "un attributo di un oggetto",
+    "event_type.timestamp": "la data di un evento",
+    "event_type.time": "l'ora di un evento (unita alla sua data)",
+    "event_type.activity": "la colonna che dice quale attività è avvenuta",
+    "event_type.attribute": "un attributo di un evento (es. utente, importo)",
+    "e2o_relationship": "un collegamento da un evento a un oggetto",
+}
 
 
 def _target_label(r: dict) -> str:
@@ -667,6 +681,8 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
         # manda alla pagina di attesa, e' quella che sa cosa fare in ogni stato.
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     for r in rows:
+        if r["ocel_element"] == "e2o_relationship" and not r.get("qualifier"):
+            r["qualifier"] = qualifier_for(r.get("related_object_type"), r.get("rationale"))
         if r["ocel_element"] == "event_type.activity":
             # valori presenti nei dati caricati: la tabella di traduzione (es. dal dizionario SAP)
             # puo' prevedere anche codici che in questa estrazione non compaiono
@@ -727,6 +743,12 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
             "ocel_elements": VALID_OCEL_ELEMENTS,
+            "element_labels": ELEMENT_LABELS,
+            "fields_by_element": FIELDS_BY_ELEMENT,
+            "known_objects": sorted({r["object_type"] for r in rows
+                                     if r["ocel_element"] == "object_type.key" and r.get("object_type")}),
+            "known_events": sorted({r["event_type"] for r in rows
+                                    if r["ocel_element"] == "event_type.timestamp" and r.get("event_type")}),
             "blocked_message": blocked_message,
             "step": 3,
         },
@@ -908,6 +930,8 @@ async def submit_review(
             if values != (r.get("activity_values") or None):
                 r["activity_values"] = values
                 changed = True
+        if changed:
+            normalize_row(r)
         # una correzione manuale prevale sulla decisione radio: la riga resta
         # "nel mapping" ma tracciata come intervento umano, non proposta AI accettata
         if changed and r["status"] != "rejected":

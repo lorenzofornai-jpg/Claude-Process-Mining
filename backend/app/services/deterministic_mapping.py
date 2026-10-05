@@ -16,6 +16,7 @@ from dataclasses import replace
 
 from app.connectors.base import TableSchema
 from app.services import catalog, sap_dictionary
+from app.services.transformation import qualifier_for
 
 SAP_TEMPLATE_ID = "sap:standard"
 
@@ -143,6 +144,10 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
     event_table = {p.event_type: p.source_table for p in proposals if p.ocel_element == "event_type.timestamp"}
     columns = {t.name: {c.name for c in t.columns} for t in tables}
     proposals = _with_time_columns(proposals, tables)
+    for p in proposals:
+        if p.ocel_element == "e2o_relationship" and not (p.qualifier or "").strip():
+            # a volte l'AI scrive il qualifier nella motivazione ("q: for customer") invece che nel campo
+            p.qualifier = qualifier_for(p.related_object_type, p.rationale)
 
     # codici della colonna attivita' gia' coperti da un'altra tabella del dataset: esclusi
     for p in proposals:

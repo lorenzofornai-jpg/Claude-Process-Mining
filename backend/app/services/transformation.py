@@ -89,6 +89,47 @@ def _clean(raw) -> str:
     return "" if s == "nan" else s
 
 
+# campi del mapping pertinenti per ogni tipo di riga (gli altri restano vuoti)
+FIELDS_BY_ELEMENT = {
+    "object_type.key": ["object_type"],
+    "object_type.attribute": ["object_type", "attribute_name"],
+    "event_type.timestamp": ["event_type"],
+    "event_type.time": ["event_type"],
+    "event_type.activity": ["event_type", "activity_values"],
+    "event_type.attribute": ["event_type", "attribute_name"],
+    "e2o_relationship": ["event_type", "related_object_type", "qualifier"],
+}
+
+
+def default_qualifier(related_object_type: str | None) -> str:
+    """Nome del legame evento -> oggetto quando non e' stato indicato (es. "for customer")."""
+    return f"for {(related_object_type or 'object').strip().lower()}"
+
+
+def qualifier_for(related_object_type: str | None, rationale: str | None = None) -> str:
+    """Qualifier mancante: quello scritto per errore nella motivazione ("q: for customer"),
+    altrimenti uno di default."""
+    import re
+
+    found = re.search(r"\bq(?:ualifier)?\s*[:=]\s*([A-Za-z][\w ]{1,40})", rationale or "")
+    return found.group(1).strip() if found else default_qualifier(related_object_type)
+
+
+def normalize_row(r: dict) -> None:
+    """Riga di mapping coerente con il suo tipo: svuota i campi che il tipo non usa,
+    attributo senza nome = nome della colonna, collegamento senza qualifier = uno di default."""
+    keep = FIELDS_BY_ELEMENT.get(r.get("ocel_element"))
+    if keep is None:
+        return
+    for f in ("object_type", "event_type", "attribute_name", "qualifier", "related_object_type", "activity_values"):
+        if f not in keep:
+            r[f] = None
+    if "attribute_name" in keep and not r.get("attribute_name"):
+        r["attribute_name"] = r.get("source_column")
+    if r["ocel_element"] == "e2o_relationship" and not r.get("qualifier"):
+        r["qualifier"] = default_qualifier(r.get("related_object_type"))
+
+
 def parse_activity_values(text: str | None) -> dict[str, str] | None:
     """Testo della revisione ("valore = attivita'" per riga) -> tabella di
     traduzione. Testo vuoto = i valori sono gia' nomi di attivita' (None)."""
@@ -265,7 +306,8 @@ def build_ocel(
 
             for rule in own_rules:
                 for target_id in _resolve_related_objects(row, rule, object_defs, tables_data):
-                    rel = {"objectId": target_id, "qualifier": rule["qualifier"]}
+                    rel = {"objectId": target_id,
+                           "qualifier": rule.get("qualifier") or default_qualifier(rule.get("related_object_type"))}
                     if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine
                         relationships.append(rel)
 
