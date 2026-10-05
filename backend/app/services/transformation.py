@@ -106,12 +106,14 @@ def default_qualifier(related_object_type: str | None) -> str:
     return f"for {(related_object_type or 'object').strip().lower()}"
 
 
-def qualifier_for(related_object_type: str | None, rationale: str | None = None) -> str:
+def qualifier_for(related_object_type: str | None, rationale=None) -> str:
     """Qualifier mancante: quello scritto per errore nella motivazione ("q: for customer"),
     altrimenti uno di default."""
     import re
 
-    found = re.search(r"\bq(?:ualifier)?\s*[:=]\s*([A-Za-z][\w ]{1,40})", rationale or "")
+    from app.i18n import render
+
+    found = re.search(r"\bq(?:ualifier)?\s*[:=]\s*([A-Za-z][\w ]{1,40})", render("it", rationale))
     return found.group(1).strip() if found else default_qualifier(related_object_type)
 
 

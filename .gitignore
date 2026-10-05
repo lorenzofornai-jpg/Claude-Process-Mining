@@ -6,3 +6,4 @@ backend/data/uploads/
 backend/data/output/
 backend/.env
 .DS_Store
+backend/data/documents/

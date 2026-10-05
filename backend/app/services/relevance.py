@@ -25,7 +25,7 @@ from app.connectors.base import TableSchema
 class RelevanceVerdict(BaseModel):
     verdict: Literal["coerente", "dubbio", "non_coerente"]
     detected_process: str  # processo a cui i dati sembrano appartenere, es. "Purchase-to-Pay"
-    reason: str  # una o due frasi in italiano
+    reason: str  # una o due frasi nella lingua dell'interfaccia
 
 
 _SYSTEM_PROMPT = """\
@@ -42,7 +42,8 @@ quel processo, prima che parta un'elaborazione costosa.
 Riconosci anche le tabelle SAP standard dal nome (es. EKKO/EKPO ordini d'acquisto, MSEG/MKPF
 movimenti merce, RBKP/RSEG fatture fornitore, VBAK/VBAP ordini cliente, BSID/BSAD partite clienti).
 Nel dubbio preferisci "dubbio" a "non_coerente": un falso allarme blocca il lavoro dell'utente.
-reason: in italiano, una o due frasi concrete che citano le tabelle decisive.
+reason: una o due frasi concrete che citano le tabelle decisive, nella lingua indicata da "language"
+(it = italiano, en = inglese); anche detected_process in quella lingua.
 """
 
 
@@ -56,6 +57,7 @@ def check_relevance(process_context: dict, tables: list[TableSchema]) -> Relevan
             "process_name": process_context.get("process_name", ""),
             # risposte dell'assessment (oggetto principale, sistemi, obiettivi...), se compilato
             "process_assessment": process_context.get("assessment"),
+            "language": process_context.get("language", "it"),
             "tables": [
                 {
                     "name": t.name,

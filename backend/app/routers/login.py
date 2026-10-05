@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -10,11 +11,13 @@ from fastapi.templating import Jinja2Templates
 from app.auth import current_user, start_session, verify_password
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
+from app.i18n import LANGS, setup_templates
 from app.models import User
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+setup_templates(templates)
 
 
 def _cache_bust() -> str:
@@ -75,9 +78,37 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
     return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
 
 
+@router.get("/lang/{code}")
+def switch_language(request: Request, code: str):
+    """Cambio lingua dal selettore in alto: vale subito, resta in sessione e
+    sull'utente (se ha fatto l'accesso). Si torna alla pagina da cui si e' partiti."""
+    if code in LANGS:
+        request.session["lang"] = code
+        user = current_user(request)
+        if user is not None:
+            db = SessionLocal()
+            try:
+                row = db.get(User, user.id)
+                row.language = code
+                db.commit()
+            finally:
+                db.close()
+    back = request.headers.get("referer") or "/"
+    parsed = urlparse(back)
+    # solo pagine di questa app: mai un redirect verso un altro sito
+    target = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "") if (
+        not parsed.netloc or parsed.netloc == request.headers.get("host")) else "/"
+    if not target.startswith("/") or target.startswith("//"):
+        target = "/"
+    return RedirectResponse(target, status_code=303)
+
+
 @router.post("/logout")
 def logout(request: Request):
+    lang = request.session.get("lang")
     request.session.clear()
+    if lang:
+        request.session["lang"] = lang  # la pagina di accesso resta nella lingua scelta
     # NON aggiungere qui un secondo Set-Cookie esplicito (es. response.delete_cookie):
     # SessionMiddleware ne manda gia' uno da solo quando la sessione diventa vuota, e
     # avere DUE Set-Cookie per lo stesso nome cookie in una risposta e' un caso limite

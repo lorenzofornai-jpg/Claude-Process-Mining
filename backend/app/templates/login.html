@@ -1,26 +1,29 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="{{ current_lang() }}">
 <head>
   <meta charset="UTF-8">
-  <title>Accedi — AI Process Mining</title>
+  <title>{{ _("Accedi") }} — AI Process Mining</title>
   <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
 </head>
 <body>
   <main class="content" style="max-width:420px; margin-top:80px;">
     <div class="card">
-      <h1>AI Process Mining</h1>
-      <p class="muted">Accedi con le tue credenziali.</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px">
+        <h1>AI Process Mining</h1>
+        {% include "_lang_switch.html" %}
+      </div>
+      <p class="muted">{{ _("Accedi con le tue credenziali.") }}</p>
       {% if error %}
-      <div class="banner warning">{{ error }}</div>
+      <div class="banner warning">{{ error|tr }}</div>
       {% endif %}
       <form method="post" action="/login" class="form">
-        <label>Email (o nome utente, per l'amministratore iniziale)
+        <label>{{ _("Email (o nome utente, per l'amministratore iniziale)") }}
           <input type="text" name="email" required autofocus>
         </label>
         <label>Password
           <input type="password" name="password" required>
         </label>
-        <button type="submit" class="primary">Accedi</button>
+        <button type="submit" class="primary">{{ _("Accedi") }}</button>
       </form>
     </div>
   </main>

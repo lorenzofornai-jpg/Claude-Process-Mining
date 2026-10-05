@@ -1,24 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Amministrazione</h1>
+  <h1>{{ _("Amministrazione") }}</h1>
   <p class="muted">
-    Crea ed elimina processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per il
-    preparazione dei dati, Data Analyst per le analisi). Uno stesso utente può avere più
-    ruoli, anche sullo stesso processo. L'amministratore non lavora sui dati: dataset e analisi
-    le creano gli utenti assegnati.
+    {{ _("Crea ed elimina processi, crea utenti e assegna loro un ruolo per processo (Data Engineer per la preparazione dei dati, Data Analyst per le analisi). Uno stesso utente può avere più ruoli, anche sullo stesso processo. L'amministratore non lavora sui dati: dataset e analisi le creano gli utenti assegnati.") }}
   </p>
 
   <div class="actions" style="margin-top:0">
-    <a class="primary button-link" href="/admin/processes/new">+ Nuovo processo</a>
-    <a class="secondary button-link" href="/admin/users/new">+ Nuovo utente</a>
+    <a class="primary button-link" href="/admin/processes/new">+ {{ _("Nuovo processo") }}</a>
+    <a class="secondary button-link" href="/admin/users/new">+ {{ _("Nuovo utente") }}</a>
   </div>
 
-  <h2>Processi</h2>
+  <h2>{{ _("Processi") }}</h2>
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Processo</th><th>Creato il</th>
+        <th>{{ _("Processo") }}</th><th>{{ _("Creato il") }}</th>
         {% for role in assignable_roles %}<th>{{ role_labels[role] }}</th>{% endfor %}
         <th></th>
       </tr>
@@ -34,7 +31,7 @@
           {% if assigned %}
           <div class="tiny"><span class="pill">{{ assigned.name }}</span></div>
           {% else %}
-          <div class="tiny"><span class="pill pill-unassigned">non assegnato</span></div>
+          <div class="tiny"><span class="pill pill-unassigned">{{ _("non assegnato") }}</span></div>
           {% endif %}
           {% if assignable_users %}
           <form method="post" action="/admin/processes/{{ row.workspace.id }}/assign" class="assign-form" style="margin-top:6px">
@@ -44,45 +41,44 @@
               <option value="{{ u.id }}" {{ 'selected' if assigned and assigned.id == u.id else '' }}>{{ u.name }} ({{ u.email }})</option>
               {% endfor %}
             </select>
-            <button type="submit" class="secondary">Assegna</button>
+            <button type="submit" class="secondary">{{ _("Assegna") }}</button>
           </form>
           {% else %}
-          <span class="tiny muted">crea prima un utente</span>
+          <span class="tiny muted">{{ _("crea prima un utente") }}</span>
           {% endif %}
         </td>
         {% endfor %}
         <td>
           {% set n_struct = row.structures|length %}{% set n_cat = row.structures|selectattr("in_catalog")|list|length %}
           <form method="post" action="/admin/processes/{{ row.workspace.id }}/delete" style="display:inline"
-                data-confirm-title="Eliminare il processo &quot;{{ row.workspace.process_name }}&quot;?"
-                data-confirm="Verranno eliminati anche i suoi {{ n_struct }} dataset{% if n_cat %} ({{ n_cat }} nel catalogo, che verranno tolti dal catalogo){% endif %}, l'assessment, i documenti e le assegnazioni. L'operazione non si può annullare."
-                data-confirm-ok="Elimina processo">
-            <button type="submit" class="secondary">Elimina</button>
+                data-confirm-title="{{ _("Eliminare il processo «{name}»?", name=row.workspace.process_name) }}"
+                data-confirm="{% if n_cat %}{{ _("Verranno eliminati anche i suoi {n} dataset ({c} nel catalogo, che verranno tolti dal catalogo), l'assessment, i documenti e le assegnazioni. L'operazione non si può annullare.", n=n_struct, c=n_cat) }}{% else %}{{ _("Verranno eliminati anche i suoi {n} dataset, l'assessment, i documenti e le assegnazioni. L'operazione non si può annullare.", n=n_struct) }}{% endif %}"
+                data-confirm-ok="{{ _("Elimina processo") }}">
+            <button type="submit" class="secondary">{{ _("Elimina") }}</button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">Nessun processo ancora creato.</td></tr>
+      <tr><td colspan="{{ 3 + assignable_roles|length }}" class="muted">{{ _("Nessun processo ancora creato.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <h2>Utenti</h2>
+  <h2>{{ _("Utenti") }}</h2>
   <p class="tiny muted">
-    Gli amministratori gestiscono solo utenti, processi e assegnazioni: non lavorano su dati e analisi e
-    non compaiono nelle assegnazioni sopra. Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.
+    {{ _("Gli amministratori gestiscono solo utenti, processi e assegnazioni: non lavorano su dati e analisi e non compaiono nelle assegnazioni sopra. Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.") }}
   </p>
   <table class="admin-table">
-    <thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>
+    <thead><tr><th>{{ _("Nome") }}</th><th>Email</th><th></th></tr></thead>
     <tbody>
       {% for u in all_users %}
       <tr>
         <td>{{ u.name }}</td>
         <td>{{ u.email }}</td>
-        <td>{% if u.is_admin %}<span class="badge badge-overridden">amministratore</span>{% endif %}</td>
+        <td>{% if u.is_admin %}<span class="badge badge-overridden">{{ _("amministratore") }}</span>{% endif %}</td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="muted">Nessun utente ancora creato.</td></tr>
+      <tr><td colspan="3" class="muted">{{ _("Nessun utente ancora creato.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -28,9 +28,12 @@ def verify_password(raw: str, hashed: str) -> bool:
 
 
 def start_session(request, user: User) -> None:
+    lang = request.session.get("lang")  # la lingua scelta prima di accedere resta
     request.session.clear()
     request.session["user_id"] = user.id
     request.session["last_seen"] = int(time.time())
+    if user.language or lang:
+        request.session["lang"] = user.language or lang
 
 
 def current_user(request) -> User | None:

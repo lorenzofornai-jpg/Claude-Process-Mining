@@ -1,23 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Nuovo processo</h1>
+  <h1>{{ _("Nuovo processo") }}</h1>
   <p class="muted">
-    Dai un nome al processo e, se vuoi, assegna subito il Data Engineer (prepara i dati) e il
-    Data Analyst (fa le analisi). Le assegnazioni si possono cambiare in qualsiasi momento da
-    Amministrazione.
+    {{ _("Dai un nome al processo e, se vuoi, assegna subito il Data Engineer (prepara i dati) e il Data Analyst (fa le analisi). Le assegnazioni si possono cambiare in qualsiasi momento da Amministrazione.") }}
   </p>
   {% if error %}
-  <div class="banner warning">{{ error }}</div>
+  <div class="banner warning">{{ error|tr }}</div>
   {% endif %}
   <form method="post" action="/admin/processes/new" class="form">
-    <label>Nome processo
-      <input type="text" name="process_name" placeholder="es. Purchase-to-Pay Italia 2026" required>
+    <label>{{ _("Nome processo") }}
+      <input type="text" name="process_name" placeholder="{{ _("es. Purchase-to-Pay Italia 2026") }}" required>
     </label>
     {% for role in assignable_roles %}
     <label>{{ role_labels[role] }}
       <select name="{{ role }}">
-        <option value="">— da assegnare dopo —</option>
+        <option value="">— {{ _("da assegnare dopo") }} —</option>
         {% for u in assignable_users %}
         <option value="{{ u.id }}">{{ u.name }} ({{ u.email }})</option>
         {% endfor %}
@@ -25,9 +23,9 @@
     </label>
     {% endfor %}
     {% if not assignable_users %}
-    <p class="tiny muted">Nessun utente assegnabile: crea prima un utente da "+ Nuovo utente".</p>
+    <p class="tiny muted">{{ _("Nessun utente assegnabile: crea prima un utente da «+ Nuovo utente».") }}</p>
     {% endif %}
-    <button type="submit" class="primary">Crea processo</button>
+    <button type="submit" class="primary">{{ _("Crea processo") }}</button>
   </form>
 </div>
 {% endblock %}

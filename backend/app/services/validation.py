@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
+from app.i18n import concat, joined, msg
 from app.services.transformation import SkipRecord
 
 # Qualifier assegnato dal Transformation Engine al collegamento evento->oggetto
@@ -27,7 +28,8 @@ def _check_missing_timestamps(skip_log: list[SkipRecord]) -> dict:
         if s.kind == "timestamp":
             by_type[s.event_type] += 1
     total = sum(by_type.values())
-    details = "; ".join(f"{k}: {v} righe scartate" for k, v in by_type.items()) or "nessuna riga scartata"
+    details = (joined([msg("{e}: {n} righe scartate", e=k, n=v) for k, v in by_type.items()], "; ")
+               if by_type else "nessuna riga scartata")
     return {
         "check_name": "Timestamp mancante o non valido",
         "severity": "warning",
@@ -54,7 +56,7 @@ def _object_events(ocel: dict) -> tuple[dict[str, str], dict[str, list[tuple[dat
 
 def _by_type(counts: dict[str, int], first: str | None) -> str:
     order = sorted(counts, key=lambda t: (t != first, -counts[t], t))
-    return "; ".join(f"{t}: {counts[t]}" for t in order)
+    return "; ".join(f"{t}: {counts[t]}" for t in order)  # solo nomi e numeri: nulla da tradurre
 
 
 def _check_events_before_creation(ocel: dict, types: dict, events: dict, first: str | None) -> dict:
@@ -72,13 +74,14 @@ def _check_events_before_creation(ocel: dict, types: dict, events: dict, first: 
             if t < born:
                 counts[types.get(obj_id, "?")] += 1
                 if len(examples) < 5:
-                    examples.append(f"{activity} il {t:%Y-%m-%d} su {obj_id} (nato il {born:%Y-%m-%d})")
+                    examples.append(msg("{a} il {d} su {o} (nato il {b})", a=activity, d=f"{t:%Y-%m-%d}", o=obj_id,
+                                        b=f"{born:%Y-%m-%d}"))
     total = sum(counts.values())
     return {
         "check_name": "Evento prima della nascita dell'oggetto",
         "severity": "error",
         "passed": total == 0,
-        "details": (f"Per tipo di oggetto: {_by_type(counts, first)}. Esempi: " + "; ".join(examples)
+        "details": (msg("Per tipo di oggetto: {c}. Esempi: {e}", c=_by_type(counts, first), e=joined(examples, "; "))
                     if total else "nessun evento precede la nascita del proprio oggetto (controllati tutti i tipi di oggetto)"),
         "affected_count": total,
     }
@@ -107,18 +110,18 @@ def _check_truncated_histories(ocel: dict, types: dict, events: dict, first: str
             continue
         counts[obj_type] = total - n
         others = ", ".join(f"{a} ({c})" for a, c in sorted(starts.items(), key=lambda x: -x[1]) if a != typical)
-        notes.append((obj_type, f"{obj_type}: di solito inizia con «{typical}» ({n} su {total}); "
-                                f"{total - n} iniziano con {others}"))
+        notes.append((obj_type, msg("{t}: di solito inizia con «{a}» ({n} su {tot}); {k} iniziano con {o}",
+                                    t=obj_type, a=typical, n=n, tot=total, k=total - n, o=others)))
     notes.sort(key=lambda x: (x[0] != first, x[0]))
     affected = sum(counts.values())
     return {
         "check_name": "Storico che inizia a metà",
         "severity": "warning",
         "passed": affected == 0,
-        "details": ("; ".join(n for _, n in notes) + ". Di solito sono oggetti nati prima del periodo estratto, "
-                    "con tempi totali più brevi del vero (valuta di escluderli dall'analisi dei tempi o di estendere "
-                    "il periodo), oppure casi con un'anomalia di sequenza (vedi \"Evento prima della nascita "
-                    "dell'oggetto\")."
+        "details": (concat(msg("{x}.", x=joined([n for _, n in notes], "; ")),
+                           "Di solito sono oggetti nati prima del periodo estratto, con tempi totali più brevi del vero "
+                           "(valuta di escluderli dall'analisi dei tempi o di estendere il periodo), oppure casi con "
+                           "un'anomalia di sequenza (vedi «Evento prima della nascita dell'oggetto»).")
                     if affected else "ogni tipo di oggetto inizia con la sua attività abituale"),
         "affected_count": affected,
     }
@@ -139,16 +142,17 @@ def _check_orphan_objects(ocel: dict) -> dict:
     for t in sorted(orphans, key=lambda t: -len(orphans[t])):
         n, of = len(orphans[t]), total[t]
         if n == of:
-            parts.append(f"{t}: nessuno dei {of} oggetti ha eventi — controlla nella revisione a quale oggetto sono "
-                         "collegati gli eventi della sua tabella (forse lo stesso documento è modellato come due oggetti)")
+            parts.append(msg("{t}: nessuno dei {n} oggetti ha eventi — controlla nella revisione a quale oggetto sono "
+                             "collegati gli eventi della sua tabella (forse lo stesso documento è modellato come due "
+                             "oggetti)", t=t, n=of))
         else:
-            parts.append(f"{t}: {n} su {of} (es. {', '.join(orphans[t][:3])})")
+            parts.append(msg("{t}: {n} su {of} (es. {ex})", t=t, n=n, of=of, ex=", ".join(orphans[t][:3])))
     affected = sum(len(v) for v in orphans.values())
     return {
         "check_name": "Oggetti senza alcun evento collegato",
         "severity": "warning",
         "passed": affected == 0,
-        "details": "; ".join(parts) if parts else "ogni oggetto ha almeno un evento",
+        "details": joined(parts, "; ") if parts else "ogni oggetto ha almeno un evento",
         "affected_count": affected,
     }
 
@@ -190,10 +194,14 @@ def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dic
         "check_name": "Attività lette da una colonna (informativo)",
         "severity": "info",
         "passed": True,
-        "details": "; ".join(
-            f"{group}: " + ", ".join(f"{a} ({n})" for a, n in sorted(produced.items(), key=lambda x: -x[1]))
-            for group, produced in activities.items()
-        ) + ("; righe escluse nel mapping: " + ", ".join(f"{g}: {n}" for g, n in excluded.items()) if excluded else ""),
+        "details": joined([
+            "; ".join(f"{group}: " + ", ".join(f"{a} ({n})" for a, n in sorted(produced.items(), key=lambda x: -x[1]))
+                      for group, produced in activities.items()),
+            msg("righe escluse nel mapping: {x}", x=", ".join(f"{g}: {n}" for g, n in excluded.items())) if excluded else None,
+        ] if excluded else [
+            "; ".join(f"{group}: " + ", ".join(f"{a} ({n})" for a, n in sorted(produced.items(), key=lambda x: -x[1]))
+                      for group, produced in activities.items()),
+        ], "; "),
         "affected_count": sum(sum(p.values()) for p in activities.values()),
     }]
     if unmapped:
@@ -201,10 +209,10 @@ def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dic
             "check_name": "Valori della colonna attività senza nome",
             "severity": "warning",
             "passed": False,
-            "details": "; ".join(
-                f"{group}: " + ", ".join(f"{v} ({n} righe)" for v, n in values.items())
-                for group, values in unmapped.items()
-            ) + ". Restano nel dataset con il codice: dagli un nome (o escludili) nella revisione del mapping.",
+            "details": msg("{x}. Restano nel dataset con il codice: dagli un nome (o escludili) nella revisione del mapping.",
+                           x=joined([msg("{g}: {v}", g=group, v=joined([msg("{c} ({n} righe)", c=v, n=n)
+                                                                        for v, n in values.items()]))
+                                     for group, values in unmapped.items()], "; ")),
             "affected_count": sum(sum(v.values()) for v in unmapped.values()),
         })
     if missing:
@@ -212,7 +220,8 @@ def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dic
             "check_name": "Colonna attività vuota",
             "severity": "warning",
             "passed": False,
-            "details": "; ".join(f"{g}: {n} righe senza valore, nessun evento generato" for g, n in missing.items()),
+            "details": joined([msg("{g}: {n} righe senza valore, nessun evento generato", g=g, n=n)
+                               for g, n in missing.items()], "; "),
             "affected_count": sum(missing.values()),
         })
     return results
@@ -259,13 +268,13 @@ def _check_planned_events(planned: dict[str, str], stats: dict) -> list[dict]:
     for group, reason in planned.items():
         n = sum((produced.get(group) or {}).values())
         total += n
-        parts.append(f"«{group}» ({n} eventi): {reason}")
+        parts.append(msg("«{g}» ({n} eventi): {r}", g=group, n=n, r=reason))
     return [{
         "check_name": "Eventi da date previste o di scadenza",
         "severity": "warning",
         "passed": False,
-        "details": "; ".join(parts) + ". Non sono fatti avvenuti: nel processo appariranno come passi svolti e "
-                   "falseranno sequenze e tempi. Meglio tenerle come attributi (rifiuta l'evento nella revisione "
-                   "del mapping o trasforma la data in attributo).",
+        "details": msg("{x}. Non sono fatti avvenuti: nel processo appariranno come passi svolti e falseranno "
+                       "sequenze e tempi. Meglio tenerle come attributi (rifiuta l'evento nella revisione del mapping "
+                       "o trasforma la data in attributo).", x=joined(parts, "; ")),
         "affected_count": total,
     }]

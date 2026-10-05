@@ -1,31 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Fase D/E — Descrivi le tabelle (opzionale)</h1>
+  <h1>{{ _("Descrivi le tabelle (opzionale)") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong>. Se conosci il contenuto di una tabella,
-    descriverlo qui in poche parole aiuta l'AI Mapping Service a proporre un mapping più preciso —
-    specialmente su nomi poco leggibili (es. tabelle SAP). È del tutto facoltativo: puoi lasciare
-    vuoto e procedere, l'AI ragionerà comunque da nomi colonna, tipi e valori di esempio.
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }}
+    {{ _("Se conosci il contenuto di una tabella, descriverlo qui in poche parole aiuta l'AI Mapping Service a proporre un mapping più preciso — specialmente su nomi poco leggibili (es. tabelle SAP). È del tutto facoltativo: puoi lasciare vuoto e procedere, l'AI ragionerà comunque da nomi colonna, tipi e valori di esempio.") }}
   </p>
 
   {% if relevance and relevance.verdict == "non_coerente" %}
   <div class="banner error">
-    <strong>Questi dati non sembrano del processo "{{ context.process_name }}"</strong>
-    (sembrano di: {{ relevance.detected_process }}). {{ relevance.reason }}
+    <strong>{{ _("Questi dati non sembrano del processo «{p}»", p=context.process_name) }}</strong>
+    ({{ _("sembrano di: {x}", x=relevance.detected_process) }}). {{ relevance.reason }}
     <div style="margin-top:8px">
-      <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Carica altri file</a>
+      <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Carica altri file") }}</a>
     </div>
   </div>
   {% elif relevance and relevance.verdict == "dubbio" %}
   <div class="banner warning">
-    Non sono sicuro che questi dati siano del processo "{{ context.process_name }}"
-    (sembrano di: {{ relevance.detected_process }}). {{ relevance.reason }}
-    Se sono quelli giusti puoi procedere.
+    {{ _("Non sono sicuro che questi dati siano del processo «{p}»", p=context.process_name) }}
+    ({{ _("sembrano di: {x}", x=relevance.detected_process) }}). {{ relevance.reason }}
+    {{ _("Se sono quelli giusti puoi procedere.") }}
   </div>
   {% endif %}
   {% if error %}
-  <div class="banner error">{{ error }}</div>
+  <div class="banner error">{{ error|tr }}</div>
   {% endif %}
 
   <form method="post" action="/ingestion/describe-tables" class="form">
@@ -34,10 +32,10 @@
     {% for t in tables %}
     <section class="table-block">
       <h2 class="mono">{{ t.name }}</h2>
-      <p class="tiny muted">{{ t.row_count }} righe · {{ t.columns|length }} colonne</p>
-      <label>Cosa contiene questa tabella? (opzionale)
+      <p class="tiny muted">{{ _("{r} righe · {c} colonne", r=t.row_count, c=t.columns|length) }}</p>
+      <label>{{ _("Cosa contiene questa tabella? (opzionale)") }}
         <textarea name="desc_{{ t.name }}" rows="2"
-                  placeholder="es. Testata ordine d'acquisto: un ordine per riga, con stato di rilascio e fornitore.">{{ descriptions.get(t.name, "") }}</textarea>
+                  placeholder="{{ _("es. Testata ordine d'acquisto: un ordine per riga, con stato di rilascio e fornitore.") }}">{{ descriptions.get(t.name, "") }}</textarea>
       </label>
     </section>
     {% endfor %}
@@ -45,12 +43,12 @@
     {% if relevance and relevance.verdict == "non_coerente" %}
     <label class="checkbox">
       <input type="checkbox" name="confirm_mismatch" value="1">
-      I dati sono comunque quelli giusti per questo processo: procedi con il mapping AI
+      {{ _("I dati sono comunque quelli giusti per questo processo: procedi con il mapping AI") }}
     </label>
     {% endif %}
 
     <div class="actions">
-      <button type="submit" class="primary">Avanti: genera proposte di mapping AI</button>
+      <button type="submit" class="primary">{{ _("Avanti: genera proposte di mapping AI") }}</button>
     </div>
   </form>
 </div>

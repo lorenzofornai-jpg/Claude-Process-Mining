@@ -1,68 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Profilo dei dati</h1>
+  <h1>{{ _("Profilo dei dati") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong> · {{ dataset_label }}.
-    Prima di usare l'AI, l'app ha analizzato i dati completi — chiavi, collegamenti tra tabelle,
-    qualità delle date — senza costi. Correggere qui i problemi dell'estrazione costa molto meno che
-    scoprirli dopo il mapping o durante l'analisi.
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }} {{ dataset_label|tr }}.
+    {{ _("Prima di usare l'AI, l'app ha analizzato i dati completi — chiavi, collegamenti tra tabelle, qualità delle date — senza costi. Correggere qui i problemi dell'estrazione costa molto meno che scoprirli dopo il mapping o durante l'analisi.") }}
   </p>
 
   {% set v = profile.verdict %}
   <div class="banner {{ 'error' if v.level == 'bloccante' else ('warning' if v.level == 'attenzione' else 'ok') }}">
-    <strong>{{ v.label }}.</strong>
-    {% if profile.counts.bloccante %}{{ profile.counts.bloccante }} problemi bloccanti. {% endif %}
-    {% if profile.counts.attenzione %}{{ profile.counts.attenzione }} punti da verificare. {% endif %}
-    {% if profile.counts.info %}{{ profile.counts.info }} note informative.{% endif %}
+    <strong>{{ v.label|tr }}.</strong>
+    {% if profile.counts.bloccante %}{{ _("{n} problemi bloccanti.", n=profile.counts.bloccante) }} {% endif %}
+    {% if profile.counts.attenzione %}{{ _("{n} punti da verificare.", n=profile.counts.attenzione) }} {% endif %}
+    {% if profile.counts.info %}{{ _("{n} note informative.", n=profile.counts.info) }}{% endif %}
   </div>
 
   <div class="stat-row">
-    <div class="stat"><span class="stat-value">{{ profile.tables|length }}</span><span class="stat-label">tabelle</span></div>
-    <div class="stat"><span class="stat-value">{{ "{:,}".format(profile.total_rows).replace(",", ".") }}</span><span class="stat-label">righe</span></div>
-    <div class="stat"><span class="stat-value">{{ profile.relationships|length }}</span><span class="stat-label">collegamenti trovati</span></div>
-    <div class="stat"><span class="stat-value">{{ profile.tables|selectattr("key")|list|length }}/{{ profile.tables|length }}</span><span class="stat-label">tabelle con chiave</span></div>
+    <div class="stat"><span class="stat-value">{{ profile.tables|length }}</span><span class="stat-label">{{ _("tabelle") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ "{:,}".format(profile.total_rows).replace(",", "." if current_lang() == "it" else ",") }}</span><span class="stat-label">{{ _("righe") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ profile.relationships|length }}</span><span class="stat-label">{{ _("collegamenti trovati") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ profile.tables|selectattr("key")|list|length }}/{{ profile.tables|length }}</span><span class="stat-label">{{ _("tabelle con chiave") }}</span></div>
   </div>
 
   {% if profile.issues %}
-  <h2>Cosa controllare</h2>
+  <h2>{{ _("Cosa controllare") }}</h2>
   <div class="issue-list">
     {% for i in profile.issues %}
     <div class="issue issue-{{ i.severity }}">
       <div class="issue-head">
-        <span class="sev sev-{{ i.severity }}">{{ i.severity }}</span>
+        <span class="sev sev-{{ i.severity }}">{{ _(i.severity) }}</span>
         {% if i.table %}<span class="mono tiny">{{ i.table }}</span>{% endif %}
-        <strong>{{ i.title }}</strong>
+        <strong>{{ i.title|tr }}</strong>
       </div>
       <div class="issue-body">
-        <div><span class="muted">Impatto:</span> {{ i.impact }}</div>
-        <div><span class="muted">Cosa fare:</span> {{ i.action }}</div>
+        <div><span class="muted">{{ _("Impatto:") }}</span> {{ i.impact|tr }}</div>
+        <div><span class="muted">{{ _("Cosa fare:") }}</span> {{ i.action|tr }}</div>
       </div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
-  <h2>Tabelle</h2>
+  <h2>{{ _("Tabelle") }}</h2>
   <div class="table-scroll">
   <table class="admin-table">
-    <thead><tr><th>Tabella</th><th>Righe</th><th>Chiave candidata</th><th>Date</th><th>Note</th></tr></thead>
+    <thead><tr><th>{{ _("Tabella") }}</th><th>{{ _("Righe") }}</th><th>{{ _("Chiave candidata") }}</th><th>{{ _("Date") }}</th><th>{{ _("Note") }}</th></tr></thead>
     <tbody>
       {% for t in profile.tables %}
       <tr>
-        <td class="mono">{{ t.name }}<div class="tiny muted">{{ t.columns }} colonne</div></td>
-        <td>{{ "{:,}".format(t.rows).replace(",", ".") }}</td>
+        <td class="mono">{{ t.name }}<div class="tiny muted">{{ _("{n} colonne", n=t.columns) }}</div></td>
+        <td>{{ "{:,}".format(t.rows).replace(",", "." if current_lang() == "it" else ",") }}</td>
         <td class="mono tiny">{{ t.key|join(" + ") if t.key else "—" }}</td>
         <td class="tiny">
           {% for d in t.dates %}
           <div><span class="mono">{{ d.column }}{% if d.time_column %} + {{ d.time_column }}{% endif %}</span>: {{ d.min or "?" }} → {{ d.max or "?" }}
-            <span class="muted">· {{ "con ora" if d.has_time else "solo data" }}{% if d.filled_pct < 100 %} · valorizzata {{ d.filled_pct }}%{% endif %}</span></div>
-          {% else %}<span class="muted">nessuna colonna data</span>{% endfor %}
+            <span class="muted">· {{ _("con ora") if d.has_time else _("solo data") }}{% if d.filled_pct < 100 %} · {{ _("valorizzata {p}%", p=d.filled_pct) }}{% endif %}</span></div>
+          {% else %}<span class="muted">{{ _("nessuna colonna data") }}</span>{% endfor %}
         </td>
         <td class="tiny">
-          {% if t.duplicates %}<div>{{ t.duplicates }} righe duplicate</div>{% endif %}
-          {% if t.empty_columns %}<div class="muted">vuote: {{ t.empty_columns|join(", ") }}</div>{% endif %}
-          {% if t.constant_columns %}<div class="muted">valore unico: {{ t.constant_columns|join(", ") }}</div>{% endif %}
+          {% if t.duplicates %}<div>{{ _("{n} righe duplicate", n=t.duplicates) }}</div>{% endif %}
+          {% if t.empty_columns %}<div class="muted">{{ _("vuote:") }} {{ t.empty_columns|join(", ") }}</div>{% endif %}
+          {% if t.constant_columns %}<div class="muted">{{ _("valore unico:") }} {{ t.constant_columns|join(", ") }}</div>{% endif %}
           {% if not (t.duplicates or t.empty_columns or t.constant_columns) %}<span class="muted">—</span>{% endif %}
         </td>
       </tr>
@@ -71,12 +69,12 @@
   </table>
   </div>
 
-  <h2>Collegamenti tra tabelle</h2>
+  <h2>{{ _("Collegamenti tra tabelle") }}</h2>
   {% if profile.relationships %}
-  <p class="tiny muted">Ogni riga indica una colonna che rimanda alla chiave di un'altra tabella: diventeranno i legami tra eventi e oggetti nel dataset per l'analisi.</p>
+  <p class="tiny muted">{{ _("Ogni riga indica una colonna che rimanda alla chiave di un'altra tabella: diventeranno i legami tra eventi e oggetti nel dataset per l'analisi.") }}</p>
   <div class="table-scroll">
   <table class="admin-table">
-    <thead><tr><th>Da</th><th>A (chiave)</th><th>Righe collegate</th><th>Trovato per</th></tr></thead>
+    <thead><tr><th>{{ _("Da") }}</th><th>{{ _("A (chiave)") }}</th><th>{{ _("Righe collegate") }}</th><th>{{ _("Trovato per") }}</th></tr></thead>
     <tbody>
       {% for r in profile.relationships %}
       <tr>
@@ -84,22 +82,22 @@
         <td class="mono tiny">{{ r.parent_table }}.{{ r.parent_column }}</td>
         <td>
           <div class="coverage"><div class="coverage-bar {{ 'low' if r.coverage_pct < 95 else '' }}" style="width: {{ r.coverage_pct }}%"></div></div>
-          <span class="tiny">{{ r.coverage_pct }}%{% if r.orphan_rows %} · {{ r.orphan_rows }} orfane{% endif %}</span>
+          <span class="tiny">{{ r.coverage_pct }}%{% if r.orphan_rows %} · {{ _("{n} orfane", n=r.orphan_rows) }}{% endif %}</span>
         </td>
-        <td class="tiny muted">{{ r.matched_by }}</td>
+        <td class="tiny muted">{{ r.matched_by|tr }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
   {% else %}
-  <p class="tiny muted">Nessun collegamento trovato tra le tabelle.</p>
+  <p class="tiny muted">{{ _("Nessun collegamento trovato tra le tabelle.") }}</p>
   {% endif %}
 
   <form method="post" action="/ingestion/profile/continue" class="actions" style="margin-top:24px">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-    <button type="submit" class="primary">{{ "Prosegui comunque" if v.level == "bloccante" else "Prosegui: descrivi le tabelle" }}</button>
-    <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Carica altri file</a>
+    <button type="submit" class="primary">{{ _("Prosegui comunque") if v.level == "bloccante" else _("Prosegui: descrivi le tabelle") }}</button>
+    <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Carica altri file") }}</a>
   </form>
 </div>
 {% endblock %}

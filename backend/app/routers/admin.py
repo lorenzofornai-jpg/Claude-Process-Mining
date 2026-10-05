@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import state
 from app.auth import current_user, hash_password
+from app.i18n import get_lang, msg, setup_templates, t
 from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
 from app.models import (
@@ -26,6 +27,7 @@ from app.services.structures import delete_structures, remove_files, workspace_c
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+setup_templates(templates)
 
 
 def _require_admin(request: Request):
@@ -35,7 +37,7 @@ def _require_admin(request: Request):
         return None, RedirectResponse("/login", status_code=303)
     if not user.is_admin:
         return None, HTMLResponse(
-            "Accesso negato: questa pagina è riservata agli amministratori.", status_code=403
+            t(get_lang(request), "Accesso negato: questa pagina è riservata agli amministratori."), status_code=403
         )
     return user, None
 
@@ -179,7 +181,7 @@ def create_user(
         if db.query(User).filter_by(email=email_norm).first():
             return templates.TemplateResponse(
                 "admin_new_user.html",
-                {"request": request, "user": user, "error": f"Esiste già un utente con email {email_norm}."},
+                {"request": request, "user": user, "error": msg("Esiste già un utente con email {email}.", email=email_norm)},
                 status_code=400,
             )
         # Qualunque admin puo' crearne un altro con gli stessi privilegi: non
@@ -200,7 +202,7 @@ def assign_role(request: Request, workspace_id: str, user_id: str = Form(...), r
     if denied:
         return denied
     if role not in ASSIGNABLE_ROLES:
-        return HTMLResponse(f"Ruolo non valido: {role}", status_code=400)
+        return HTMLResponse(t(get_lang(request), "Ruolo non valido: {role}", role=role), status_code=400)
 
     db = SessionLocal()
     try:

@@ -1,16 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Aggiorna dati — {{ config.name }} (v{{ config.current_version }})</h1>
+  <h1>{{ _("Aggiorna dati") }} — {{ config.name }} (v{{ config.current_version }})</h1>
   <p class="muted">
-    Carica le tabelle sorgente nello stesso formato di prima (file singoli o un unico .zip che li
-    contiene): verranno riapplicate esattamente le stesse scelte di mapping già confermate, senza
-    rifare AI e revisione. Se il formato non è compatibile (tabelle o
-    colonne mancanti), te lo segnalo prima di generare qualsiasi cosa.
+    {{ _("Carica le tabelle sorgente nello stesso formato di prima (file singoli o un unico .zip che li contiene): verranno riapplicate esattamente le stesse scelte di mapping già confermate, senza rifare AI e revisione. Se il formato non è compatibile (tabelle o colonne mancanti), te lo segnalo prima di generare qualsiasi cosa.") }}
   </p>
 
   {% if error %}
-  <div class="banner error">{{ error }}</div>
+  <div class="banner error">{{ error|tr }}</div>
   {% endif %}
 
   <form method="post" action="/ingestion/structures/{{ config.id }}/update-data?workspace_id={{ workspace_id }}"
@@ -18,31 +15,28 @@
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     <div class="option-box">
-      <div style="font-size:13px;margin-bottom:8px">Cosa fare con i dati già presenti</div>
+      <div style="font-size:13px;margin-bottom:8px">{{ _("Cosa fare con i dati già presenti") }}</div>
       <label class="checkbox">
         <input type="radio" name="mode" value="replace" {{ 'checked' if mode != 'append' else '' }}>
-        <span><strong>Sostituisci</strong> — il nuovo dataset contiene solo i dati che carichi ora
-        (es. estrazione completa aggiornata)</span>
+        <span><strong>{{ _("Sostituisci") }}</strong> — {{ _("il nuovo dataset contiene solo i dati che carichi ora (es. estrazione completa aggiornata)") }}</span>
       </label>
       <label class="checkbox" style="margin-top:8px">
         <input type="radio" name="mode" value="append" {{ 'checked' if mode == 'append' else '' }}>
-        <span><strong>Incrementa</strong> — i dati che carichi si aggiungono a quelli già presenti
-        (es. solo i movimenti dell'ultimo mese); gli eventi già presenti non vengono duplicati e gli
-        oggetti già esistenti vengono aggiornati con i valori nuovi</span>
+        <span><strong>{{ _("Incrementa") }}</strong> — {{ _("i dati che carichi si aggiungono a quelli già presenti (es. solo i movimenti dell'ultimo mese); gli eventi già presenti non vengono duplicati e gli oggetti già esistenti vengono aggiornati con i valori nuovi") }}</span>
       </label>
     </div>
 
     <div class="option-box">
-      <label>Carica file CSV/TXT aggiornati, o un file .zip che li contiene
+      <label>{{ _("Carica file CSV/TXT aggiornati, o un file .zip che li contiene") }}
         <input type="file" name="files" multiple accept=".csv,.txt,.zip" required>
       </label>
     </div>
 
-    <button type="submit" class="primary">Verifica e aggiorna</button>
+    <button type="submit" class="primary">{{ _("Verifica e aggiorna") }}</button>
   </form>
 
   <p class="tiny muted" style="margin-top:16px">
-    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← Torna a Dataset per l'analisi</a>
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">← {{ _("Torna a Dataset per l'analisi") }}</a>
   </p>
 </div>
 {% endblock %}

@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from app.connectors.base import TableSchema
+from app.i18n import concat, msg
 from app.services import catalog, sap_dictionary
 from app.services.transformation import qualifier_for
 
@@ -45,12 +46,12 @@ def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
         obj_type, keys = obj
         for k in sap_dictionary.object_keys(keys, set(actual)):
             rules.append(_rule(actual[k], "object_type.key", 0.95,
-                               f"Dizionario SAP: {code}.{k} è chiave di {obj_type} ({entry['label']}).",
+                               msg("Dizionario SAP: {c} è chiave di {o} ({l}).", c=f"{code}.{k}", o=obj_type, l=entry["label"]),
                                object_type=obj_type))
         for col, descr in entry["object_attributes"].items():
             if col in actual:
                 rules.append(_rule(actual[col], "object_type.attribute", 0.9,
-                                   f"Dizionario SAP: {code}.{col} = {descr}.", object_type=obj_type))
+                                   msg("Dizionario SAP: {c} = {d}.", c=f"{code}.{col}", d=descr), object_type=obj_type))
     for evt, date_cols, evt_attrs in entry["events"]:
         # a parita' di significato si preferisce la data che ha anche l'ora (es. CPUDT + CPUTM
         # invece di BUDAT, che in SAP e' solo un giorno): gli eventi dello stesso giorno si ordinano
@@ -58,30 +59,32 @@ def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
         date_col = next((d for d in present if d in with_time), present[0] if present else None)
         if date_col is None:
             continue
-        note = f" Preferita a {present[0]} perché ha anche l'ora." if date_col != present[0] else ""
+        note = msg("Preferita a {d} perché ha anche l'ora.", d=present[0]) if date_col != present[0] else None
         rules.append(_rule(actual[date_col], "event_type.timestamp", 0.92,
-                           f"Dizionario SAP: {code}.{date_col} è la data dell'attività «{evt}».{note}", event_type=evt))
+                           concat(msg("Dizionario SAP: {c} è la data dell'attività «{e}».", c=f"{code}.{date_col}", e=evt), note),
+                           event_type=evt))
         for col, descr in evt_attrs.items():
             if col in actual:
                 rules.append(_rule(actual[col], "event_type.attribute", 0.88,
-                                   f"Dizionario SAP: {code}.{col} = {descr}.", event_type=evt))
+                                   msg("Dizionario SAP: {c} = {d}.", c=f"{code}.{col}", d=descr), event_type=evt))
     activity = entry.get("activity")
     if activity and activity["column"] in actual and any(
         r["el"] == "event_type.timestamp" and r["event_type"] == activity["event"] for r in rules
     ):
         codes = ", ".join(f"{k} {v}" for k, v in activity["values"].items())
         rules.append(_rule(actual[activity["column"]], "event_type.activity", 0.92,
-                           f"Dizionario SAP: {code}.{activity['column']} dice quale operazione è registrata "
-                           f"in ogni riga ({codes}): ogni codice è un'attività distinta.",
+                           msg("Dizionario SAP: {c} dice quale operazione è registrata in ogni riga ({v}): ogni codice è "
+                               "un'attività distinta.", c=f"{code}.{activity['column']}", v=codes),
                            event_type=activity["event"], activity_values=dict(activity["values"])))
     for evt, related, qualifier in entry["relations"]:
         rules.append(_rule(None, "e2o_relationship", 0.9,
-                           f"Dizionario SAP: l'attività «{evt}» riguarda {related}.",
+                           msg("Dizionario SAP: l'attività «{e}» riguarda {r}.", e=evt, r=related),
                            event_type=evt, related=related, qualifier=qualifier))
     for evt, related, join_col, qualifier in entry["joins"]:
         if join_col in actual:
             rules.append(_rule(actual[join_col], "e2o_relationship", 0.9,
-                               f"Dizionario SAP: {code} collega l'attività «{evt}» a {related} tramite {join_col}.",
+                               msg("Dizionario SAP: {t} collega l'attività «{e}» a {r} tramite {j}.", t=code, e=evt, r=related,
+                                   j=join_col),
                                event_type=evt, related=related, qualifier=qualifier))
     return rules
 
@@ -126,8 +129,8 @@ def _with_time_columns(proposals: list, tables: list[TableSchema]) -> list:
             added.append(replace(
                 p, source_column=tc, ocel_element="event_type.time", object_type=None, attribute_name=None,
                 qualifier=None, related_object_type=None, confidence=0.9, activity_values=None,
-                rationale=(f"{tc} contiene l'ora di {p.source_column}: unite danno l'istante esatto dell'evento, "
-                           "così gli eventi dello stesso giorno si ordinano e i tempi si misurano al minuto."),
+                rationale=msg("{t} contiene l'ora di {d}: unite danno l'istante esatto dell'evento, così gli eventi "
+                              "dello stesso giorno si ordinano e i tempi si misurano al minuto.", t=tc, d=p.source_column),
             ))
     return out + added
 
@@ -151,9 +154,9 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
         if p.ocel_element == "event_type.timestamp" and reason:
             # resta una proposta, ma incerta: non si accetta in blocco e la revisione la apre
             p.confidence = min(p.confidence, 0.5)
-            p.rationale = (f"Attenzione: probabile data prevista o di scadenza ({reason}). Come evento metterebbe nel "
-                           "processo un passo non avvenuto: meglio rifiutarla o trasformarla in attributo. "
-                           + (p.rationale or ""))
+            p.rationale = concat(msg("Attenzione: probabile data prevista o di scadenza ({r}). Come evento metterebbe "
+                                     "nel processo un passo non avvenuto: meglio rifiutarla o trasformarla in attributo.",
+                                     r=reason), p.rationale)
     for p in proposals:
         if p.ocel_element == "e2o_relationship" and not (p.qualifier or "").strip():
             # a volte l'AI scrive il qualifier nella motivazione ("q: for customer") invece che nel campo
@@ -168,8 +171,8 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
         for value, other_event in covered.items():
             if other_event in event_table and p.activity_values.get(value):
                 p.activity_values = {**p.activity_values, value: ""}
-                p.rationale += (f" Il codice {value} è escluso: lo stesso fatto arriva già da "
-                                f"«{other_event}» ({event_table[other_event]}).")
+                p.rationale = concat(p.rationale, msg("Il codice {v} è escluso: lo stesso fatto arriva già da «{e}» ({t}).",
+                                                      v=value, e=other_event, t=event_table[other_event]))
 
     kept = []
     for p in proposals:

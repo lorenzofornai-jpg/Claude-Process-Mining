@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
+from app.i18n import get_lang, msg, setup_templates, t
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import ExtractionRun, IngestionConfig, ProcessWorkspace
@@ -21,6 +22,7 @@ from app.models import ExtractionRun, IngestionConfig, ProcessWorkspace
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+setup_templates(templates)
 
 
 def _require_analyst_access(request: Request, workspace_id: str):
@@ -30,8 +32,7 @@ def _require_analyst_access(request: Request, workspace_id: str):
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
     if not has_process_access(user, workspace_id, required_role="data_analyst"):
-        return None, HTMLResponse(
-            "Accesso negato: non sei assegnato come Data Analyst a questo processo.",
+        return None, HTMLResponse(t(get_lang(request), "Accesso negato: non sei assegnato come Data Analyst a questo processo."),
             status_code=403,
         )
     return user, None

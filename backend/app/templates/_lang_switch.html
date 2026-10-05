@@ -1,0 +1,5 @@
+<nav class="lang-switch" aria-label="{{ _("Lingua") }}">
+  {% for code, label in languages.items() %}
+  {% if code == current_lang() %}<span class="lang-current" title="{{ label }}">{{ code|upper }}</span>{% else %}<a href="/lang/{{ code }}" title="{{ label }}" lang="{{ code }}">{{ code|upper }}</a>{% endif %}{% if not loop.last %}<span class="lang-sep">|</span>{% endif %}
+  {% endfor %}
+</nav>

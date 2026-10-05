@@ -1,37 +1,36 @@
 <div class="model-card {{ 'model-card-rejected' if g.rejected == g.total else '' }}" id="{{ g.anchor }}">
   <div class="model-card-head">
     <strong>{{ g.name }}</strong>
-    <span class="tiny mono">{% for t in g.tables %}<a href="#tab-{{ t }}" title="Vai al dettaglio delle colonne di {{ t }}">{{ t }}</a>{{ ", " if not loop.last }}{% endfor %}</span>
+    <span class="tiny mono">{% for t in g.tables %}<a href="#tab-{{ t }}" title="{{ _("Vai al dettaglio delle colonne di {t}", t=t) }}">{{ t }}</a>{{ ", " if not loop.last }}{% endfor %}</span>
   </div>
   <div class="tiny model-card-body">
     {% if g.kind == "obj" %}
-      <div>Chiave: <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">senza chiave</span>{% endif %}</div>
+      <div>{{ _("Chiave:") }} <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">{{ _("senza chiave") }}</span>{% endif %}</div>
     {% else %}
-      <div>Data/ora: <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}{% if g.times %} + ora da {{ g.times|join(", ") }}{% endif %}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">senza data</span>{% endif %}</div>
+      <div>{{ _("Data/ora:") }} <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}{% if g.times %} + {{ _("ora da") }} {{ g.times|join(", ") }}{% endif %}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">{{ _("senza data") }}</span>{% endif %}</div>
       {% if g.planned and g.rejected < g.total %}
-      <div><span class="sev sev-attenzione">data prevista?</span> {{ g.planned }}. Non è un fatto avvenuto: come evento
-        metterebbe nel processo un passo mai svolto. Meglio rifiutare questo evento e tenere la data come attributo.</div>
+      <div><span class="sev sev-attenzione">{{ _("data prevista?") }}</span> {{ g.planned|tr }}. {{ _("Non è un fatto avvenuto: come evento metterebbe nel processo un passo mai svolto. Meglio rifiutare questo evento e tenere la data come attributo.") }}</div>
       {% endif %}
       {% if g.activity %}
-      <div>Attività dalla colonna <span class="mono">{{ g.activity.column }}</span>:
-        {% if g.activity.names is none %}ogni valore è già il nome dell'attività{% else %}{{ g.activity.names|join(", ") or "—" }}{% endif %}{% if g.activity.excluded %}
-        <span class="muted">· esclusi: <span class="mono">{{ g.activity.excluded|join(", ") }}</span></span>{% endif %}{% if g.activity.unnamed %}
-        <span class="sev sev-attenzione">senza nome: {{ g.activity.unnamed|join(", ") }}</span>{% endif %}</div>
+      <div>{{ _("Attività dalla colonna {c}:", c=g.activity.column) }}
+        {% if g.activity.names is none %}{{ _("ogni valore è già il nome dell'attività") }}{% else %}{{ g.activity.names|join(", ") or "—" }}{% endif %}{% if g.activity.excluded %}
+        <span class="muted">· {{ _("esclusi:") }} <span class="mono">{{ g.activity.excluded|join(", ") }}</span></span>{% endif %}{% if g.activity.unnamed %}
+        <span class="sev sev-attenzione">{{ _("senza nome:") }} {{ g.activity.unnamed|join(", ") }}</span>{% endif %}</div>
       {% endif %}
-      <div>Collegato a: {{ g.links|join(", ") if g.links else "solo all'oggetto della sua tabella" }}</div>
+      <div>{{ _("Collegato a:") }} {{ g.links|join(", ") if g.links else _("solo all'oggetto della sua tabella") }}</div>
     {% endif %}
-    <div class="muted">{{ g.attributes }} {{ "attributo" if g.attributes == 1 else "attributi" }} · {{ g.total }} {{ "riga" if g.total == 1 else "righe" }} di mapping</div>
+    <div class="muted">{{ _("1 attributo") if g.attributes == 1 else _("{n} attributi", n=g.attributes) }} · {{ _("1 riga di mapping") if g.total == 1 else _("{n} righe di mapping", n=g.total) }}</div>
   </div>
   <div class="model-card-foot">
     <span class="tiny">
-      {% if g.rejected == g.total %}<span class="sev sev-info">rifiutato</span>
-      {% elif g.pending %}<span class="sev sev-attenzione">{{ g.pending }} da decidere{% if g.low %}, {{ g.low }} incerte{% endif %}</span>
-      {% elif g.rejected %}<span class="sev sev-ok">accettato</span> <span class="tiny muted">({{ g.rejected }} {{ "riga rifiutata" if g.rejected == 1 else "righe rifiutate" }})</span>
-      {% else %}<span class="sev sev-ok">accettato</span>{% endif %}
+      {% if g.rejected == g.total %}<span class="sev sev-info">{{ _("rifiutato") }}</span>
+      {% elif g.pending %}<span class="sev sev-attenzione">{{ _("{n} da decidere", n=g.pending) }}{% if g.low %}, {{ _("{n} incerte", n=g.low) }}{% endif %}</span>
+      {% elif g.rejected %}<span class="sev sev-ok">{{ _("accettato") }}</span> <span class="tiny muted">({{ _("1 riga rifiutata") if g.rejected == 1 else _("{n} righe rifiutate", n=g.rejected) }})</span>
+      {% else %}<span class="sev sev-ok">{{ _("accettato") }}</span>{% endif %}
     </span>
     <span class="model-card-actions">
-      {% if g.accepted < g.total %}<button type="submit" name="action" value="group_accept|{{ group_id }}" class="secondary">{{ "Ripristina" if g.rejected == g.total else "Accetta tutto" }}</button>{% endif %}
-      {% if g.rejected < g.total %}<button type="submit" name="action" value="group_reject|{{ group_id }}" class="secondary danger">Rifiuta</button>{% endif %}
+      {% if g.accepted < g.total %}<button type="submit" name="action" value="group_accept|{{ group_id }}" class="secondary">{{ _("Ripristina") if g.rejected == g.total else _("Accetta tutto") }}</button>{% endif %}
+      {% if g.rejected < g.total %}<button type="submit" name="action" value="group_reject|{{ group_id }}" class="secondary danger">{{ _("Rifiuta") }}</button>{% endif %}
     </span>
   </div>
 </div>

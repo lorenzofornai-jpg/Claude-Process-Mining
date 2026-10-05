@@ -5,40 +5,39 @@
 {% endif %}
 <div class="card">
   {% if error %}
-  <h1>Generazione mapping non riuscita</h1>
-  <div class="banner error">{{ error }}</div>
+  <h1>{{ _("Generazione mapping non riuscita") }}</h1>
+  <div class="banner error">{{ error|tr }}</div>
   <p class="tiny muted" style="margin-top:16px">
-    <a href="/ingestion/upload?workspace_id={{ workspace_id }}">← Torna al caricamento file</a>
+    <a href="/ingestion/upload?workspace_id={{ workspace_id }}">← {{ _("Torna al caricamento file") }}</a>
   </p>
   {% else %}
-  <h1>Sto generando le proposte di mapping…</h1>
+  <h1>{{ _("Sto generando le proposte di mapping…") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong>. La pagina si aggiorna da sola ogni pochi secondi:
-    non serve ricaricarla o tornare indietro.
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }}
+    {{ _("La pagina si aggiorna da sola ogni pochi secondi: non serve ricaricarla o tornare indietro.") }}
   </p>
   {% if progress %}
+  {% set n_known = progress.known|length if progress.known else 0 %}
   <ol class="mapping-steps">
-    <li class="is-done">✓ Riconosciute senza AI (dizionario SAP, catalogo), nessun costo:
-      <strong>{{ progress.known|length if progress.known else 0 }}</strong> {{ "tabella" if progress.known and progress.known|length == 1 else "tabelle" }}
+    <li class="is-done">✓ {{ _("Riconosciute senza AI (dizionario SAP, catalogo), nessun costo:") }}
+      <strong>{{ n_known }}</strong> {{ _("tabella") if n_known == 1 else _("tabelle") }}
       {% if progress.known %}<div class="tiny muted">{{ progress.known|join(", ") }}</div>{% endif %}
     </li>
     <li class="{{ 'is-done' if progress.phase != 'model' else 'is-running' }}">
       {% if progress.phase == 'model' %}<span class="spinner" aria-hidden="true"></span>{% else %}✓{% endif %}
-      Modello comune con l'AI per le tabelle non riconosciute
+      {{ _("Modello comune con l'AI per le tabelle non riconosciute") }}
     </li>
     <li class="{{ 'is-running' if progress.phase != 'model' else '' }}">
       {% if progress.phase != 'model' %}<span class="spinner" aria-hidden="true"></span>{% endif %}
-      Mapping con l'AI delle tabelle non riconosciute, in parallelo:
-      <strong>{{ progress.done|length }} di {{ progress.total }}</strong> completate
-      {% if progress.phase == 'retry' %}<span class="tiny muted">(secondo tentativo per le tabelle rimaste)</span>{% endif %}
-      {% if progress.done %}<div class="tiny muted">Fatte: {{ progress.done|join(", ") }}</div>{% endif %}
-      {% if progress.running and progress.phase != 'model' %}<div class="tiny muted">In corso: {{ progress.running|join(", ") }}</div>{% endif %}
+      {{ _("Mapping con l'AI delle tabelle non riconosciute, in parallelo:") }}
+      <strong>{{ _("{d} di {t}", d=progress.done|length, t=progress.total) }}</strong> {{ _("completate") }}
+      {% if progress.phase == 'retry' %}<span class="tiny muted">({{ _("secondo tentativo per le tabelle rimaste") }})</span>{% endif %}
+      {% if progress.done %}<div class="tiny muted">{{ _("Fatte:") }} {{ progress.done|join(", ") }}</div>{% endif %}
+      {% if progress.running and progress.phase != 'model' %}<div class="tiny muted">{{ _("In corso:") }} {{ progress.running|join(", ") }}</div>{% endif %}
     </li>
   </ol>
   {% endif %}
-  <p class="tiny muted">{% if progress and progress.budget_usd %}Spesa AI finora {{ "%.2f"|format(progress.spent_usd)|replace(".", ",") }} $ su un limite di {{ "%.2f"|format(progress.budget_usd)|replace(".", ",") }} $ · {% endif %}In corso da {{ elapsed_min }} min{% if elapsed_min >= 6 %} · sta impiegando più del solito:
-    tabelle molto larghe richiedono più tempo. Se resta fermo sullo stesso punto per molti minuti, controlla
-    nel terminale del server le righe «ClaudeAIMapper».{% endif %}</p>
+  <p class="tiny muted">{% if progress and progress.budget_usd %}{{ _("Spesa AI finora {s} $ su un limite di {b} $", s=money(progress.spent_usd), b=money(progress.budget_usd)) }} · {% endif %}{{ _("In corso da {m} min", m=elapsed_min) }}{% if elapsed_min >= 6 %} · {{ _("sta impiegando più del solito: tabelle molto larghe richiedono più tempo. Se resta fermo sullo stesso punto per molti minuti, controlla nel terminale del server le righe «ClaudeAIMapper».") }}{% endif %}</p>
   {% endif %}
 </div>
 {% endblock %}

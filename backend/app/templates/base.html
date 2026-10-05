@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="{{ current_lang() }}">
 <head>
   <meta charset="UTF-8">
   <title>{% block title %}AI Process Mining{% endblock %}</title>
@@ -10,24 +10,25 @@
     <div class="brand">AI Process Mining</div>
     {% if step %}
     <div class="steps">
-      <span class="step {{ 'active' if step == 2 else '' }}">1. Dati sorgente</span>
-      <span class="step {{ 'active' if step == 3 else '' }}">2. Revisione mapping</span>
-      <span class="step {{ 'active' if step == 5 else '' }}">3. Risultato</span>
+      <span class="step {{ 'active' if step == 2 else '' }}">1. {{ _("Dati sorgente") }}</span>
+      <span class="step {{ 'active' if step == 3 else '' }}">2. {{ _("Revisione mapping") }}</span>
+      <span class="step {{ 'active' if step == 5 else '' }}">3. {{ _("Risultato") }}</span>
     </div>
     {% endif %}
-    {% if user %}
     <div class="user-box">
+      {% if user %}
       {% if user.is_admin %}
-      <a href="/admin" class="nav-link">Amministrazione</a>
+      <a href="/admin" class="nav-link">{{ _("Amministrazione") }}</a>
       {% else %}
-      <a href="/ingestion/dashboard" class="nav-link">I miei processi</a>
+      <a href="/ingestion/dashboard" class="nav-link">{{ _("I miei processi") }}</a>
       {% endif %}
       <span class="user-name">{{ user.name }}{{ ' (admin)' if user.is_admin else '' }}</span>
       <form method="post" action="/logout" style="display:inline">
-        <button type="submit" class="link-button">Esci</button>
+        <button type="submit" class="link-button">{{ _("Esci") }}</button>
       </form>
+      {% endif %}
+      {% include "_lang_switch.html" %}
     </div>
-    {% endif %}
   </header>
   <main class="content">
     {% block content %}{% endblock %}
@@ -40,8 +41,8 @@
       <h2 id="confirm-title"></h2>
       <p id="confirm-text" class="muted"></p>
       <div class="confirm-actions">
-        <button value="cancel" class="secondary">Annulla</button>
-        <button value="ok" class="primary danger-fill" id="confirm-ok">Conferma</button>
+        <button value="cancel" class="secondary">{{ _("Annulla") }}</button>
+        <button value="ok" class="primary danger-fill" id="confirm-ok">{{ _("Conferma") }}</button>
       </div>
     </form>
   </dialog>
@@ -55,9 +56,9 @@
         if (!form.dataset || form.dataset.confirm === undefined) return;
         e.preventDefault();
         pending = form;
-        document.getElementById("confirm-title").textContent = form.dataset.confirmTitle || "Confermi?";
+        document.getElementById("confirm-title").textContent = form.dataset.confirmTitle || {{ _("Confermi?")|tojson }};
         document.getElementById("confirm-text").textContent = form.dataset.confirm;
-        document.getElementById("confirm-ok").textContent = form.dataset.confirmOk || "Conferma";
+        document.getElementById("confirm-ok").textContent = form.dataset.confirmOk || {{ _("Conferma")|tojson }};
         dlg.returnValue = "";
         dlg.showModal();
         document.getElementById("confirm-ok").blur();

@@ -1,91 +1,88 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide assessment-card">
-  <h1>Assessment del processo — {{ process_name }}</h1>
+  <h1>{{ _("Assessment del processo") }} — {{ process_name }}</h1>
   <p class="muted">
-    Prima di caricare i dati, raccontaci il contesto: obiettivi, perimetro, sistemi e caratteristiche
-    dei dati. Queste informazioni guidano la costruzione del dataset per l'analisi (formato OCEL 2.0) — l'AI le usa per proporre
-    il mapping e i controlli le usano per segnalare cosa manca — e ti evitano estrazioni e revisioni da rifare.
-    Puoi compilarla anche in più volte.
+    {{ _("Prima di caricare i dati, raccontaci il contesto: obiettivi, perimetro, sistemi e caratteristiche dei dati. Queste informazioni guidano la costruzione del dataset per l'analisi (formato OCEL 2.0) — l'AI le usa per proporre il mapping e i controlli le usano per segnalare cosa manca — e ti evitano estrazioni e revisioni da rifare. Puoi compilarla anche in più volte.") }}
   </p>
 
   <div class="progress-box">
     <div class="progress-label">
-      Completamento: <strong>{{ status.done }} / {{ status.total }}</strong> elementi essenziali
-      {% if status.percent == 100 %}<span class="pill">completo</span>{% endif %}
+      {{ _("Completamento: {d} / {t} elementi essenziali", d=strong(status.done), t=strong(status.total)) }}
+      {% if status.percent == 100 %}<span class="pill">{{ _("completo") }}</span>{% endif %}
     </div>
     <div class="progress"><div class="progress-bar" style="width: {{ status.percent }}%"></div></div>
   </div>
 
-  {% if saved %}<div class="banner ok">Assessment salvato.</div>{% endif %}
-  {% if error %}<div class="banner error">{{ error }}</div>{% endif %}
+  {% if saved %}<div class="banner ok">{{ _("Assessment salvato.") }}</div>{% endif %}
+  {% if error %}<div class="banner error">{{ error|tr }}</div>{% endif %}
 
   <form method="post" action="/ingestion/assessment" class="form">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     {% for section in sections %}
     <section class="assessment-section">
-      <h2>{{ section.title }}</h2>
-      <p class="tiny muted why">Perché serve: {{ section.why }}</p>
+      <h2>{{ _(section.title) }}</h2>
+      <p class="tiny muted why">{{ _("Perché serve:") }} {{ _(section.why) }}</p>
 
       <div class="assessment-grid">
       {% for q in section.questions %}
         {% set value = answers.get(q.id) %}
         {% if q.type == "multiselect" %}
         <fieldset class="field span-2">
-          <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
+          <legend>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
           <div class="options-grid">
           {% for opt in q.options %}
           <label class="checkbox">
             <input type="checkbox" name="{{ q.id }}" value="{{ opt }}" {{ 'checked' if value and opt in value else '' }}>
-            <span>{{ opt }}</span>
+            <span>{{ _(opt) }}</span>
           </label>
           {% endfor %}
           </div>
         </fieldset>
         {% elif q.type == "systems" %}
         <fieldset class="field span-2">
-          <legend>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
-          <p class="tiny muted">Uno per riga: ERP, CRM, workflow, portali, anche Excel se fa parte del processo.</p>
+          <legend>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</legend>
+          <p class="tiny muted">{{ _("Uno per riga: ERP, CRM, workflow, portali, anche Excel se fa parte del processo.") }}</p>
           <div class="table-scroll"><table class="admin-table systems-table">
-            <thead><tr><th>Nome sistema</th><th>Tipo</th><th>Ruolo nel processo</th></tr></thead>
+            <thead><tr><th>{{ _("Nome sistema") }}</th><th>{{ _("Tipo") }}</th><th>{{ _("Ruolo nel processo") }}</th></tr></thead>
             <tbody>
               {% set shown_rows = [[(value|length if value else 0) + 1, 3]|max, max_system_rows]|min %}
               {% for i in range(shown_rows) %}
               {% set row = value[i] if value and i < value|length else {} %}
               <tr>
-                <td><input type="text" name="sys_{{ i }}_name" value="{{ row.get('name', '') }}" placeholder="{{ 'es. SAP S/4HANA' if i == 0 else '' }}"></td>
+                <td><input type="text" name="sys_{{ i }}_name" value="{{ row.get('name', '') }}" placeholder="{{ _('es. SAP S/4HANA') if i == 0 else '' }}"></td>
                 <td>
                   <select name="sys_{{ i }}_type">
                     <option value="">—</option>
                     {% for t in system_types %}
-                    <option value="{{ t }}" {{ 'selected' if row.get('type') == t else '' }}>{{ t }}</option>
+                    <option value="{{ t }}" {{ 'selected' if row.get('type') == t else '' }}>{{ _(t) }}</option>
                     {% endfor %}
                   </select>
                 </td>
-                <td><input type="text" name="sys_{{ i }}_role" value="{{ row.get('role', '') }}" placeholder="{{ 'es. ordini, entrate merci, fatture' if i == 0 else '' }}"></td>
+                <td><input type="text" name="sys_{{ i }}_role" value="{{ row.get('role', '') }}" placeholder="{{ _('es. ordini, entrate merci, fatture') if i == 0 else '' }}"></td>
               </tr>
               {% endfor %}
             </tbody>
           </table></div>
-          {% if shown_rows < max_system_rows %}<p class="tiny muted">Servono più righe? Salva: dopo il salvataggio compare una riga vuota in più (fino a {{ max_system_rows }} sistemi).</p>{% endif %}
+          {% if shown_rows < max_system_rows %}<p class="tiny muted">{{ _("Servono più righe? Salva: dopo il salvataggio compare una riga vuota in più (fino a {n} sistemi).", n=max_system_rows) }}</p>{% endif %}
         </fieldset>
         {% elif q.type == "select" %}
-        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+        <label><span>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
           <select name="{{ q.id }}">
-            <option value="">— scegli —</option>
+            <option value="">— {{ _("scegli") }} —</option>
             {% for opt in q.options %}
-            <option value="{{ opt }}" {{ 'selected' if value == opt else '' }}>{{ opt }}</option>
+            <option value="{{ opt }}" {{ 'selected' if value == opt else '' }}>{{ _(opt) }}</option>
             {% endfor %}
           </select>
         </label>
         {% elif q.type == "textarea" %}
-        <label class="span-2"><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
-          <textarea name="{{ q.id }}" rows="2" placeholder="{{ q.placeholder or '' }}">{{ value or '' }}</textarea>
+        <label class="span-2"><span>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+          <textarea name="{{ q.id }}" rows="2" placeholder="{{ _(q.placeholder) if q.placeholder else '' }}">{{ value or '' }}</textarea>
         </label>
         {% else %}
-        <label><span>{{ q.label }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
-          <input type="{{ 'date' if q.type == 'date' else 'text' }}" name="{{ q.id }}" value="{{ value or '' }}" placeholder="{{ q.placeholder or '' }}">
+        <label><span>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
+          <input type="{{ 'date' if q.type == 'date' else 'text' }}" name="{{ q.id }}" value="{{ value or '' }}" placeholder="{{ _(q.placeholder) if q.placeholder else '' }}">
         </label>
         {% endif %}
       {% endfor %}
@@ -94,25 +91,20 @@
     {% endfor %}
 
     <div class="save-bar">
-      <span class="tiny muted">Completamento {{ status.done }}/{{ status.total }} · le risposte si salvano con questo pulsante, anche parziali</span>
-      <button type="submit" class="primary">Salva assessment</button>
+      <span class="tiny muted">{{ _("Completamento {d}/{t} · le risposte si salvano con questo pulsante, anche parziali", d=status.done, t=status.total) }}</span>
+      <button type="submit" class="primary">{{ _("Salva assessment") }}</button>
     </div>
   </form>
 
   <section class="assessment-section" id="documenti">
-    <h2>6. Documenti di supporto</h2>
+    <h2>6. {{ _("Documenti di supporto") }}</h2>
     <p class="tiny muted why">
-      Perché serve: data dictionary, manuali, procedure e disegni del processo spiegano cosa significano tabelle,
-      campi e codici, soprattutto quelli personalizzati. Dai file BPMN vengono letti i nomi delle attività, che l'AI
-      usa per chiamare gli eventi del dataset; dagli altri documenti (PDF, Word, PowerPoint, Excel, CSV, testo) viene
-      letto il testo, e prima del mapping all'AI arrivano solo i brani che citano le tabelle caricate, le loro colonne
-      o i loro codici. Immagini e disegni (PNG, JPG, Visio, draw.io) non hanno testo leggibile.
-      Salva le risposte sopra prima di caricare documenti.
+      {{ _("Perché serve:") }} {{ _("data dictionary, manuali, procedure e disegni del processo spiegano cosa significano tabelle, campi e codici, soprattutto quelli personalizzati. Dai file BPMN vengono letti i nomi delle attività, che l'AI usa per chiamare gli eventi del dataset; dagli altri documenti (PDF, Word, PowerPoint, Excel, CSV, testo) viene letto il testo, e prima del mapping all'AI arrivano solo i brani che citano le tabelle caricate, le loro colonne o i loro codici. Immagini e disegni (PNG, JPG, Visio, draw.io) non hanno testo leggibile. Salva le risposte sopra prima di caricare documenti.") }}
     </p>
 
     {% if docs %}
     <div class="table-scroll"><table class="admin-table">
-      <thead><tr><th>Documento</th><th>Tipo</th><th>Caricato</th><th></th></tr></thead>
+      <thead><tr><th>{{ _("Documento") }}</th><th>{{ _("Tipo") }}</th><th>{{ _("Caricato") }}</th><th></th></tr></thead>
       <tbody>
         {% for d in docs %}
         <tr>
@@ -120,23 +112,23 @@
             <a href="/ingestion/assessment/documents/{{ d.id }}?workspace_id={{ workspace_id }}">{{ d.filename }}</a>
             <div class="tiny muted">{{ (d.size_bytes / 1024)|round|int }} KB</div>
             {% if d.extracted_text %}
-            <div class="tiny muted">Testo letto: {{ "{:,}".format(d.extracted_text|length).replace(",", ".") }} caratteri, usati come contesto per il mapping</div>
+            <div class="tiny muted">{{ _("Testo letto: {n} caratteri, usati come contesto per il mapping", n="{:,}".format(d.extracted_text|length).replace(",", "." if current_lang() == "it" else ",")) }}</div>
             {% elif d.extracted_text is not none and not d.bpmn_activities %}
-            <div class="tiny muted">Nessun testo leggibile (immagine, disegno o formato non supportato): non usato dall'AI</div>
+            <div class="tiny muted">{{ _("Nessun testo leggibile (immagine, disegno o formato non supportato): non usato dall'AI") }}</div>
             {% endif %}
             {% if d.bpmn_activities %}
-            <div class="tiny">Attività lette dal BPMN ({{ d.bpmn_activities|length }}): {{ d.bpmn_activities[:12]|join(", ") }}{% if d.bpmn_activities|length > 12 %}, …{% endif %}</div>
+            <div class="tiny">{{ _("Attività lette dal BPMN ({n}):", n=d.bpmn_activities|length) }} {{ d.bpmn_activities[:12]|join(", ") }}{% if d.bpmn_activities|length > 12 %}, …{% endif %}</div>
             {% endif %}
           </td>
-          <td class="tiny">{{ doc_types.get(d.doc_type, d.doc_type) }}</td>
+          <td class="tiny">{{ _(doc_types.get(d.doc_type, d.doc_type)) }}</td>
           <td class="tiny muted">{{ d.uploaded_by }}<br>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
           <td>
             <form method="post" action="/ingestion/assessment/documents/{{ d.id }}/delete" style="display:inline"
-                  data-confirm-title="Eliminare il documento?"
-                  data-confirm="&quot;{{ d.filename }}&quot; verrà eliminato definitivamente."
-                  data-confirm-ok="Elimina documento">
+                  data-confirm-title="{{ _("Eliminare il documento?") }}"
+                  data-confirm="{{ _("«{name}» verrà eliminato definitivamente.", name=d.filename) }}"
+                  data-confirm-ok="{{ _("Elimina documento") }}">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-              <button type="submit" class="secondary">Elimina</button>
+              <button type="submit" class="secondary">{{ _("Elimina") }}</button>
             </form>
           </td>
         </tr>
@@ -144,27 +136,27 @@
       </tbody>
     </table></div>
     {% else %}
-    <p class="tiny muted">Nessun documento caricato.</p>
+    <p class="tiny muted">{{ _("Nessun documento caricato.") }}</p>
     {% endif %}
 
     <form method="post" action="/ingestion/assessment/documents" enctype="multipart/form-data" class="form">
       <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-      <label>Tipo di documento
+      <label>{{ _("Tipo di documento") }}
         <select name="doc_type">
-          {% for k, label in doc_types.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+          {% for k, label in doc_types.items() %}<option value="{{ k }}">{{ _(label) }}</option>{% endfor %}
         </select>
       </label>
-      <label>File (uno o più, max 25 MB ciascuno)
+      <label>{{ _("File (uno o più, max 25 MB ciascuno)") }}
         <input type="file" name="files" multiple required>
       </label>
-      <p class="tiny muted">Formati: {{ allowed_ext }}</p>
-      <button type="submit" class="secondary">Carica documenti</button>
+      <p class="tiny muted">{{ _("Formati:") }} {{ allowed_ext }}</p>
+      <button type="submit" class="secondary">{{ _("Carica documenti") }}</button>
     </form>
   </section>
 
   <div class="actions" style="margin-top:24px">
-    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">Avanti: carica i dati sorgente</a>
-    <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
+    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Avanti: carica i dati sorgente") }}</a>
+    <a class="secondary button-link" href="/ingestion/dashboard">{{ _("Torna ai miei processi") }}</a>
   </div>
 </div>
 {% endblock %}

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
+from app.i18n import get_lang, joined, msg, setup_templates, t, to_text
 from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
@@ -49,6 +50,7 @@ from app.services.validation import run_data_quality_checks
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+setup_templates(templates)
 templates.env.filters["activity_values_text"] = format_activity_values
 
 UPLOAD_DIR = DATA_DIR / "uploads"
@@ -125,8 +127,7 @@ def _require_process_access(request: Request, workspace_id: str):
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
     if not has_process_access(user, workspace_id, required_role="data_engineer"):
-        return None, HTMLResponse(
-            "Accesso negato: non sei assegnato come Data Engineer a questo processo.",
+        return None, HTMLResponse(t(get_lang(request), "Accesso negato: non sei assegnato come Data Engineer a questo processo."),
             status_code=403,
         )
     return user, None
@@ -173,10 +174,10 @@ def _check_schema_compatibility(new_fingerprint: dict[str, list[str]], confirmed
         if r.get("source_table") and r.get("source_column")
     }
     missing_tables = {table for table, _ in needed if table not in new_fingerprint}
-    problems = [f"tabella mancante: \"{table}\"" for table in sorted(missing_tables)]
+    problems = [msg("tabella mancante: «{t}»", t=table) for table in sorted(missing_tables)]
     for table, column in sorted(needed):
         if table not in missing_tables and column not in new_fingerprint[table]:
-            problems.append(f"colonna mancante: \"{table}.{column}\"")
+            problems.append(msg("colonna mancante: «{c}»", c=f"{table}.{column}"))
     return problems
 
 
@@ -246,31 +247,33 @@ ELEMENT_LABELS = {
 }
 
 
-def _target_label(r: dict) -> str:
+def _target_label(r: dict):
+    """Etichetta della proposta nella revisione (messaggio tradotto al momento di mostrarlo)."""
     v = lambda k: r.get(k) or "—"  # noqa: E731
     el = r["ocel_element"]
     if el == "object_type.key":
-        return f'Chiave oggetto → {v("object_type")}'
+        return msg("Chiave oggetto → {o}", o=v("object_type"))
     if el == "object_type.attribute":
-        return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
+        return msg("Attributo oggetto → {o}.{a}", o=v("object_type"), a=v("attribute_name"))
     if el == "event_type.timestamp":
-        return f'Timestamp evento → "{v("event_type")}"'
+        return msg("Data evento → «{e}»", e=v("event_type"))
     if el == "event_type.time":
-        return f'Ora evento → "{v("event_type")}" (unita alla data dell\'evento)'
+        return msg("Ora evento → «{e}» (unita alla data dell'evento)", e=v("event_type"))
     if el == "event_type.activity":
         values = r.get("activity_values")
         if not values:
-            return f'Attività da colonna → "{v("event_type")}": ogni valore è già il nome dell\'attività'
+            return msg("Attività da colonna → «{e}»: ogni valore è già il nome dell'attività", e=v("event_type"))
         present = r.get("present_values")
         items = [(k, values.get(k)) for k in present] if present is not None else list(values.items())
-        shown = [f"{k} → {n}" if n else (f"{k} → (escluso)" if n is not None else f"{k} → (senza nome)")
+        shown = [f"{k} → {n}" if n else (msg("{k} → (escluso)", k=k) if n is not None else msg("{k} → (senza nome)", k=k))
                  for k, n in items[:6]]
         more = f" (+{len(items) - 6})" if len(items) > 6 else ""
-        return f'Attività da colonna → "{v("event_type")}": ' + ", ".join(shown) + more
+        return msg("Attività da colonna → «{e}»: {v}{m}", e=v("event_type"), v=joined(shown), m=more)
     if el == "event_type.attribute":
-        return f'Attributo evento → "{v("event_type")}".{v("attribute_name")}'
+        return msg("Attributo evento → «{e}».{a}", e=v("event_type"), a=v("attribute_name"))
     if el == "e2o_relationship":
-        return f'Relazione evento→oggetto → "{v("event_type")}" —[{v("qualifier")}]→ {v("related_object_type")}'
+        return msg("Relazione evento→oggetto → «{e}» —[{q}]→ {o}", e=v("event_type"), q=v("qualifier"),
+                   o=v("related_object_type"))
     return el
 
 
@@ -382,7 +385,7 @@ async def handle_upload(
             },
             status_code=400,
         )
-    dataset_label = f"{len(file_paths)} file caricati"
+    dataset_label = msg("{n} file caricati", n=len(file_paths))
 
     connector = FileConnector(file_paths)
     tables_schema = connector.discover_schema()
@@ -458,6 +461,8 @@ async def profile_continue(request: Request, workspace_id: str = Form(...)):
         return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
     # le evidenze misurate (chiavi, date, collegamenti) arrivano all'AI Mapping con il contesto
     sess["context"]["data_profile"] = compact_for_mapping(sess["profile"])
+    # le spiegazioni scritte da Claude (pertinenza, motivazioni del mapping) nella lingua dell'utente
+    sess["context"]["language"] = get_lang(request)
     # Controllo di pertinenza prima del mapping costoso: solo con il mapper Claude
     # (con l'euristica mock non c'e' costo da evitare, ne' un modello che possa giudicare).
     verdict = None
@@ -515,6 +520,7 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
             status_code=400,
         )
 
+    sess["context"]["language"] = get_lang(request)
     # brani dei documenti di supporto che citano queste tabelle (scelti senza AI)
     mappable = _without_empty_columns(tables_schema)
     activity_cols = (sess["context"].get("data_profile") or {}).get("activity_columns", {})
@@ -588,7 +594,7 @@ def _run_ai_mapping(
             }
             rows.append(d)
 
-        sess["dataset_label"] = f"{dataset_label} · AI Mapping Service: {mapper_label}"
+        sess["dataset_label"] = msg("{d} · AI Mapping Service: {m}", d=dataset_label, m=mapper_label)
         sess["mapping_rows"] = rows
         sess["mapping_missing_tables"] = _tables_without_proposals(tables_schema, rows)
         sess["mapping_cost_usd"] = getattr(mapper, "spent_usd", None)
@@ -598,7 +604,7 @@ def _run_ai_mapping(
     except Exception as exc:
         print(f"Generazione mapping fallita del tutto ({exc!r}).")
         sess["mapping_status"] = "error"
-        sess["mapping_error"] = str(exc)
+        sess["mapping_error"] = getattr(exc, "message", None) or str(exc)
 
 
 def _tables_without_proposals(tables_schema: list, rows: list[dict]) -> list[str]:
@@ -720,12 +726,10 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
 
     blocked_message = None
     if error == "pending" and pending_count > 0:
-        blocked_message = (
-            f"Non ho generato il dataset: ci sono ancora {pending_count} proposte senza una decisione "
-            "esplicita (righe evidenziate in giallo qui sotto). Accettale, rifiutale o modificale "
-            "prima di confermare — oppure usa \"Accetta le proposte ≥ soglia\" per sbrigare in blocco "
-            "quelle ad alta confidence."
-        )
+        blocked_message = msg(
+            "Non ho generato il dataset: ci sono ancora {n} proposte senza una decisione esplicita (righe "
+            "evidenziate in giallo qui sotto). Accettale, rifiutale o modificale prima di confermare — oppure usa "
+            "«Accetta le proposte ≥ soglia» per sbrigare in blocco quelle ad alta confidence.", n=pending_count)
 
     return templates.TemplateResponse(
         "mapping_review.html",
@@ -867,7 +871,7 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
             elif el == "event_type.time":
                 d.setdefault(bucket + "times", []).append(r["source_column"])
             if el == "event_type.timestamp" and r.get("planned_reason"):
-                d[bucket + "planned"] = f"{r['source_column']}: {r['planned_reason']}"
+                d[bucket + "planned"] = msg("{c}: {r}", c=r["source_column"], r=r["planned_reason"])
             elif el == "event_type.activity":
                 values = r.get("activity_values")
                 present = r.get("present_values")
@@ -1025,7 +1029,8 @@ def _planned_events(confirmed: list[dict], tables_schema: list) -> dict[str, str
     """{tipo di evento: motivo} per gli eventi la cui data e' una data prevista o di scadenza."""
     planned = {(t.name, c.name): c.planned_reason for t in tables_schema for c in t.columns
                if getattr(c, "planned_reason", None)}
-    return {r["event_type"]: f"{r['source_table']}.{r['source_column']}, {planned[(r['source_table'], r['source_column'])]}"
+    return {r["event_type"]: msg("{c}, {r}", c=f"{r['source_table']}.{r['source_column']}",
+                                 r=planned[(r["source_table"], r["source_column"])])
             for r in confirmed
             if r["ocel_element"] == "event_type.timestamp" and (r["source_table"], r["source_column"]) in planned}
 
@@ -1128,7 +1133,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 attribute_name=r["attribute_name"], qualifier=r["qualifier"],
                 related_object_type=r["related_object_type"], activity_values=r.get("activity_values"),
                 proposal_source="user" if overridden else "ai",
-                confidence=r["confidence"], rationale=r["rationale"],
+                confidence=r["confidence"], rationale=to_text(r["rationale"]),
                 based_on_template=r["based_on_template"],
                 original_ai_proposal=r["original_ai_proposal"] if overridden else None,
                 status=r["status"], confirmed_by=user.name,
@@ -1146,7 +1151,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
         for dq in dq_results:
             db.add(DataQualityCheckResult(
                 extraction_run_id=run.id, check_name=dq["check_name"], severity=dq["severity"],
-                passed=dq["passed"], details=dq["details"], affected_count=dq["affected_count"],
+                passed=dq["passed"], details=to_text(dq["details"]), affected_count=dq["affected_count"],
             ))
 
         db.commit()
@@ -1364,10 +1369,10 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
             "update_data.html",
             {
                 "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
-                "error": (
-                    "I dati caricati non sono compatibili con il mapping di questo dataset, "
-                    f"mancano: {', '.join(problems)}. Usa \"Modifica mapping\" per rimappare "
-                    "da zero, oppure carica dati nello stesso formato di prima."
+                "error": msg(
+                    "I dati caricati non sono compatibili con il mapping di questo dataset, mancano: {p}. Usa "
+                    "«Modifica mapping» per rimappare da zero, oppure carica dati nello stesso formato di prima.",
+                    p=problems,
                 ),
             },
             status_code=400,
@@ -1381,7 +1386,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
                 "update_data.html",
                 {
                     "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
-                    "error": "Non trovo i dati precedenti di questo dataset a cui aggiungere i nuovi: usa \"Sostituisci\".",
+                    "error": "Non trovo i dati precedenti di questo dataset a cui aggiungere i nuovi: usa «Sostituisci».",
                 },
                 status_code=400,
             )
@@ -1413,7 +1418,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
         for dq in dq_results:
             db.add(DataQualityCheckResult(
                 extraction_run_id=run.id, check_name=dq["check_name"], severity=dq["severity"],
-                passed=dq["passed"], details=dq["details"], affected_count=dq["affected_count"],
+                passed=dq["passed"], details=to_text(dq["details"]), affected_count=dq["affected_count"],
             ))
         db.commit()
     finally:
@@ -1472,8 +1477,7 @@ def download_run(request: Request, run_id: str, workspace_id: str):
         has_process_access(user, workspace_id, required_role="data_engineer")
         or has_process_access(user, workspace_id, required_role="data_analyst")
     ):
-        return HTMLResponse(
-            "Accesso negato: non sei assegnato come Data Engineer o Data Analyst a questo processo.",
+        return HTMLResponse(t(get_lang(request), "Accesso negato: non sei assegnato come Data Engineer o Data Analyst a questo processo."),
             status_code=403,
         )
     db = SessionLocal()
@@ -1482,5 +1486,5 @@ def download_run(request: Request, run_id: str, workspace_id: str):
     finally:
         db.close()
     if run is None or run.workspace_id != workspace_id:
-        return HTMLResponse("Run non trovato.", status_code=404)
+        return HTMLResponse(t(get_lang(request), "Run non trovato."), status_code=404)
     return FileResponse(run.ocel_file_path, media_type="application/json", filename="event_log.ocel.json")

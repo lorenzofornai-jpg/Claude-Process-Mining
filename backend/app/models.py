@@ -50,6 +50,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(200), unique=True)
     password_hash: Mapped[str] = mapped_column(String(200))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # lingua dell'interfaccia scelta dall'utente ("it" | "en"); None = non ancora scelta
+    language: Mapped[str | None] = mapped_column(String(5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     assignments: Mapped[list["ProcessAssignment"]] = relationship(back_populates="user")

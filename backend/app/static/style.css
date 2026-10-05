@@ -107,6 +107,11 @@ a { color: var(--brand); }
 .user-box { display: flex; align-items: center; gap: 14px; font-size: 12.5px; flex-shrink: 0; }
 .user-box .nav-link { color: var(--brand); text-decoration: none; font-weight: 600; }
 .user-box .user-name { color: var(--muted); }
+.lang-switch { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; }
+.lang-switch a { color: var(--brand); text-decoration: none; padding: 4px 2px; }
+.lang-switch a:hover { text-decoration: underline; }
+.lang-switch .lang-current { color: var(--text); }
+.lang-switch .lang-sep { color: var(--border); }
 .link-button {
   background: none; border: none; padding: 0; margin: 0;
   color: var(--brand); font-size: 12.5px; font-weight: 600; cursor: pointer;

@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
+from app.i18n import get_lang, msg, setup_templates, t
 from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
 from app.models import ProcessAssessment, ProcessDocument, ProcessWorkspace
@@ -21,6 +22,7 @@ from app.services import documents as D
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
+setup_templates(templates)
 
 DOCS_DIR = DATA_DIR / "documents"
 
@@ -30,8 +32,7 @@ def _require_engineer(request: Request, workspace_id: str):
     if user is None:
         return None, RedirectResponse("/login", status_code=303)
     if not has_process_access(user, workspace_id, required_role="data_engineer"):
-        return None, HTMLResponse(
-            "Accesso negato: non sei assegnato come Data Engineer a questo processo.", status_code=403
+        return None, HTMLResponse(t(get_lang(request), "Accesso negato: non sei assegnato come Data Engineer a questo processo."), status_code=403
         )
     return user, None
 
@@ -167,11 +168,11 @@ async def upload_document(
                 continue
             name = Path(f.filename).name
             if Path(name).suffix.lower() not in A.ALLOWED_DOCUMENT_EXTENSIONS:
-                rejected.append(f"{name} (formato non supportato)")
+                rejected.append(msg("{name} (formato non supportato)", name=name))
                 continue
             data = await f.read()
             if len(data) > A.MAX_DOCUMENT_BYTES:
-                rejected.append(f"{name} (oltre 25 MB)")
+                rejected.append(msg("{name} (oltre 25 MB)", name=name))
                 continue
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
             path = dest / f"{uuid.uuid4().hex[:8]}-{safe}"
@@ -191,7 +192,7 @@ async def upload_document(
     finally:
         db.close()
     if rejected:
-        return _page(request, user, workspace_id, error="Non caricati: " + "; ".join(rejected), status_code=400)
+        return _page(request, user, workspace_id, error=msg("Non caricati: {files}", files=rejected), status_code=400)
     return RedirectResponse(f"/ingestion/assessment?workspace_id={workspace_id}#documenti", status_code=303)
 
 
@@ -211,7 +212,7 @@ def download_document(request: Request, doc_id: str, workspace_id: str):
         return denied
     doc = _get_doc(workspace_id, doc_id)
     if doc is None or not Path(doc.file_path).exists():
-        return HTMLResponse("Documento non trovato.", status_code=404)
+        return HTMLResponse(t(get_lang(request), "Documento non trovato."), status_code=404)
     return FileResponse(doc.file_path, filename=doc.filename)
 
 

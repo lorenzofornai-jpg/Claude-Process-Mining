@@ -92,6 +92,14 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   domanda è già nell'assessment).
 - ⬜ **Tracciabilità**: ogni evento riporta tabella e riga di origine.
 
+## Lingua
+- ✅ **Interfaccia in italiano e inglese** (5 ottobre 2026): selettore IT | EN
+  in ogni pagina, valido subito e salvato sull'utente; tradotti anche profilo
+  dei dati, controlli di qualità e motivazioni del mapping (anche quelli già
+  calcolati, perché tradotti al momento di mostrarli). Le spiegazioni scritte
+  da Claude sono generate nella lingua attiva al momento del mapping.
+  Catalogo in `app/i18n_en.py`, verificato da `tests/test_i18n.py`.
+
 ## Altre idee
 - ✅ **Contenuto dei documenti come contesto per il mapping** (5 ottobre 2026):
   dai documenti dell'assessment (PDF, Word, PowerPoint, Excel, CSV, testo) si

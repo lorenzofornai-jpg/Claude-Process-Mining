@@ -1,28 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Revisione del mapping</h1>
+  <h1>{{ _("Revisione del mapping") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong> · Sorgente: {{ dataset_label }}{% if mapping_known_tables %}
-    · Riconosciute senza AI: {{ mapping_known_tables|join(", ") }}{% endif %}{% if mapping_cost_usd is not none %}
-    · Costo AI del mapping: {{ "%.2f"|format(mapping_cost_usd)|replace(".", ",") }} $ (limite {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $){% endif %}{% if document_context %}
-    · Contesto dai documenti: {% if document_context.excerpts %}{{ document_context.excerpts }} {{ "brano" if document_context.excerpts == 1 else "brani" }} da {{ document_context.docs|join(", ") }}
-      (per {{ document_context.tables|join(", ") }}){% else %}nessun brano dei documenti cita queste tabelle{% endif %}{% endif %}.
-    Parti dal <strong>modello proposto</strong>: quali oggetti e quali eventi conterrà il dataset. Se un
-    gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne
-    solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione,
-    conferma e genera il dataset.
+    {{ _("Processo: {p}", p=strong(context.process_name)) }} · {{ _("Sorgente:") }} {{ dataset_label|tr }}{% if mapping_known_tables %}
+    · {{ _("Riconosciute senza AI:") }} {{ mapping_known_tables|join(", ") }}{% endif %}{% if mapping_cost_usd is not none %}
+    · {{ _("Costo AI del mapping: {c} $ (limite {b} $)", c=money(mapping_cost_usd), b=money(mapping_budget_usd)) }}{% endif %}{% if document_context %}
+    · {{ _("Contesto dai documenti:") }} {% if document_context.excerpts %}{{ _("{n} brani da {docs} (per {tables})", n=document_context.excerpts, docs=document_context.docs|join(", "), tables=document_context.tables|join(", ")) }}{% else %}{{ _("nessun brano dei documenti cita queste tabelle") }}{% endif %}{% endif %}.
+    {{ _("Parti dal modello proposto: quali oggetti e quali eventi conterrà il dataset. Se un gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione, conferma e genera il dataset.") }}
   </p>
 
   {% if blocked_message %}
-  <div class="banner error">{{ blocked_message }}</div>
+  <div class="banner error">{{ blocked_message|tr }}</div>
   {% elif pending_count > 0 %}
   <div class="banner warning">
-    {{ pending_count }} proposte non hanno ancora una decisione (nessuna è pre-accettata: usa
-    "Accetta le proposte ≥ {{ (threshold*100)|round|int }}%" per quelle ad alta confidence, poi decidi le rimanenti una per una).
+    {{ _("{n} proposte non hanno ancora una decisione (nessuna è pre-accettata: usa «Accetta le proposte ≥ {t}%» per quelle ad alta confidence, poi decidi le rimanenti una per una).", n=pending_count, t=(threshold*100)|round|int) }}
   </div>
   {% else %}
-  <div class="banner ok">Tutte le proposte hanno una decisione. Puoi generare il dataset per l'analisi.</div>
+  <div class="banner ok">{{ _("Tutte le proposte hanno una decisione. Puoi generare il dataset per l'analisi.") }}</div>
   {% endif %}
 
   <form method="post" action="/ingestion/review">
@@ -31,32 +26,30 @@
 
     {% if missing_tables %}
     <div class="banner error">
-      <strong>Nessuna proposta per {{ missing_tables|length }} {{ "tabella" if missing_tables|length == 1 else "tabelle" }}:</strong>
-      <span class="mono">{{ missing_tables|join(", ") }}</span>. Senza proposte queste tabelle non entrerebbero nel dataset.
-      {% if mapping_budget_skipped %}{{ mapping_budget_skipped|join(", ") }} {{ "è stata esclusa" if mapping_budget_skipped|length == 1 else "sono state escluse" }}
-      per restare nel limite di spesa di {{ "%.2f"|format(mapping_budget_usd)|replace(".", ",") }} $: la rigenerazione ha un suo limite dello stesso importo.{% endif %}
-      Puoi rigenerare le proposte solo per queste tabelle (gli oggetti e gli eventi già proposti restano e vengono riusati come riferimento).
-      <div style="margin-top:10px"><button type="submit" name="action" value="regenerate_missing" class="secondary">Rigenera proposte per queste tabelle</button></div>
+      <strong>{{ _("Nessuna proposta per {n} tabelle:", n=missing_tables|length) }}</strong>
+      <span class="mono">{{ missing_tables|join(", ") }}</span>. {{ _("Senza proposte queste tabelle non entrerebbero nel dataset.") }}
+      {% if mapping_budget_skipped %}{{ _("Escluse per restare nel limite di spesa di {b} $: {t}. La rigenerazione ha un suo limite dello stesso importo.", b=money(mapping_budget_usd), t=mapping_budget_skipped|join(", ")) }}{% endif %}
+      {{ _("Puoi rigenerare le proposte solo per queste tabelle (gli oggetti e gli eventi già proposti restano e vengono riusati come riferimento).") }}
+      <div style="margin-top:10px"><button type="submit" name="action" value="regenerate_missing" class="secondary">{{ _("Rigenera proposte per queste tabelle") }}</button></div>
     </div>
     {% endif %}
 
-    <h2 id="modello">Modello proposto</h2>
+    <h2 id="modello">{{ _("Modello proposto") }}</h2>
     <div class="model-grid">
       <div>
-        <h3 class="model-col-title">Oggetti ({{ model.objects|length }})</h3>
+        <h3 class="model-col-title">{{ _("Oggetti ({n})", n=model.objects|length) }}</h3>
         {% for g in model.objects %}{% set group_id = "obj|" ~ g.name %}{% include "_model_group.html" %}{% else %}
-        <p class="tiny muted">Nessun tipo di oggetto proposto.</p>{% endfor %}
+        <p class="tiny muted">{{ _("Nessun tipo di oggetto proposto.") }}</p>{% endfor %}
       </div>
       <div>
-        <h3 class="model-col-title">Eventi ({{ model.events|length }})</h3>
+        <h3 class="model-col-title">{{ _("Eventi ({n})", n=model.events|length) }}</h3>
         {% for g in model.events %}{% set group_id = "evt|" ~ g.name %}{% include "_model_group.html" %}{% else %}
-        <p class="tiny muted">Nessun tipo di evento proposto.</p>{% endfor %}
+        <p class="tiny muted">{{ _("Nessun tipo di evento proposto.") }}</p>{% endfor %}
       </div>
     </div>
 
-    <h2>Dettaglio per colonna</h2>
-    <p class="tiny muted">Ogni riga è una proposta per una colonna sorgente: verifica la motivazione, accetta o rifiuta,
-      oppure usa "Modifica" se l'idea è giusta ma il target è sbagliato.</p>
+    <h2>{{ _("Dettaglio per colonna") }}</h2>
+    <p class="tiny muted">{{ _("Ogni riga è una proposta per una colonna sorgente: verifica la motivazione, accetta o rifiuta, oppure usa «Modifica» se l'idea è giusta ma il target è sbagliato.") }}</p>
 
     {% for table_name, rows in by_table.items() %}
     <details class="table-block" id="tab-{{ table_name }}" {{ 'open' if table_name in tables_to_check else '' }}>
@@ -64,21 +57,21 @@
         <span class="mono">{{ table_name }}</span>
         {% set tp = rows|selectattr("status", "equalto", "proposed")|list %}
         {% set tl = tp|selectattr("confidence", "lt", threshold)|list|length %}
-        <span class="tiny muted">{{ rows|length }} {{ "riga" if rows|length == 1 else "righe" }}{% if tp %} · {{ tp|length }} da decidere{% if tl %}, {{ tl }} incerte{% endif %}{% endif %}</span>
+        <span class="tiny muted">{{ _("1 riga") if rows|length == 1 else _("{n} righe", n=rows|length) }}{% if tp %} · {{ _("{n} da decidere", n=tp|length) }}{% if tl %}, {{ _("{n} incerte", n=tl) }}{% endif %}{% endif %}</span>
       </summary>
       {% if groups_by_table.get(table_name) %}
-      <p class="tiny muted feeds">Alimenta:
-        {% for kind, name in groups_by_table[table_name] %}<a href="#grp-{{ kind }}-{{ name|replace(' ', '_') }}">{{ "oggetto" if kind == "obj" else "evento" }} {{ name }}</a>{{ " · " if not loop.last }}{% endfor %}
+      <p class="tiny muted feeds">{{ _("Alimenta:") }}
+        {% for kind, name in groups_by_table[table_name] %}<a href="#grp-{{ kind }}-{{ name|replace(' ', '_') }}">{{ _("oggetto") if kind == "obj" else _("evento") }} {{ name }}</a>{{ " · " if not loop.last }}{% endfor %}
       </p>
       {% endif %}
       <table class="mapping-table">
         <thead>
           <tr>
-            <th>Colonna sorgente</th>
-            <th>Mapping proposto (target OCEL)</th>
-            <th>Confidence</th>
-            <th>Rationale</th>
-            <th>Decisione</th>
+            <th>{{ _("Colonna sorgente") }}</th>
+            <th>{{ _("Mapping proposto (target OCEL)") }}</th>
+            <th>{{ _("Confidenza") }}</th>
+            <th>{{ _("Motivazione") }}</th>
+            <th>{{ _("Decisione") }}</th>
           </tr>
         </thead>
         <tbody>
@@ -86,61 +79,59 @@
           <tr id="row-{{ r.row_id }}" class="{{ 'row-pending' if r.status == 'proposed' else ('row-overridden' if r.status == 'overridden' else ('row-rejected' if r.status == 'rejected' else '')) }}">
             <td class="mono">{{ r.source_column }}</td>
             <td>
-              {{ r.target_label }}
-              {% if r.status == 'overridden' %}<div class="tiny"><span class="badge badge-overridden">modificato</span></div>{% endif %}
+              {{ r.target_label|tr }}
+              {% if r.status == 'overridden' %}<div class="tiny"><span class="badge badge-overridden">{{ _("modificato") }}</span></div>{% endif %}
             </td>
             <td>
               <span class="badge {{ 'badge-high' if r.confidence >= threshold else ('badge-mid' if r.confidence >= 0.6 else 'badge-low') }}">
                 {{ (r.confidence * 100)|round|int }}%
               </span>
               {% if r.based_on_template %}
-              <div class="tiny muted">fonte: {{ template_labels.get(r.based_on_template, r.based_on_template) }}</div>
+              <div class="tiny muted">{{ _("fonte:") }} {{ template_labels.get(r.based_on_template, r.based_on_template)|tr }}</div>
               {% endif %}
             </td>
-            <td class="rationale">{{ r.rationale }}</td>
+            <td class="rationale">{{ r.rationale|tr }}</td>
             <td class="decision">
               <label class="radio">
                 <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status in ('confirmed', 'overridden') else '' }}>
-                Accetta
+                {{ _("Accetta") }}
               </label>
               <label class="radio">
                 <input type="radio" name="decision_{{ r.row_id }}" value="rejected" {{ 'checked' if r.status == 'rejected' else '' }}>
-                Rifiuta
+                {{ _("Rifiuta") }}
               </label>
               <details class="edit-mapping">
-                <summary>Modifica</summary>
+                <summary>{{ _("Modifica") }}</summary>
                 <div class="edit-fields" data-row="{{ r.row_id }}">
                   {% set shown = fields_by_element.get(r.ocel_element, []) %}
-                  <label class="edit-wide">Questa colonna è…
+                  <label class="edit-wide">{{ _("Questa colonna è…") }}
                     <select name="field_ocel_element_{{ r.row_id }}" class="edit-element">
                       {% for opt, label in element_labels.items() %}
-                      <option value="{{ opt }}" {{ 'selected' if r.ocel_element == opt else '' }}>{{ label }}</option>
+                      <option value="{{ opt }}" {{ 'selected' if r.ocel_element == opt else '' }}>{{ _(label) }}</option>
                       {% endfor %}
                     </select>
                   </label>
-                  <label data-field="object_type" {{ '' if 'object_type' in shown else 'hidden' }}>Oggetto
+                  <label data-field="object_type" {{ '' if 'object_type' in shown else 'hidden' }}>{{ _("Oggetto") }}
                     <input type="text" list="dl-objects" name="field_object_type_{{ r.row_id }}" value="{{ r.object_type or '' }}">
                   </label>
-                  <label data-field="event_type" {{ '' if 'event_type' in shown else 'hidden' }}>Evento
+                  <label data-field="event_type" {{ '' if 'event_type' in shown else 'hidden' }}>{{ _("Evento") }}
                     <input type="text" list="dl-events" name="field_event_type_{{ r.row_id }}" value="{{ r.event_type or '' }}">
                   </label>
-                  <label data-field="attribute_name" {{ '' if 'attribute_name' in shown else 'hidden' }}>Nome dell'attributo
+                  <label data-field="attribute_name" {{ '' if 'attribute_name' in shown else 'hidden' }}>{{ _("Nome dell'attributo") }}
                     <input type="text" name="field_attribute_name_{{ r.row_id }}" value="{{ r.attribute_name or '' }}" placeholder="{{ r.source_column }}">
                   </label>
-                  <label data-field="related_object_type" {{ '' if 'related_object_type' in shown else 'hidden' }}>Oggetto collegato
+                  <label data-field="related_object_type" {{ '' if 'related_object_type' in shown else 'hidden' }}>{{ _("Oggetto collegato") }}
                     <input type="text" list="dl-objects" name="field_related_object_type_{{ r.row_id }}" value="{{ r.related_object_type or '' }}">
                   </label>
-                  <label data-field="qualifier" {{ '' if 'qualifier' in shown else 'hidden' }}>Tipo di legame <span class="tiny muted">(es. for customer)</span>
+                  <label data-field="qualifier" {{ '' if 'qualifier' in shown else 'hidden' }}>{{ _("Tipo di legame") }} <span class="tiny muted">({{ _("es.") }} for customer)</span>
                     <input type="text" name="field_qualifier_{{ r.row_id }}" value="{{ r.qualifier or '' }}" placeholder="for …">
                   </label>
-                  <label class="edit-wide" data-field="activity_values" {{ '' if 'activity_values' in shown else 'hidden' }}>Attività per valore
+                  <label class="edit-wide" data-field="activity_values" {{ '' if 'activity_values' in shown else 'hidden' }}>{{ _("Attività per valore") }}
                     <textarea name="field_activity_values_{{ r.row_id }}" rows="{{ [ (r.activity_values or {})|length + 1, 3 ]|max }}"
                               placeholder="1 = Post Goods Receipt">{{ r.activity_values|activity_values_text }}</textarea>
-                    <span class="tiny muted">Una riga per valore: <span class="mono">valore = nome attività</span>. Lascia il nome vuoto
-                      per escludere quel valore; i valori non elencati restano con il codice. Tutto vuoto: i valori sono già nomi di attività.</span>
+                    <span class="tiny muted">{{ _("Una riga per valore: «valore = nome attività». Lascia il nome vuoto per escludere quel valore; i valori non elencati restano con il codice. Tutto vuoto: i valori sono già nomi di attività.") }}</span>
                   </label>
-                  <p class="tiny muted edit-wide">Gli oggetti e gli eventi si scelgono dall'elenco di quelli già nel modello; un nome nuovo ne crea uno nuovo.
-                    Le modifiche si salvano con "Salva e resta qui" o con una decisione.</p>
+                  <p class="tiny muted edit-wide">{{ _("Gli oggetti e gli eventi si scelgono dall'elenco di quelli già nel modello; un nome nuovo ne crea uno nuovo. Le modifiche si salvano con «Salva e resta qui» o con una decisione.") }}</p>
                 </div>
               </details>
             </td>
@@ -155,21 +146,16 @@
     <datalist id="dl-events">{% for n in known_events %}<option value="{{ n }}">{% endfor %}</datalist>
 
     <div class="actions">
-      <button type="submit" name="action" value="bulk_accept" class="secondary">Accetta le proposte ≥ {{ (threshold*100)|round|int }}%</button>
-      <button type="submit" name="action" value="bulk_accept_all" class="secondary">Accetta tutte le proposte</button>
-      <button type="submit" name="action" value="save" class="secondary">Salva e resta qui</button>
+      <button type="submit" name="action" value="bulk_accept" class="secondary">{{ _("Accetta le proposte ≥ {t}%", t=(threshold*100)|round|int) }}</button>
+      <button type="submit" name="action" value="bulk_accept_all" class="secondary">{{ _("Accetta tutte le proposte") }}</button>
+      <button type="submit" name="action" value="save" class="secondary">{{ _("Salva e resta qui") }}</button>
       <button type="submit" name="action" value="finalize" class="primary" {{ 'disabled' if pending_count else '' }}
-              title="{{ 'Serve una decisione su ogni riga' if pending_count else '' }}">
-        Conferma e genera il dataset
+              title="{{ _('Serve una decisione su ogni riga') if pending_count else '' }}">
+        {{ _("Conferma e genera il dataset") }}
       </button>
     </div>
     <p class="tiny muted" style="margin-top:8px">
-      "Accetta le proposte ≥ {{ (threshold*100)|round|int }}%" accetta in blocco le righe ad alta confidence ancora da decidere.
-      "Accetta tutte le proposte" fa lo stesso senza guardare la confidence: usalo solo
-      dopo aver letto le rationale, per non generare un dataset con mapping sbagliati senza accorgertene.
-      "Salva e resta qui" registra le scelte fatte finora senza generare il dataset, utile se
-      non hai ancora deciso tutte le righe e vuoi continuare più tardi. "Conferma e genera il dataset" salva le
-      scelte e genera il dataset per l'analisi: si attiva quando ogni riga ha una decisione.
+      {{ _("«Accetta le proposte ≥ {t}%» accetta in blocco le righe ad alta confidence ancora da decidere. «Accetta tutte le proposte» fa lo stesso senza guardare la confidence: usalo solo dopo aver letto le motivazioni, per non generare un dataset con mapping sbagliati senza accorgertene. «Salva e resta qui» registra le scelte fatte finora senza generare il dataset, utile se non hai ancora deciso tutte le righe e vuoi continuare più tardi. «Conferma e genera il dataset» salva le scelte e genera il dataset per l'analisi: si attiva quando ogni riga ha una decisione.", t=(threshold*100)|round|int) }}
     </p>
   </form>
 </div>

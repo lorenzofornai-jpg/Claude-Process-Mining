@@ -1,17 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Analisi</h1>
+  <h1>{{ _("Analisi") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ process_name }}</strong>. Qui in futuro sceglierai un dataset (OCEL 2.0) e
-    definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei dataset già disponibili
-    per l'analisi.
+    {{ _("Processo: {p}.", p=strong(process_name)) }}
+    {{ _("Qui in futuro sceglierai un dataset (OCEL 2.0) e definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei dataset già disponibili per l'analisi.") }}
   </p>
-  <div class="banner warning">Analisi in costruzione: questa è solo la pagina d'ingresso.</div>
+  <div class="banner warning">{{ _("Analisi in costruzione: questa è solo la pagina d'ingresso.") }}</div>
 
   <table class="admin-table">
     <thead>
-      <tr><th>Dataset</th><th>Versione</th><th>Ultimo aggiornamento</th><th></th></tr>
+      <tr><th>{{ _("Dataset") }}</th><th>{{ _("Versione") }}</th><th>{{ _("Ultimo aggiornamento") }}</th><th></th></tr>
     </thead>
     <tbody>
       {% for s in structures %}
@@ -20,24 +19,24 @@
         <td>v{{ s.config.current_version }}</td>
         <td class="tiny">
           {% if s.last_run %}
-          {{ s.last_run.object_count }} oggetti, {{ s.last_run.event_count }} eventi
+          {{ _("{o} oggetti, {e} eventi", o=s.last_run.object_count, e=s.last_run.event_count) }}
           <br class="tiny muted">{{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") }}
           {% else %}—{% endif %}
         </td>
         <td>
           {% if s.last_run %}
-          <a class="secondary button-link" href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">Scarica OCEL</a>
+          <a class="secondary button-link" href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">{{ _("Scarica OCEL") }}</a>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" class="muted">Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima prepararne uno).</td></tr>
+      <tr><td colspan="4" class="muted">{{ _("Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima prepararne uno).") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <p class="tiny muted" style="margin-top:16px">
-    <a href="/ingestion/dashboard">← Torna a "I miei processi"</a>
+    <a href="/ingestion/dashboard">← {{ _("Torna a «I miei processi»") }}</a>
   </p>
 </div>
 {% endblock %}

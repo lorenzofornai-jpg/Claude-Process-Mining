@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>I miei processi</h1>
+  <h1>{{ _("I miei processi") }}</h1>
   <p class="muted">
-    Processi a cui sei assegnato, con le attività abilitate dal tuo ruolo.
+    {{ _("Processi a cui sei assegnato, con le attività abilitate dal tuo ruolo.") }}
   </p>
 
   {# Stesse colonne di pulsanti su tutte le righe, cosi' i pulsanti hanno la stessa
@@ -18,7 +18,7 @@
 
   <table class="admin-table process-table">
     <thead>
-      <tr><th>Processo</th><th>Creato il</th><th></th></tr>
+      <tr><th>{{ _("Processo") }}</th><th>{{ _("Creato il") }}</th><th></th></tr>
     </thead>
     <tbody>
       {% for ws in workspaces %}
@@ -31,17 +31,17 @@
           {% if 'data_engineer' in roles %}
           {% set st = assessments[ws.id] %}
           <a class="{{ 'secondary' if st.percent == 100 else 'primary' }} button-link" href="/ingestion/assessment?workspace_id={{ ws.id }}">Assessment ({{ st.done }}/{{ st.total }})</a>
-          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">Nuovo dataset</a>
-          <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">Dataset per l'analisi</a>
+          <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ ws.id }}">{{ _("Nuovo dataset") }}</a>
+          <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">{{ _("Dataset per l'analisi") }}</a>
           {% endif %}
           {% if 'data_analyst' in roles %}
-          <a class="secondary button-link" style="grid-column: {{ cols }}" href="/analysis/dashboard?workspace_id={{ ws.id }}">Apri analisi</a>
+          <a class="secondary button-link" style="grid-column: {{ cols }}" href="/analysis/dashboard?workspace_id={{ ws.id }}">{{ _("Apri analisi") }}</a>
           {% endif %}
           </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="muted">Nessun processo assegnato ancora.</td></tr>
+      <tr><td colspan="3" class="muted">{{ _("Nessun processo assegnato ancora.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

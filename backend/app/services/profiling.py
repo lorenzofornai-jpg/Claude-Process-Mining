@@ -24,6 +24,7 @@ from datetime import datetime
 
 import pandas as pd
 
+from app.i18n import msg, render
 from app.services.timeparts import looks_like_time, parse_time_of_day
 
 PLACEHOLDER_DATE_RE = re.compile(
@@ -140,17 +141,17 @@ def profile_tables(
 
         t["duplicates"] = int(df.duplicated().sum())
         if t["duplicates"]:
-            issues.append(_issue("attenzione", name, f"{t['duplicates']} righe duplicate identiche",
+            issues.append(_issue("attenzione", name, msg("{n} righe duplicate identiche", n=t["duplicates"]),
                                  "Gli eventi duplicati gonfiano conteggi e frequenze e creano finti ricicli nel processo.",
                                  "Controlla se l'estrazione ha unito più volte gli stessi dati; i duplicati esatti si possono scartare."))
         t["empty_columns"] = [c for c in df.columns if df[c].isna().all()]
         t["constant_columns"] = [c for c in df.columns if c not in t["empty_columns"] and df[c].nunique() == 1]
         if t["empty_columns"]:
-            issues.append(_issue("info", name, f"Colonne sempre vuote: {', '.join(t['empty_columns'])}",
+            issues.append(_issue("info", name, msg("Colonne sempre vuote: {c}", c=", ".join(t["empty_columns"])),
                                  "Non contengono nessun valore, quindi non possono diventare né eventi né chiavi o "
                                  "collegamenti tra tabelle: nel dataset per l'analisi resterebbero campi vuoti. "
                                  "Per questo vengono escluse dal mapping AI (meno costi, meno righe da rivedere).",
-                                 "Se dovrebbero essere valorizzate (es. un campo \"approvatore\" sempre vuoto), "
+                                 "Se dovrebbero essere valorizzate (es. un campo «approvatore» sempre vuoto), "
                                  "probabilmente l'estrazione ha preso il campo sbagliato: verificalo e ricarica i dati."))
         time_cols = set(time_pairs.get(name, {}).values())
         t["key"] = _find_key(df, set(date_columns.get(name, [])) | time_cols)
@@ -194,37 +195,37 @@ def profile_tables(
 
             label = f"{col} + {d['time_column']}" if d["time_column"] else col  # la tabella e' gia' indicata accanto al titolo
             if d["placeholders"]:
-                issues.append(_issue("attenzione", name, f"{label}: {d['placeholders']} date segnaposto ({', '.join(placeholder_values)})",
+                issues.append(_issue("attenzione", name, msg("{c}: {n} date segnaposto ({v})", c=label, n=d["placeholders"], v=", ".join(placeholder_values)),
                                      "Sono valori convenzionali, non date reali: se usate come istante dell'evento falsano tempi e ordinamento.",
-                                     "Di solito significano \"non ancora avvenuto\": verranno trattate come date mancanti, l'evento non sarà generato per quelle righe."))
+                                     "Di solito significano «non ancora avvenuto»: verranno trattate come date mancanti, l'evento non sarà generato per quelle righe."))
             if d["unparsable"]:
-                issues.append(_issue("attenzione", name, f"{label}: {d['unparsable']} valori non leggibili come data",
+                issues.append(_issue("attenzione", name, msg("{c}: {n} valori non leggibili come data", c=label, n=d["unparsable"]),
                                      "Quelle righe non genereranno l'evento corrispondente.",
                                      "Controlla il formato (es. date con testo, formati misti) nell'estrazione."))
             reason = planned.get(name, {}).get(col)
             if reason:
-                issues.append(_issue("attenzione", name, f"{col}: probabile data prevista o di scadenza",
-                                     f"Motivo: {reason}. Una data così è stabilita in anticipo, non registra qualcosa "
-                                     "che è successo: come evento metterebbe nel processo un passo che nessuno ha svolto "
-                                     "e falserebbe sequenze e tempi.",
+                issues.append(_issue("attenzione", name, msg("{c}: probabile data prevista o di scadenza", c=col),
+                                     msg("Motivo: {r}. Una data così è stabilita in anticipo, non registra qualcosa "
+                                         "che è successo: come evento metterebbe nel processo un passo che nessuno ha svolto "
+                                         "e falserebbe sequenze e tempi.", r=reason),
                                      "Nel mapping non va usata come data di un evento: tienila come attributo (resta utile, "
                                      "es. per sapere se un pagamento o una consegna è arrivata in ritardo). Le proposte che "
                                      "la usano come evento saranno segnalate come incerte in revisione."))
             elif d["future"]:
-                issues.append(_issue("attenzione", name, f"{label}: {d['future']} date nel futuro",
+                issues.append(_issue("attenzione", name, msg("{c}: {n} date nel futuro", c=label, n=d["future"]),
                                      "Un evento è qualcosa che è già successo. Date nel futuro di solito sono date pianificate "
                                      "(consegna prevista, scadenza di pagamento): usate come eventi metterebbero nel processo "
                                      "passi che non sono ancora avvenuti.",
                                      "Se la colonna è una data prevista: nella revisione del mapping rifiuta la riga che la usa "
-                                     "come data/ora di un evento (oppure, con \"Modifica\", trasformala in attributo, così resta "
+                                     "come data/ora di un evento (oppure, con «Modifica», trasformala in attributo, così resta "
                                      "disponibile per l'analisi, es. confronto tra consegna prevista e reale). Se invece sono fatti "
                                      "già avvenuti, le date sono sbagliate: segnalalo a chi ha fatto l'estrazione."))
             if d["midnight_pct"] is not None and d["midnight_pct"] >= 50:
-                issues.append(_issue("attenzione", name, f"{label}: {d['midnight_pct']}% degli orari è 00:00:00",
+                issues.append(_issue("attenzione", name, msg("{c}: {p}% degli orari è 00:00:00", c=label, p=d["midnight_pct"]),
                                      "Probabile registrazione batch o ora non significativa: i tempi tra attività calcolati al minuto sarebbero fittizi.",
                                      "Chiedi se esiste un campo con l'ora reale (es. ora di creazione separata) e includilo nell'estrazione."))
             if d["outside_period"]:
-                issues.append(_issue("attenzione", name, f"{label}: {d['outside_period']} date fuori dal perimetro dell'assessment",
+                issues.append(_issue("attenzione", name, msg("{c}: {n} date fuori dal perimetro dell'assessment", c=label, n=d["outside_period"]),
                                      "L'estrazione non è filtrata come previsto o il perimetro dichiarato è diverso: i confronti tra periodi saranno falsati.",
                                      "Verifica i filtri dell'estrazione o aggiorna il periodo nell'assessment."))
 
@@ -243,15 +244,16 @@ def profile_tables(
             tmin, tmax = pd.Timestamp(min(mins)), pd.Timestamp(max(maxs))
             gaps, missing_days = [], 0
             if p_from is not None and not pd.isna(p_from) and tmin > p_from + pd.Timedelta(days=31):
-                gaps.append(f"inizia il {tmin:%Y-%m-%d}")
+                gaps.append(msg("inizia il {d}", d=f"{tmin:%Y-%m-%d}"))
                 missing_days += (tmin - p_from).days
             if p_to is not None and not pd.isna(p_to) and tmax < p_to - pd.Timedelta(days=31):
-                gaps.append(f"finisce il {tmax:%Y-%m-%d}")
+                gaps.append(msg("finisce il {d}", d=f"{tmax:%Y-%m-%d}"))
                 missing_days += (p_to - tmax).days
             if gaps:
                 span = (p_to - p_from).days if p_from is not None and p_to is not None and not pd.isna(p_from) and not pd.isna(p_to) else 0
                 severity = "attenzione" if span and missing_days > span / 4 else "info"
-                issues.append(_issue(severity, t["name"], f"Copertura parziale del periodo: la tabella {' e '.join(gaps)}",
+                issues.append(_issue(severity, t["name"], (msg("Copertura parziale del periodo: la tabella {a} e {b}", a=gaps[0], b=gaps[1]) if len(gaps) == 2
+                                      else msg("Copertura parziale del periodo: la tabella {a}", a=gaps[0])),
                                      "Per una parte del perimetro mancheranno gli eventi di questa tabella: il processo sembrerà interrompersi.",
                                      "Verifica che l'estrazione copra tutto il periodo dichiarato nell'assessment."))
 
@@ -265,7 +267,7 @@ def profile_tables(
             shown = ", ".join(a["values"][:6]) + ("…" if len(a["values"]) > 6 else "")
             issues.append(_issue(
                 "attenzione" if a["name_hint"] else "info", t["name"],
-                f"{a['column']}: probabile colonna attività ({len(a['values'])} valori: {shown})",
+                msg("{c}: probabile colonna attività ({n} valori: {v})", c=a["column"], n=len(a["values"]), v=shown),
                 "Le righe di questa tabella sembrano operazioni diverse distinte da questa colonna. Se diventano "
                 "un'unica attività, passi diversi del processo si confondono e tempi e varianti risultano sbagliati.",
                 "Nel mapping verrà proposta come colonna attività: ogni valore diventa un'attività con un nome "
@@ -274,8 +276,9 @@ def profile_tables(
     for r in relationships:
         if r["coverage_pct"] < COVERAGE_WARN * 100:
             issues.append(_issue("attenzione", r["child_table"],
-                                 f"{r['child_table']}.{r['child_column']} → {r['parent_table']}.{r['parent_column']}: "
-                                 f"{r['orphan_rows']} righe senza corrispondenza ({r['coverage_pct']}% collegate)",
+                                 msg("{a} → {b}: {n} righe senza corrispondenza ({p}% collegate)",
+                                     a=f"{r['child_table']}.{r['child_column']}", b=f"{r['parent_table']}.{r['parent_column']}",
+                                     n=r["orphan_rows"], p=r["coverage_pct"]),
                                  "Le righe orfane producono eventi non collegati al loro oggetto principale: casi incompleti e tempi sbagliati.",
                                  "Spesso le tabelle sono estratte con filtri o periodi diversi: allinea i filtri (stesse società, stesso periodo)."))
     linked = {r["child_table"] for r in relationships} | {r["parent_table"] for r in relationships}
@@ -423,7 +426,8 @@ def compact_for_mapping(profile: dict) -> dict:
             for r in profile["relationships"]
         ],
         # date previste o di scadenza (non fatti avvenuti): mai la data di un evento
-        "planned_dates": {t["name"]: t["planned_dates"] for t in profile["tables"] if t.get("planned_dates")},
+        "planned_dates": {t["name"]: {c: render("it", r) for c, r in t["planned_dates"].items()}
+                          for t in profile["tables"] if t.get("planned_dates")},
         # colonne che distinguono operazioni diverse nella stessa tabella: tutti i valori distinti
         "activity_columns": {
             t["name"]: {a["column"]: a["values"] for a in t.get("activity_columns", [])}

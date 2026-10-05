@@ -21,6 +21,8 @@ from datetime import datetime
 
 import pandas as pd
 
+from app.i18n import msg
+
 SAP_PLANNED = {
     "ZFBDT": "data base per il calcolo della scadenza (SAP)",
     "NETDT": "data di scadenza netta (SAP)",
@@ -56,8 +58,8 @@ def _parse(s: pd.Series) -> pd.Series:
         return pd.to_datetime(s, errors="coerce")
 
 
-def planned_reasons(df: pd.DataFrame, date_columns: list[str], today: datetime | None = None) -> dict[str, str]:
-    """{colonna data: motivo} per le colonne che sembrano date previste o di scadenza."""
+def planned_reasons(df: pd.DataFrame, date_columns: list[str], today: datetime | None = None) -> dict:
+    """{colonna data: motivo (testo o messaggio da tradurre)} per le colonne che sembrano date previste o di scadenza."""
     today = pd.Timestamp(today or datetime.now())
     parsed = {c: _parse(df[c]) for c in date_columns if c in df.columns}
     out: dict[str, str] = {}
@@ -73,7 +75,7 @@ def planned_reasons(df: pd.DataFrame, date_columns: list[str], today: datetime |
         if len(ok):
             future = int((ok > today).sum())
             if future >= 3 and future / len(ok) >= MIN_FUTURE_SHARE:
-                out[col] = f"il {round(100 * future / len(ok))}% delle date è nel futuro"
+                out[col] = msg("il {p}% delle date è nel futuro", p=round(100 * future / len(ok)))
                 continue
         for other, other_dates in parsed.items():
             if other == col:
@@ -86,7 +88,7 @@ def planned_reasons(df: pd.DataFrame, date_columns: list[str], today: datetime |
             # solo la data che viene DOPO: e' quella calcolata (la scadenza), non quella di partenza
             if top.sum() / len(days) >= 0.9 and all(d >= MIN_OFFSET_DAYS for d in top.index):
                 offsets = ", ".join(str(int(d)) for d in sorted(top.index))
-                out[col] = (f"è sempre {offsets} giorni dopo {other}: "
-                            "una data calcolata da una regola (es. condizioni di pagamento)")
+                out[col] = msg("è sempre {d} giorni dopo {o}: una data calcolata da una regola (es. condizioni di "
+                               "pagamento)", d=offsets, o=other)
                 break
     return out

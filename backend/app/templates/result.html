@@ -1,75 +1,70 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Fase G — Dataset per l'analisi generato</h1>
+  <h1>{{ _("Dataset per l'analisi generato") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong>.
-    Ingestion Config salvata e collegata a questo processo (riusabile su altri processi
-    previa approvazione del Process Owner).
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }}
+    {{ _("Il mapping è salvato e collegato a questo processo.") }}
   </p>
 
   {% if structure_status == "approved" %}
   <div class="banner ok">
-    Questo dataset è già <strong>in uso per l'analisi</strong>. Lo trovi in
-    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">Dataset per l'analisi</a>,
-    da dove potrai aggiornarne i dati più avanti mantenendo lo stesso mapping.
+    {{ _("Questo dataset è già in uso per l'analisi. Lo trovi in") }}
+    <a href="/ingestion/structures?workspace_id={{ workspace_id }}">{{ _("Dataset per l'analisi") }}</a>{{ _(", da dove potrai aggiornarne i dati più avanti mantenendo lo stesso mapping.") }}
   </div>
   {% else %}
   <div class="banner warning">
-    Questo è ancora un dataset di prova (bozza): non è ancora disponibile per l'analisi e non
-    comparirà in "Dataset per l'analisi" finché non lo confermi con "Utilizza per l'analisi".
+    {{ _("Questo è ancora un dataset di prova (bozza): non è ancora disponibile per l'analisi e non comparirà in «Dataset per l'analisi» finché non lo confermi con «Utilizza per l'analisi».") }}
   </div>
   {% endif %}
 
   {% if result.stats.update_mode == "append" %}
   <div class="banner ok">
-    Aggiornamento <strong>incrementale</strong>: aggiunti {{ result.stats.added_events }} eventi e
-    {{ result.stats.added_objects }} oggetti nuovi, {{ result.stats.updated_objects }} oggetti
-    aggiornati. I totali qui sotto includono i dati già presenti.
+    {{ _("Aggiornamento incrementale: aggiunti {e} eventi e {o} oggetti nuovi, {u} oggetti aggiornati. I totali qui sotto includono i dati già presenti.", e=result.stats.added_events, o=result.stats.added_objects, u=result.stats.updated_objects) }}
   </div>
   {% elif result.stats.update_mode == "replace" %}
   <div class="banner ok">
-    Dati <strong>sostituiti</strong>: il dataset contiene solo i dati appena caricati.
+    {{ _("Dati sostituiti: il dataset contiene solo i dati appena caricati.") }}
   </div>
   {% endif %}
 
   <div class="stat-row">
-    <div class="stat"><span class="stat-value">{{ result.stats.object_count }}</span><span class="stat-label">oggetti</span></div>
-    <div class="stat"><span class="stat-value">{{ result.stats.object_types }}</span><span class="stat-label">tipi oggetto</span></div>
-    <div class="stat"><span class="stat-value">{{ result.stats.event_count }}</span><span class="stat-label">eventi</span></div>
-    <div class="stat"><span class="stat-value">{{ result.stats.event_types }}</span><span class="stat-label">tipi evento</span></div>
-    <div class="stat"><span class="stat-value">{{ result.stats.skipped_count }}</span><span class="stat-label">righe scartate</span></div>
-    <div class="stat"><span class="stat-value">{{ result.rejected_count }}</span><span class="stat-label">mapping rifiutati</span></div>
-    <div class="stat"><span class="stat-value">{{ result.overridden_count }}</span><span class="stat-label">mapping corretti a mano</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.object_count }}</span><span class="stat-label">{{ _("oggetti") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.object_types }}</span><span class="stat-label">{{ _("tipi oggetto") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.event_count }}</span><span class="stat-label">{{ _("eventi") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.event_types }}</span><span class="stat-label">{{ _("tipi evento") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.stats.skipped_count }}</span><span class="stat-label">{{ _("righe scartate") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.rejected_count }}</span><span class="stat-label">{{ _("mapping rifiutati") }}</span></div>
+    <div class="stat"><span class="stat-value">{{ result.overridden_count }}</span><span class="stat-label">{{ _("mapping corretti a mano") }}</span></div>
   </div>
 
-  <h2>Data Quality Report</h2>
+  <h2>{{ _("Controlli di qualità") }}</h2>
   <table class="dq-table">
     <thead>
-      <tr><th>Check</th><th>Severità</th><th>Esito</th><th>Dettaglio</th></tr>
+      <tr><th>{{ _("Controllo") }}</th><th>{{ _("Severità") }}</th><th>{{ _("Esito") }}</th><th>{{ _("Dettaglio") }}</th></tr>
     </thead>
     <tbody>
       {% for dq in result.dq_results %}
       <tr>
-        <td>{{ dq.check_name }}</td>
-        <td><span class="badge badge-{{ dq.severity }}">{{ dq.severity }}</span></td>
-        <td>{{ '✓ passed' if dq.passed else '✗ ' ~ dq.affected_count ~ ' elementi coinvolti' }}</td>
-        <td class="rationale">{{ dq.details }}</td>
+        <td>{{ dq.check_name|tr }}</td>
+        <td><span class="badge badge-{{ dq.severity }}">{{ _(dq.severity) }}</span></td>
+        <td>{{ "✓ " ~ _("superato") if dq.passed else "✗ " ~ _("{n} elementi coinvolti", n=dq.affected_count) }}</td>
+        <td class="rationale">{{ dq.details|tr }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
   <div class="actions">
-    <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">Scarica dataset OCEL 2.0 (JSON)</a>
+    <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">{{ _("Scarica dataset OCEL 2.0 (JSON)") }}</a>
     {% if structure_status != "approved" %}
     <form method="post" action="/ingestion/structures/{{ result.ingestion_config_id }}/promote">
       <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-      <button type="submit" class="primary">Utilizza per l'analisi</button>
+      <button type="submit" class="primary">{{ _("Utilizza per l'analisi") }}</button>
     </form>
     {% endif %}
-    <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">Vedi tutti i dataset</a>
-    <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
+    <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">{{ _("Vedi tutti i dataset") }}</a>
+    <a class="secondary button-link" href="/ingestion/dashboard">{{ _("Torna ai miei processi") }}</a>
   </div>
 </div>
 {% endblock %}

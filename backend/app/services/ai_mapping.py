@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 from app.config import AI_MAPPING_BUDGET_USD, AI_MAPPING_EFFORT, ANTHROPIC_MODEL
 from app.connectors.base import TableSchema
+from app.i18n import msg, render
 from app.services import catalog, deterministic_mapping, documents
 
 ID_LIKE_PATTERN = re.compile(r"(_number|_no|_id)$", re.IGNORECASE)
@@ -234,9 +235,11 @@ class HeuristicAIMapper(AIMapper):
                 name_matches = bool(ID_LIKE_PATTERN.search(col.name))
                 confidence = 0.72 if name_matches else 0.58
                 rationale = (
-                    f"Nome colonna coerente con pattern chiave e valori pressoche' univoci ({col.distinct_ratio:.0%}), ma tabella non presente nel catalogo: verificare."
+                    msg("Nome colonna coerente con pattern chiave e valori pressoché univoci ({p}), ma tabella non presente "
+                        "nel catalogo: verificare.", p=f"{col.distinct_ratio:.0%}")
                     if name_matches else
-                    f"Valori pressoche' univoci ({col.distinct_ratio:.0%}) suggeriscono una chiave, anche se il nome colonna non segue un pattern noto: tabella non presente nel catalogo, verificare."
+                    msg("Valori pressoché univoci ({p}) suggeriscono una chiave, anche se il nome colonna non segue un "
+                        "pattern noto: tabella non presente nel catalogo, verificare.", p=f"{col.distinct_ratio:.0%}")
                 )
                 out.append(MappingProposal(
                     source_table=table.name, source_column=col.name, ocel_element="object_type.key",
@@ -270,8 +273,9 @@ class HeuristicAIMapper(AIMapper):
                 source_table=table.name, source_column=col, ocel_element="event_type.activity",
                 object_type=None, event_type=timestamp.event_type, attribute_name=None, qualifier=None,
                 related_object_type=None, confidence=0.55,
-                rationale=(f"Il profilo dei dati indica che {col} distingue operazioni diverse ({len(values)} valori): "
-                           "ogni valore diventa un'attività. Dai un nome leggibile ai codici o escludi quelli non di processo."),
+                rationale=msg("Il profilo dei dati indica che {c} distingue operazioni diverse ({n} valori): ogni valore "
+                              "diventa un'attività. Dai un nome leggibile ai codici o escludi quelli non di processo.",
+                              c=col, n=len(values)),
                 based_on_template=None, activity_values={v: v for v in values},
             ))
         return out
@@ -407,7 +411,8 @@ Regole per contenere costi e lavoro di revisione:
   utente, stato, importi, quantita'). OMETTI le colonne tecniche o ridondanti (mandante, contatori,
   flag interni, testi duplicati, date di aggiornamento tecnico): una colonna omessa viene ignorata.
 - conf (0.0-1.0) onesta: >0.85 solo se inequivocabile, 0.6-0.85 plausibile, <0.6 ambigua.
-- why: in italiano, massimo 12 parole, solo se conf <= 0.85 (spiega il dubbio al revisore);
+- why: nella lingua indicata da process_context.language (it = italiano, en = inglese), massimo 12
+  parole, solo se conf <= 0.85 (spiega il dubbio al revisore);
   stringa vuota se conf > 0.85.
 - Ometti i campi non pertinenti all'elemento scelto. Non inventare colonne.
 - Tabella anagrafica senza date plausibili: niente "timestamp".
@@ -435,7 +440,11 @@ _SKELETON_MAX_TOKENS = 6000
 
 
 class MappingBudgetError(RuntimeError):
-    """Il dataset e' troppo grande per il tetto di spesa del mapping AI."""
+    """Il dataset e' troppo grande per il tetto di spesa del mapping AI (message: messaggio da tradurre)."""
+
+    def __init__(self, message: dict):
+        super().__init__(message.get("m", ""))
+        self.message = message
 
 
 def _tokens(text: str) -> int:
@@ -552,7 +561,7 @@ class ClaudeAIMapper(AIMapper):
                     {"name": c.name, "type": c.inferred_type, "samples": c.sample_values[:3],
                      "null_ratio": c.null_ratio, "distinct_ratio": c.distinct_ratio,
                      **({"with_time": c.time_column} if getattr(c, "time_column", None) else {}),
-                     **({"planned": c.planned_reason} if getattr(c, "planned_reason", None) else {})}
+                     **({"planned": render("it", c.planned_reason)} if getattr(c, "planned_reason", None) else {})}
                     for c in t.columns
                 ],
             },
@@ -650,11 +659,10 @@ class ClaudeAIMapper(AIMapper):
                 self.budget_skipped = [t.name for t in unknown]
                 if not proposals:
                     total_cols = sum(len(t.columns) for t in unknown)
-                    raise MappingBudgetError(
-                        f"Con {len(unknown)} tabelle e {total_cols} colonne da mappare con l'AI il costo supererebbe "
-                        f"il limite di $ {self.budget_usd:.2f} per elaborazione. Carica meno tabelle (o solo le "
-                        f"colonne che servono) e riprova; il limite si cambia con AI_MAPPING_BUDGET_USD nel file .env."
-                    )
+                    raise MappingBudgetError(msg(
+                        "Con {t} tabelle e {c} colonne da mappare con l'AI il costo supererebbe il limite di $ {b} per "
+                        "elaborazione. Carica meno tabelle (o solo le colonne che servono) e riprova; il limite si cambia "
+                        "con AI_MAPPING_BUDGET_USD nel file .env.", t=len(unknown), c=total_cols, b=f"{self.budget_usd:.2f}"))
                 unknown = []
             else:
                 table_in, max_out, unknown_in_budget = plan

@@ -1,61 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>Dataset per l'analisi — {{ process_name }}</h1>
+  <h1>{{ _("Dataset per l'analisi") }} — {{ process_name }}</h1>
   <p class="muted">
-    Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in
-    oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo
-    stesso mapping, modificare il mapping (nuova versione) o eliminarlo. "Aggiungi al catalogo" rende
-    il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle
-    con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.
+    {{ _("Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo stesso mapping, modificare il mapping (nuova versione) o eliminarlo. «Aggiungi al catalogo» rende il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.") }}
   </p>
 
   <table class="admin-table process-table">
     <thead>
-      <tr><th>Dataset</th><th>Ultimo aggiornamento</th><th>Azioni</th></tr>
+      <tr><th>{{ _("Dataset") }}</th><th>{{ _("Ultimo aggiornamento") }}</th><th>{{ _("Azioni") }}</th></tr>
     </thead>
     <tbody>
       {% for s in structures %}
       <tr>
         <td>
           {{ s.config.name }}
-          <div class="tiny muted">versione {{ s.config.current_version }}</div>
-          {% if s.config.in_catalog %}<div class="tiny"><span class="badge badge-overridden">in catalogo</span></div>{% endif %}
+          <div class="tiny muted">{{ _("versione {v}", v=s.config.current_version) }}</div>
+          {% if s.config.in_catalog %}<div class="tiny"><span class="badge badge-overridden">{{ _("in catalogo") }}</span></div>{% endif %}
         </td>
         <td class="tiny nowrap">
           {% if s.last_run %}
           <span class="muted">{{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") }}</span><br>
-          {{ s.last_run.object_count }} oggetti · {{ s.last_run.event_count }} eventi<br>
-          <a href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">scarica OCEL</a>
+          {{ _("{o} oggetti · {e} eventi", o=s.last_run.object_count, e=s.last_run.event_count) }}<br>
+          <a href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">{{ _("scarica OCEL") }}</a>
           {% else %}—{% endif %}
         </td>
         <td>
           <div class="row-actions" style="grid-template-columns: repeat(4, minmax(0, 1fr))">
-            <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">Aggiorna dati</a>
-            <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">Modifica mapping</a>
+            <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">{{ _("Aggiorna dati") }}</a>
+            <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">{{ _("Modifica mapping") }}</a>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-              <button type="submit" class="secondary">{{ "Rimuovi dal catalogo" if s.config.in_catalog else "Aggiungi al catalogo" }}</button>
+              <button type="submit" class="secondary">{{ _("Rimuovi dal catalogo") if s.config.in_catalog else _("Aggiungi al catalogo") }}</button>
             </form>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete"
-                  data-confirm-title="Eliminare il dataset?"
-                  data-confirm="&quot;{{ s.config.name }}&quot; verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati{% if s.config.in_catalog %} e sarà tolto dal catalogo{% endif %}. L'operazione non si può annullare."
-                  data-confirm-ok="Elimina dataset">
+                  data-confirm-title="{{ _("Eliminare il dataset?") }}"
+                  data-confirm="{{ _("«{name}» verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati e sarà tolto dal catalogo. L'operazione non si può annullare.", name=s.config.name) if s.config.in_catalog else _("«{name}» verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati. L'operazione non si può annullare.", name=s.config.name) }}"
+                  data-confirm-ok="{{ _("Elimina dataset") }}">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-              <button type="submit" class="secondary danger">Elimina</button>
+              <button type="submit" class="secondary danger">{{ _("Elimina") }}</button>
             </form>
           </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="muted">Nessun dataset ancora in uso per l'analisi in questo processo.</td></tr>
+      <tr><td colspan="3" class="muted">{{ _("Nessun dataset ancora in uso per l'analisi in questo processo.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <div class="actions">
-    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">+ Nuovo dataset</a>
-    <a class="secondary button-link" href="/ingestion/dashboard">Torna ai miei processi</a>
+    <a class="primary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">+ {{ _("Nuovo dataset") }}</a>
+    <a class="secondary button-link" href="/ingestion/dashboard">{{ _("Torna ai miei processi") }}</a>
   </div>
 </div>
 {% endblock %}

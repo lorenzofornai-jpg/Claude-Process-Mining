@@ -1,44 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h1>Fase B/C/D — Dati sorgente</h1>
+  <h1>{{ _("Dati sorgente") }}</h1>
   <p class="muted">
-    Processo: <strong>{{ context.process_name }}</strong>.
-    Carica le tabelle estratte dal sistema sorgente in formato CSV/TXT: uno o più file
-    singolarmente, oppure un unico file .zip che li contiene tutti.
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }}
+    {{ _("Carica le tabelle estratte dal sistema sorgente in formato CSV/TXT: uno o più file singolarmente, oppure un unico file .zip che li contiene tutti.") }}
   </p>
 
   {% if editing_config %}
   <div class="banner warning">
-    Stai modificando il mapping del dataset <strong>"{{ editing_config.name }}"</strong> (attualmente versione
-    {{ editing_config.current_version }}): il nuovo mapping che confermerai sostituirà quello
-    esistente come nuova versione, e dovrai ripromuoverlo con "Utilizza per l'analisi" prima
-    che torni attivo per l'analisi.
+    {{ _("Stai modificando il mapping del dataset {name} (attualmente versione {v}): il nuovo mapping che confermerai sostituirà quello esistente come nuova versione, e dovrai ripromuoverlo con «Utilizza per l'analisi» prima che torni attivo per l'analisi.", name=strong(editing_config.name), v=editing_config.current_version) }}
   </div>
   {% endif %}
 
   {% if assessment and assessment.percent < 100 and not editing_config %}
   <div class="banner warning">
-    L'assessment del processo è completo al {{ assessment.percent }}%. Obiettivi, sistemi e caratteristiche
-    dei dati aiutano l'AI a proporre un mapping migliore e riducono le revisioni:
-    <a href="/ingestion/assessment?workspace_id={{ workspace_id }}">completalo prima di caricare i dati</a>.
+    {{ _("L'assessment del processo è completo al {p}%. Obiettivi, sistemi e caratteristiche dei dati aiutano l'AI a proporre un mapping migliore e riducono le revisioni:", p=assessment.percent) }}
+    <a href="/ingestion/assessment?workspace_id={{ workspace_id }}">{{ _("completalo prima di caricare i dati") }}</a>.
   </div>
   {% endif %}
 
   {% if error %}
-  <div class="banner error">{{ error }}</div>
+  <div class="banner error">{{ error|tr }}</div>
   {% endif %}
 
   <form method="post" action="/ingestion/upload" enctype="multipart/form-data" class="form">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
 
     <div class="option-box">
-      <label>Carica file CSV/TXT, o un file .zip che li contiene
+      <label>{{ _("Carica file CSV/TXT, o un file .zip che li contiene") }}
         <input type="file" name="files" multiple accept=".csv,.txt,.zip" required>
       </label>
     </div>
 
-    <button type="submit" class="primary">Avanti: proposte di mapping AI</button>
+    <button type="submit" class="primary">{{ _("Avanti: profilo dei dati") }}</button>
   </form>
 </div>
 {% endblock %}
