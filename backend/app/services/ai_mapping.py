@@ -358,7 +358,8 @@ manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabell
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
 (riconosciute senza AI): non ripeterlo, ma riusa ESATTAMENTE quei nomi quando una tabella si riferisce
 agli stessi oggetti. Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi.
-Le colonne di tipo "time" contengono solo l'ora (es. SAP CPUTM, ERZET): non sono date di eventi, vengono
+Le colonne "date(planned)" sono date previste o di scadenza (es. SAP ZFBDT, consegna prevista): non sono
+fatti avvenuti e non generano eventi. Le colonne di tipo "time" contengono solo l'ora (es. SAP CPUTM, ERZET): non sono date di eventi, vengono
 unite in automatico alla loro colonna data; a parita' di significato preferisci come data quella che ha
 l'ora. Copri tutte le tabelle ricevute. Non inventare colonne. Risposta breve: niente spiegazioni.
 """
@@ -410,6 +411,9 @@ Regole per contenere costi e lavoro di revisione:
   stringa vuota se conf > 0.85.
 - Ometti i campi non pertinenti all'elemento scelto. Non inventare colonne.
 - Tabella anagrafica senza date plausibili: niente "timestamp".
+- Colonne con "planned" (date previste o di scadenza: scadenza di pagamento, consegna prevista, data base
+  per la scadenza come SAP ZFBDT): NON sono fatti avvenuti, mai "timestamp"; mappale come attributo
+  (obj_attr dell'oggetto, o evt_attr dell'evento a cui si riferiscono): servono a misurare ritardi.
 - Colonne di tipo "time" (solo ora, es. CPUTM, ERZET): mai "timestamp", non mapparle; vengono unite in
   automatico alla colonna data indicata in "with_time". A parita' di significato scegli come "timestamp"
   la data che ha "with_time" (es. CPUDT con CPUTM invece di BUDAT, che e' solo un giorno).
@@ -547,7 +551,8 @@ class ClaudeAIMapper(AIMapper):
                 "columns": [
                     {"name": c.name, "type": c.inferred_type, "samples": c.sample_values[:3],
                      "null_ratio": c.null_ratio, "distinct_ratio": c.distinct_ratio,
-                     **({"with_time": c.time_column} if getattr(c, "time_column", None) else {})}
+                     **({"with_time": c.time_column} if getattr(c, "time_column", None) else {}),
+                     **({"planned": c.planned_reason} if getattr(c, "planned_reason", None) else {})}
                     for c in t.columns
                 ],
             },
@@ -567,7 +572,8 @@ class ClaudeAIMapper(AIMapper):
             "already_defined_model": vocabulary,
             "tables": [
                 {"name": t.name, "rows": t.row_count, "user_description": descriptions.get(t.name),
-                 "columns": [f"{c.name}:{c.inferred_type}" for c in t.columns]}
+                 "columns": [f"{c.name}:{c.inferred_type}" + ("(planned)" if getattr(c, "planned_reason", None) else "")
+                             for c in t.columns]}
                 for t in tables
             ],
         }

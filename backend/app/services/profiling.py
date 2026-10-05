@@ -112,10 +112,12 @@ def profile_tables(
     period: tuple[str | None, str | None] = (None, None),
     today: datetime | None = None,
     time_pairs: dict[str, dict[str, str]] | None = None,
+    planned: dict[str, dict[str, str]] | None = None,
 ) -> dict:
     """time_pairs: {tabella: {colonna data: colonna con l'ora}} (es. CPUDT -> CPUTM):
     la data si valuta con la sua ora, come verra' usata negli eventi."""
     time_pairs = time_pairs or {}
+    planned = planned or {}
     today = pd.Timestamp(today or datetime.now())
     p_from = pd.to_datetime(period[0], errors="coerce") if period[0] else None
     p_to = pd.to_datetime(period[1], errors="coerce") if period[1] else None
@@ -127,7 +129,8 @@ def profile_tables(
     for name, df in frames.items():
         n = len(df)
         t = {"name": name, "rows": n, "columns": len(df.columns), "key": None, "duplicates": 0,
-             "empty_columns": [], "constant_columns": [], "dates": []}
+             "empty_columns": [], "constant_columns": [], "dates": [],
+             "planned_dates": dict(planned.get(name, {}))}
         tables.append(t)
         if n == 0:
             issues.append(_issue("bloccante", name, "La tabella è vuota",
@@ -198,7 +201,16 @@ def profile_tables(
                 issues.append(_issue("attenzione", name, f"{label}: {d['unparsable']} valori non leggibili come data",
                                      "Quelle righe non genereranno l'evento corrispondente.",
                                      "Controlla il formato (es. date con testo, formati misti) nell'estrazione."))
-            if d["future"]:
+            reason = planned.get(name, {}).get(col)
+            if reason:
+                issues.append(_issue("attenzione", name, f"{col}: probabile data prevista o di scadenza",
+                                     f"Motivo: {reason}. Una data così è stabilita in anticipo, non registra qualcosa "
+                                     "che è successo: come evento metterebbe nel processo un passo che nessuno ha svolto "
+                                     "e falserebbe sequenze e tempi.",
+                                     "Nel mapping non va usata come data di un evento: tienila come attributo (resta utile, "
+                                     "es. per sapere se un pagamento o una consegna è arrivata in ritardo). Le proposte che "
+                                     "la usano come evento saranno segnalate come incerte in revisione."))
+            elif d["future"]:
                 issues.append(_issue("attenzione", name, f"{label}: {d['future']} date nel futuro",
                                      "Un evento è qualcosa che è già successo. Date nel futuro di solito sono date pianificate "
                                      "(consegna prevista, scadenza di pagamento): usate come eventi metterebbero nel processo "
@@ -410,6 +422,8 @@ def compact_for_mapping(profile: dict) -> dict:
             f"{r['child_table']}.{r['child_column']} -> {r['parent_table']}.{r['parent_column']} ({r['coverage_pct']}% collegate)"
             for r in profile["relationships"]
         ],
+        # date previste o di scadenza (non fatti avvenuti): mai la data di un evento
+        "planned_dates": {t["name"]: t["planned_dates"] for t in profile["tables"] if t.get("planned_dates")},
         # colonne che distinguono operazioni diverse nella stessa tabella: tutti i valori distinti
         "activity_columns": {
             t["name"]: {a["column"]: a["values"] for a in t.get("activity_columns", [])}

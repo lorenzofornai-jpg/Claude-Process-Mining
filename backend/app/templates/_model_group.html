@@ -8,6 +8,10 @@
       <div>Chiave: <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">senza chiave</span>{% endif %}</div>
     {% else %}
       <div>Data/ora: <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}{% if g.times %} + ora da {{ g.times|join(", ") }}{% endif %}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">senza data</span>{% endif %}</div>
+      {% if g.planned and g.rejected < g.total %}
+      <div><span class="sev sev-attenzione">data prevista?</span> {{ g.planned }}. Non è un fatto avvenuto: come evento
+        metterebbe nel processo un passo mai svolto. Meglio rifiutare questo evento e tenere la data come attributo.</div>
+      {% endif %}
       {% if g.activity %}
       <div>Attività dalla colonna <span class="mono">{{ g.activity.column }}</span>:
         {% if g.activity.names is none %}ogni valore è già il nome dell'attività{% else %}{{ g.activity.names|join(", ") or "—" }}{% endif %}{% if g.activity.excluded %}

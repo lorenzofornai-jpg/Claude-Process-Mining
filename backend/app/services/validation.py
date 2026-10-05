@@ -13,11 +13,6 @@ from datetime import datetime
 
 from app.services.transformation import SkipRecord
 
-# Object type scelto come "case notion" per questi check (P2P: l'ordine d'acquisto).
-# Semplificazione nota: in questo prototipo è fisso; una piattaforma multi-processo
-# lo renderebbe configurabile per Ingestion Config.
-CASE_OBJECT_TYPE = "PurchaseOrder"
-
 # Qualifier assegnato dal Transformation Engine al collegamento evento->oggetto
 # "nativo" (evento generato dalla stessa riga/tabella che ha creato l'oggetto).
 # Usarlo invece del nome dell'event type rende i check indipendenti da come
@@ -42,62 +37,119 @@ def _check_missing_timestamps(skip_log: list[SkipRecord]) -> dict:
     }
 
 
-def _check_events_before_case_start(ocel: dict) -> dict:
-    prefix = f"{CASE_OBJECT_TYPE}:"
-    case_start: dict[str, datetime] = {}
+def _object_events(ocel: dict) -> tuple[dict[str, str], dict[str, list[tuple[datetime, str, bool]]]]:
+    """(tipo di ogni oggetto, eventi di ogni oggetto in ordine di tempo: (istante, attivita', nativo)).
+    "Nativo" = l'evento nasce dalla stessa riga che definisce l'oggetto (es. la registrazione
+    della fattura per la fattura): e' cio' che fa nascere l'oggetto."""
+    types = {o["id"]: o["type"] for o in ocel["objects"]}
+    events: dict[str, list[tuple[datetime, str, bool]]] = defaultdict(list)
     for e in ocel["events"]:
         t = datetime.strptime(e["time"], "%Y-%m-%dT%H:%M:%SZ")
         for rel in e["relationships"]:
-            if rel["qualifier"] == HOME_QUALIFIER and rel["objectId"].startswith(prefix):
-                case_start[rel["objectId"]] = min(t, case_start.get(rel["objectId"], t))
+            events[rel["objectId"]].append((t, e["type"], rel["qualifier"] == HOME_QUALIFIER))
+    for evs in events.values():
+        evs.sort(key=lambda x: (x[0], not x[2]))  # a pari istante prima l'evento nativo
+    return types, events
 
-    violations = []
-    for e in ocel["events"]:
-        t = datetime.strptime(e["time"], "%Y-%m-%dT%H:%M:%SZ")
-        for rel in e["relationships"]:
-            obj_id = rel["objectId"]
-            if obj_id in case_start and t < case_start[obj_id]:
-                violations.append(f"{e['type']} ({e['time']}) su {obj_id}, creato il {case_start[obj_id].strftime('%Y-%m-%d')}")
 
-    details = "; ".join(violations[:10]) if violations else "nessuna anomalia rilevata"
-    if len(violations) > 10:
-        details += f" (+{len(violations) - 10} altre)"
+def _by_type(counts: dict[str, int], first: str | None) -> str:
+    order = sorted(counts, key=lambda t: (t != first, -counts[t], t))
+    return "; ".join(f"{t}: {counts[t]}" for t in order)
+
+
+def _check_events_before_creation(ocel: dict, types: dict, events: dict, first: str | None) -> dict:
+    """Per ogni oggetto (di qualunque tipo) la nascita e' il suo primo evento nativo:
+    un altro evento collegato con un istante precedente e' un'anomalia (es. fattura
+    registrata prima dell'ordine) o un errore di date/collegamenti. Gli oggetti senza
+    evento nativo (es. anagrafiche) non si possono verificare e sono esclusi."""
+    counts: dict[str, int] = defaultdict(int)
+    examples = []
+    for obj_id, evs in events.items():
+        born = next((t for t, _, native in evs if native), None)
+        if born is None:
+            continue
+        for t, activity, native in evs:
+            if t < born:
+                counts[types.get(obj_id, "?")] += 1
+                if len(examples) < 5:
+                    examples.append(f"{activity} il {t:%Y-%m-%d} su {obj_id} (nato il {born:%Y-%m-%d})")
+    total = sum(counts.values())
     return {
-        "check_name": "Evento antecedente alla creazione del case",
+        "check_name": "Evento prima della nascita dell'oggetto",
         "severity": "error",
-        "passed": len(violations) == 0,
-        "details": details,
-        "affected_count": len(violations),
+        "passed": total == 0,
+        "details": (f"Per tipo di oggetto: {_by_type(counts, first)}. Esempi: " + "; ".join(examples)
+                    if total else "nessun evento precede la nascita del proprio oggetto (controllati tutti i tipi di oggetto)"),
+        "affected_count": total,
+    }
+
+
+MIN_OBJECTS_FOR_START = 5
+MIN_TYPICAL_START_SHARE = 0.5
+
+
+def _check_truncated_histories(ocel: dict, types: dict, events: dict, first: str | None) -> dict:
+    """Per ogni tipo di oggetto si trova l'attivita' con cui di solito inizia la sua
+    storia; gli oggetti che iniziano con un'altra attivita' sono nati prima del periodo
+    estratto (tempi incompleti) oppure hanno un'anomalia di sequenza. Gli oggetti con il
+    proprio evento di nascita sono esclusi: per loro vale il controllo precedente.
+    Tipi con pochi oggetti o senza un inizio prevalente non si giudicano."""
+    first_activity: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for obj_id, evs in events.items():
+        if evs and not any(native for _, _, native in evs):
+            first_activity[types.get(obj_id, "?")][evs[0][1]] += 1
+    counts: dict[str, int] = {}
+    notes = []
+    for obj_type, starts in first_activity.items():
+        total = sum(starts.values())
+        typical, n = max(starts.items(), key=lambda x: x[1])
+        if total < MIN_OBJECTS_FOR_START or n / total < MIN_TYPICAL_START_SHARE or n == total:
+            continue
+        counts[obj_type] = total - n
+        others = ", ".join(f"{a} ({c})" for a, c in sorted(starts.items(), key=lambda x: -x[1]) if a != typical)
+        notes.append((obj_type, f"{obj_type}: di solito inizia con «{typical}» ({n} su {total}); "
+                                f"{total - n} iniziano con {others}"))
+    notes.sort(key=lambda x: (x[0] != first, x[0]))
+    affected = sum(counts.values())
+    return {
+        "check_name": "Storico che inizia a metà",
+        "severity": "warning",
+        "passed": affected == 0,
+        "details": ("; ".join(n for _, n in notes) + ". Di solito sono oggetti nati prima del periodo estratto, "
+                    "con tempi totali più brevi del vero (valuta di escluderli dall'analisi dei tempi o di estendere "
+                    "il periodo), oppure casi con un'anomalia di sequenza (vedi \"Evento prima della nascita "
+                    "dell'oggetto\")."
+                    if affected else "ogni tipo di oggetto inizia con la sua attività abituale"),
+        "affected_count": affected,
     }
 
 
 def _check_orphan_objects(ocel: dict) -> dict:
+    """Oggetti a cui non e' collegato nessun evento, per tipo. Se un intero tipo non ha
+    eventi, quasi sempre gli eventi della sua tabella sono collegati a un altro tipo
+    (es. la stessa partita modellata come due oggetti): e' un problema di mapping."""
     referenced = {rel["objectId"] for e in ocel["events"] for rel in e["relationships"]}
-    all_ids = {o["id"] for o in ocel["objects"]}
-    orphans = sorted(all_ids - referenced)
+    total: dict[str, int] = defaultdict(int)
+    orphans: dict[str, list[str]] = defaultdict(list)
+    for o in ocel["objects"]:
+        total[o["type"]] += 1
+        if o["id"] not in referenced:
+            orphans[o["type"]].append(o["id"])
+    parts = []
+    for t in sorted(orphans, key=lambda t: -len(orphans[t])):
+        n, of = len(orphans[t]), total[t]
+        if n == of:
+            parts.append(f"{t}: nessuno dei {of} oggetti ha eventi — controlla nella revisione a quale oggetto sono "
+                         "collegati gli eventi della sua tabella (forse lo stesso documento è modellato come due oggetti)")
+        else:
+            parts.append(f"{t}: {n} su {of} (es. {', '.join(orphans[t][:3])})")
+    affected = sum(len(v) for v in orphans.values())
     return {
         "check_name": "Oggetti senza alcun evento collegato",
         "severity": "warning",
-        "passed": len(orphans) == 0,
-        "details": ", ".join(orphans[:10]) + (f" (+{len(orphans) - 10} altri)" if len(orphans) > 10 else "") if orphans else "nessun oggetto orfano",
-        "affected_count": len(orphans),
-    }
-
-
-def _check_case_without_creation_event(ocel: dict) -> dict:
-    po_ids = {o["id"] for o in ocel["objects"] if o["type"] == CASE_OBJECT_TYPE}
-    created_ids = {
-        rel["objectId"]
-        for e in ocel["events"]
-        for rel in e["relationships"] if rel["qualifier"] == HOME_QUALIFIER
-    }
-    missing = sorted(po_ids - created_ids)
-    return {
-        "check_name": f"{CASE_OBJECT_TYPE} senza evento di creazione",
-        "severity": "error",
-        "passed": len(missing) == 0,
-        "details": ", ".join(missing) if missing else "ogni PurchaseOrder ha il proprio evento di creazione",
-        "affected_count": len(missing),
+        "passed": affected == 0,
+        "details": "; ".join(parts) if parts else "ogni oggetto ha almeno un evento",
+        "affected_count": affected,
     }
 
 
@@ -166,12 +218,54 @@ def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dic
     return results
 
 
-def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict | None = None) -> list[dict]:
+def _main_type(ocel: dict, main_object: str | None) -> str | None:
+    """Il tipo di oggetto che corrisponde all'oggetto principale dell'assessment (testo
+    libero, es. "fattura cliente"), se lo si riconosce: serve solo a mostrarlo per primo."""
+    if not main_object:
+        return None
+    words = {w for w in main_object.lower().replace("/", " ").split() if len(w) >= 4}
+    best = None
+    for name in {o["type"] for o in ocel["objects"]}:
+        score = sum(1 for w in words if w in name.lower())
+        if score and (best is None or score > best[0]):
+            best = (score, name)
+    return best[1] if best else None
+
+
+def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict | None = None,
+                            main_object: str | None = None, planned_events: dict[str, str] | None = None) -> list[dict]:
+    """Controlli su tutti i tipi di oggetto, senza dipendere dal processo (P2P, O2C, AR...).
+    main_object: oggetto principale dichiarato nell'assessment (facoltativo, solo per l'ordine);
+    planned_events: {tipo di evento del mapping: motivo} per gli eventi nati da date previste."""
+    types, events = _object_events(ocel)
+    first = _main_type(ocel, main_object)
     return [
         _check_missing_timestamps(skip_log),
-        _check_events_before_case_start(ocel),
+        *_check_planned_events(planned_events or {}, stats or {}),
+        _check_events_before_creation(ocel, types, events, first),
+        _check_truncated_histories(ocel, types, events, first),
         _check_orphan_objects(ocel),
-        _check_case_without_creation_event(ocel),
         *_check_activity_columns(skip_log, stats or {}),
         _check_event_distribution(ocel),
     ]
+
+
+def _check_planned_events(planned: dict[str, str], stats: dict) -> list[dict]:
+    if not planned:
+        return []
+    produced = stats.get("activities") or {}
+    parts = []
+    total = 0
+    for group, reason in planned.items():
+        n = sum((produced.get(group) or {}).values())
+        total += n
+        parts.append(f"«{group}» ({n} eventi): {reason}")
+    return [{
+        "check_name": "Eventi da date previste o di scadenza",
+        "severity": "warning",
+        "passed": False,
+        "details": "; ".join(parts) + ". Non sono fatti avvenuti: nel processo appariranno come passi svolti e "
+                   "falseranno sequenze e tempi. Meglio tenerle come attributi (rifiuta l'evento nella revisione "
+                   "del mapping o trasforma la data in attributo).",
+        "affected_count": total,
+    }]

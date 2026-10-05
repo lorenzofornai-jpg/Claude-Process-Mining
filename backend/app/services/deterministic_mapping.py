@@ -144,6 +144,16 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
     event_table = {p.event_type: p.source_table for p in proposals if p.ocel_element == "event_type.timestamp"}
     columns = {t.name: {c.name for c in t.columns} for t in tables}
     proposals = _with_time_columns(proposals, tables)
+    planned = {(t.name, c.name): c.planned_reason for t in tables for c in t.columns
+               if getattr(c, "planned_reason", None)}
+    for p in proposals:
+        reason = planned.get((p.source_table, p.source_column))
+        if p.ocel_element == "event_type.timestamp" and reason:
+            # resta una proposta, ma incerta: non si accetta in blocco e la revisione la apre
+            p.confidence = min(p.confidence, 0.5)
+            p.rationale = (f"Attenzione: probabile data prevista o di scadenza ({reason}). Come evento metterebbe nel "
+                           "processo un passo non avvenuto: meglio rifiutarla o trasformarla in attributo. "
+                           + (p.rationale or ""))
     for p in proposals:
         if p.ocel_element == "e2o_relationship" and not (p.qualifier or "").strip():
             # a volte l'AI scrive il qualifier nella motivazione ("q: for customer") invece che nel campo

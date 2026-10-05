@@ -420,9 +420,10 @@ async def handle_upload(
     answers, _ = load_assessment(workspace_id)
     date_cols = {t.name: [c.name for c in t.columns if c.inferred_type == "date"] for t in tables_schema}
     time_pairs = {t.name: {c.name: c.time_column for c in t.columns if c.time_column} for t in tables_schema}
+    planned = {t.name: {c.name: c.planned_reason for c in t.columns if c.planned_reason} for t in tables_schema}
     sess["profile"] = await run_in_threadpool(
         profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to")),
-        None, time_pairs,
+        None, time_pairs, planned,
     )
     sess["relevance"] = None
     return RedirectResponse(url=f"/ingestion/profile?workspace_id={workspace_id}", status_code=303)
@@ -680,7 +681,11 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
         # Non ancora pronto (o mai partito, es. link diretto, o rigenerazione in corso):
         # manda alla pagina di attesa, e' quella che sa cosa fare in ogni stato.
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+    planned = {(t.name, c.name): c.planned_reason for t in sess.get("tables_schema_objs") or [] for c in t.columns
+               if getattr(c, "planned_reason", None)}
     for r in rows:
+        r["planned_reason"] = (planned.get((r["source_table"], r["source_column"]))
+                               if r["ocel_element"] == "event_type.timestamp" else None)
         if r["ocel_element"] == "e2o_relationship" and not r.get("qualifier"):
             r["qualifier"] = qualifier_for(r.get("related_object_type"), r.get("rationale"))
         if r["ocel_element"] == "event_type.activity":
@@ -861,6 +866,8 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                 d.setdefault(bucket + "timestamps", []).append(f"{r['source_table']}.{r['source_column']}")
             elif el == "event_type.time":
                 d.setdefault(bucket + "times", []).append(r["source_column"])
+            if el == "event_type.timestamp" and r.get("planned_reason"):
+                d[bucket + "planned"] = f"{r['source_column']}: {r['planned_reason']}"
             elif el == "event_type.activity":
                 values = r.get("activity_values")
                 present = r.get("present_values")
@@ -885,6 +892,7 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
         if d["rejected"] == d["total"]:
             for k in ("keys", "timestamps", "times", "links"):
                 d[k] = d.get("all_" + k, [])
+            d["planned"] = d.get("all_planned")
             d["activity"] = d.get("all_activity")
             d["attributes"] = d.get("all_attributes", 0)
     order = order or {"events": {}, "objects": {}}
@@ -1008,12 +1016,28 @@ def _rows_signature(rows: list[dict], case_type: str | None) -> str:
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
 
+def _main_object(workspace_id: str) -> str | None:
+    answers, _ = load_assessment(workspace_id)
+    return answers.get("main_object")
+
+
+def _planned_events(confirmed: list[dict], tables_schema: list) -> dict[str, str]:
+    """{tipo di evento: motivo} per gli eventi la cui data e' una data prevista o di scadenza."""
+    planned = {(t.name, c.name): c.planned_reason for t in tables_schema for c in t.columns
+               if getattr(c, "planned_reason", None)}
+    return {r["event_type"]: f"{r['source_table']}.{r['source_column']}, {planned[(r['source_table'], r['source_column'])]}"
+            for r in confirmed
+            if r["ocel_element"] == "event_type.timestamp" and (r["source_table"], r["source_column"]) in planned}
+
+
 def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     rows = sess["mapping_rows"]
     confirmed = [r for r in rows if r["status"] in ("confirmed", "overridden")]
 
     ocel, skip_log, stats = build_ocel(sess["tables_data"], confirmed)
-    dq_results = run_data_quality_checks(ocel, skip_log, stats)
+    dq_results = run_data_quality_checks(
+        ocel, skip_log, stats, _main_object(workspace_id), _planned_events(confirmed, sess.get("tables_schema_objs") or []),
+    )
     object_defs, event_defs = compile_defs(confirmed)
     schema_fp = _schema_fingerprint(sess["tables_schema"])
     edit_config_id = sess.get("edit_config_id")
@@ -1369,7 +1393,9 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
             "event_count": len(ocel["events"]),
         }
     stats["update_mode"] = mode
-    dq_results = run_data_quality_checks(ocel, skip_log, stats)
+    dq_results = run_data_quality_checks(
+        ocel, skip_log, stats, _main_object(workspace_id), _planned_events(confirmed, tables_schema),
+    )
 
     ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"
     ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")

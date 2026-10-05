@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.connectors.base import ColumnSchema, Connector, TableSchema
+from app.services.planned_dates import planned_reasons
 from app.services.timeparts import looks_like_time, pair_time_columns
 
 
@@ -97,8 +98,10 @@ class FileConnector(Connector):
                 )
             pairs = pair_time_columns([c.name for c in columns if c.inferred_type == "date"],
                                       [c.name for c in columns if c.inferred_type == "time"])
+            planned = planned_reasons(df, [c.name for c in columns if c.inferred_type == "date"])
             for c in columns:
                 c.time_column = pairs.get(c.name)
+                c.planned_reason = planned.get(c.name)
             schemas.append(TableSchema(name=table_name, row_count=len(df), columns=columns))
         return schemas
 

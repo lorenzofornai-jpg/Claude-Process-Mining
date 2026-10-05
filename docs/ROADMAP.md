@@ -77,8 +77,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ⬜ Change log (CDHDR/CDPOS, audit trail) → eventi di modifica.
 - ⬜ Storia degli attributi degli oggetti nel tempo (oggi timestamp fittizio 1970).
 - ⬜ Relazioni oggetto-oggetto (OCEL 2.0).
-- ⬜ Controlli di qualità indipendenti dal processo: oggi il "caso" è fisso su
-  PurchaseOrder; usare l'oggetto principale dichiarato nell'assessment.
+- ✅ **Controlli di qualità indipendenti dal processo** (5 ottobre 2026): non
+  più fissi su PurchaseOrder, girano su ogni tipo di oggetto ("evento prima
+  della nascita dell'oggetto", "storico che inizia a metà", oggetti senza
+  eventi per tipo); l'oggetto principale dell'assessment serve solo a
+  mostrarlo per primo.
+- ✅ **Date previste o di scadenza** (5 ottobre 2026): riconosciute senza AI
+  (nome, date nel futuro, distanza fissa da un'altra data) e segnalate nel
+  profilo, in revisione (proposta incerta, avviso sulla card dell'evento),
+  a Claude e nel report di qualità: non devono diventare eventi.
 
 ## 5. Ostacoli non tecnici
 - ⬜ **Pseudonimizzazione** dei dati personali con regola per colonna (la
