@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from app.connectors.base import ColumnSchema, Connector, TableSchema
+from app.services.timeparts import looks_like_time, pair_time_columns
 
 
 def _looks_like_yyyymmdd(non_null: pd.Series) -> bool:
@@ -28,13 +29,18 @@ def _looks_like_yyyymmdd(non_null: pd.Series) -> bool:
     return parsed.dt.year.between(1990, 2100).mean() > 0.9
 
 
-def _infer_column_type(series: pd.Series) -> str:
+def _infer_column_type(series: pd.Series, name: str = "") -> str:
     non_null = series.dropna()
     if non_null.empty:
         return "string"
 
     if _looks_like_yyyymmdd(non_null):
         return "date"
+
+    # prima dei numeri e delle date: "143522" non e' un numero e "14:35:22" non e' una
+    # data (letto come data diventerebbe "oggi alle 14:35", spesso nel futuro)
+    if looks_like_time(name, non_null):
+        return "time"
 
     if pd.to_numeric(non_null, errors="coerce").notna().all():
         as_num = pd.to_numeric(non_null, errors="coerce")
@@ -83,12 +89,16 @@ class FileConnector(Connector):
                 columns.append(
                     ColumnSchema(
                         name=col,
-                        inferred_type=_infer_column_type(series),
+                        inferred_type=_infer_column_type(series, col),
                         sample_values=series.dropna().astype(str).unique().tolist()[:5],
                         null_ratio=round(series.isna().mean(), 3),
                         distinct_ratio=round(series.nunique(dropna=True) / max(len(series), 1), 3),
                     )
                 )
+            pairs = pair_time_columns([c.name for c in columns if c.inferred_type == "date"],
+                                      [c.name for c in columns if c.inferred_type == "time"])
+            for c in columns:
+                c.time_column = pairs.get(c.name)
             schemas.append(TableSchema(name=table_name, row_count=len(df), columns=columns))
         return schemas
 

@@ -70,6 +70,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   attività; dizionario SAP, euristica e Claude le propongono; i codici senza
   nome restano nel dataset e sono segnalati nel report di qualità. Emerso
   provando pm4py: tutto EKBE finiva in un'unica attività generica.
+- ✅ **Data e ora in colonne separate** (5 ottobre 2026): le colonne di sole
+  ore (SAP CPUTM, ERZET; created_time, ora_…) non vengono più lette come
+  date (diventavano "oggi a quell'ora": falsi avvisi di date nel futuro) e
+  si uniscono alla loro data, così gli eventi hanno l'istante esatto.
 - ⬜ Change log (CDHDR/CDPOS, audit trail) → eventi di modifica.
 - ⬜ Storia degli attributi degli oggetti nel tempo (oggi timestamp fittizio 1970).
 - ⬜ Relazioni oggetto-oggetto (OCEL 2.0).

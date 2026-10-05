@@ -227,7 +227,7 @@ def ingestion_dashboard(request: Request):
 EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
 VALID_OCEL_ELEMENTS = [
     "object_type.key", "object_type.attribute",
-    "event_type.timestamp", "event_type.activity", "event_type.attribute", "e2o_relationship",
+    "event_type.timestamp", "event_type.time", "event_type.activity", "event_type.attribute", "e2o_relationship",
 ]
 
 
@@ -240,6 +240,8 @@ def _target_label(r: dict) -> str:
         return f'Attributo oggetto → {v("object_type")}.{v("attribute_name")}'
     if el == "event_type.timestamp":
         return f'Timestamp evento → "{v("event_type")}"'
+    if el == "event_type.time":
+        return f'Ora evento → "{v("event_type")}" (unita alla data dell\'evento)'
     if el == "event_type.activity":
         values = r.get("activity_values")
         if not values:
@@ -402,8 +404,10 @@ async def handle_upload(
     # chiavi, duplicati, collegamenti tra tabelle, qualita' delle date.
     answers, _ = load_assessment(workspace_id)
     date_cols = {t.name: [c.name for c in t.columns if c.inferred_type == "date"] for t in tables_schema}
+    time_pairs = {t.name: {c.name: c.time_column for c in t.columns if c.time_column} for t in tables_schema}
     sess["profile"] = await run_in_threadpool(
-        profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to"))
+        profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to")),
+        None, time_pairs,
     )
     sess["relevance"] = None
     return RedirectResponse(url=f"/ingestion/profile?workspace_id={workspace_id}", status_code=303)
@@ -805,6 +809,8 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                 d.setdefault(bucket + "keys", []).append(r["source_column"])
             elif el == "event_type.timestamp":
                 d.setdefault(bucket + "timestamps", []).append(f"{r['source_table']}.{r['source_column']}")
+            elif el == "event_type.time":
+                d.setdefault(bucket + "times", []).append(r["source_column"])
             elif el == "event_type.activity":
                 values = r.get("activity_values")
                 present = r.get("present_values")
@@ -820,13 +826,14 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                 links = d.setdefault(bucket + "links", [])
                 if r["related_object_type"] not in links:
                     links.append(r["related_object_type"])
-        if el not in ("object_type.key", "event_type.timestamp", "event_type.activity", "e2o_relationship"):
+        if el not in ("object_type.key", "event_type.timestamp", "event_type.time", "event_type.activity",
+                      "e2o_relationship"):
             d["all_attributes"] = d.get("all_attributes", 0) + 1
             if r["status"] != "rejected":
                 d["attributes"] += 1
     for d in groups.values():
         if d["rejected"] == d["total"]:
-            for k in ("keys", "timestamps", "links"):
+            for k in ("keys", "timestamps", "times", "links"):
                 d[k] = d.get("all_" + k, [])
             d["activity"] = d.get("all_activity")
             d["attributes"] = d.get("all_attributes", 0)

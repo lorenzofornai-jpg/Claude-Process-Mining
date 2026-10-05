@@ -215,7 +215,8 @@ class HeuristicAIMapper(AIMapper):
         # nome coerente con un pattern chiave, si prende solo la piu' vicina
         # all'unicita' totale invece di comporre una chiave fragile con piu'
         # colonne quasi-uniche per caso (es. nome+citta'+via di un'anagrafe).
-        key_candidates = [c for c in table.columns if c.distinct_ratio > 0.95 and c.inferred_type not in ("float", "date")]
+        key_candidates = [c for c in table.columns
+                          if c.distinct_ratio > 0.95 and c.inferred_type not in ("float", "date", "time")]
         name_matched_candidates = [c for c in key_candidates if ID_LIKE_PATTERN.search(c.name)]
         if name_matched_candidates:
             key_cols = name_matched_candidates
@@ -224,8 +225,11 @@ class HeuristicAIMapper(AIMapper):
         else:
             key_cols = []
         date_cols = [c for c in table.columns if c.inferred_type == "date"]
+        # come data dell'evento si preferisce quella che ha anche l'ora (es. CPUDT + CPUTM)
+        first_date = next((c for c in date_cols if getattr(c, "time_column", None)), date_cols[0] if date_cols else None)
+        columns = sorted(table.columns, key=lambda c: c is not first_date)
 
-        for col in table.columns:
+        for col in columns:
             if col in key_cols:
                 name_matches = bool(ID_LIKE_PATTERN.search(col.name))
                 confidence = 0.72 if name_matches else 0.58
@@ -352,7 +356,9 @@ lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usat
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
 (riconosciute senza AI): non ripeterlo, ma riusa ESATTAMENTE quei nomi quando una tabella si riferisce
 agli stessi oggetti. Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi.
-Copri tutte le tabelle ricevute. Non inventare colonne. Risposta breve: niente spiegazioni.
+Le colonne di tipo "time" contengono solo l'ora (es. SAP CPUTM, ERZET): non sono date di eventi, vengono
+unite in automatico alla loro colonna data; a parita' di significato preferisci come data quella che ha
+l'ora. Copri tutte le tabelle ricevute. Non inventare colonne. Risposta breve: niente spiegazioni.
 """
 
 _MAPPING_SYSTEM_PROMPT = """\
@@ -400,6 +406,9 @@ Regole per contenere costi e lavoro di revisione:
   stringa vuota se conf > 0.85.
 - Ometti i campi non pertinenti all'elemento scelto. Non inventare colonne.
 - Tabella anagrafica senza date plausibili: niente "timestamp".
+- Colonne di tipo "time" (solo ora, es. CPUTM, ERZET): mai "timestamp", non mapparle; vengono unite in
+  automatico alla colonna data indicata in "with_time". A parita' di significato scegli come "timestamp"
+  la data che ha "with_time" (es. CPUDT con CPUTM invece di BUDAT, che e' solo un giorno).
 """
 
 # Prezzi in USD per milione di token (input, output). Modello sconosciuto: si usa
@@ -531,7 +540,8 @@ class ClaudeAIMapper(AIMapper):
                 "known_pattern": self._known_pattern_for(t.name, [c.name for c in t.columns]),
                 "columns": [
                     {"name": c.name, "type": c.inferred_type, "samples": c.sample_values[:3],
-                     "null_ratio": c.null_ratio, "distinct_ratio": c.distinct_ratio}
+                     "null_ratio": c.null_ratio, "distinct_ratio": c.distinct_ratio,
+                     **({"with_time": c.time_column} if getattr(c, "time_column", None) else {})}
                     for c in t.columns
                 ],
             },

@@ -22,11 +22,18 @@ attributi, e l'attivita' di ogni evento si legge dal valore della colonna:
   "<gruppo> [<colonna>=<valore>]", cosi' nessun evento sparisce in silenzio;
 - activity_values = None: il valore e' gia' il nome dell'attivita' (export
   gia' in forma di event log: caso, attivita', data).
+
+Data e ora in colonne separate (SAP CPUDT + CPUTM, created_date +
+created_time): l'elemento event_type.time indica la colonna con l'ora, che
+si unisce alla data dell'evento. Se l'ora di una riga manca o non e'
+leggibile l'evento resta, con la sola data.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+from app.services.timeparts import parse_time_of_day
 
 
 @dataclass
@@ -43,6 +50,7 @@ class EventTypeDefCompiled:
     source_table: str
     timestamp_column: str
     attribute_columns: list[str] = field(default_factory=list)
+    time_column: str | None = None
     activity_column: str | None = None
     activity_values: dict[str, str] | None = None
 
@@ -125,6 +133,10 @@ def compile_defs(confirmed: list[dict]) -> tuple[dict[str, ObjectTypeDefCompiled
             object_defs[m["object_type"]].attribute_columns.append(m["source_column"])
         elif m["ocel_element"] == "event_type.attribute" and m["event_type"] in event_defs:
             event_defs[m["event_type"]].attribute_columns.append(m["source_column"])
+        elif m["ocel_element"] == "event_type.time" and m["event_type"] in event_defs:
+            ed = event_defs[m["event_type"]]
+            if ed.source_table == m["source_table"] and m.get("source_column"):
+                ed.time_column = m["source_column"]
         elif m["ocel_element"] == "event_type.activity" and m["event_type"] in event_defs:
             ed = event_defs[m["event_type"]]
             if ed.source_table == m["source_table"] and m.get("source_column"):
@@ -142,14 +154,20 @@ def _build_object_id(obj_def: ObjectTypeDefCompiled, row: dict) -> str | None:
     return f"{obj_def.name}:" + "|".join(values)
 
 
-def _parse_time(raw: str | None) -> datetime | None:
+def _parse_time(raw: str | None, time_raw: str | None = None) -> datetime | None:
+    """Istante dell'evento; time_raw e' l'ora da una colonna separata e si usa
+    solo se la data e' senza ora (mezzanotte)."""
     if not raw or str(raw).strip() in ("", "nan"):
         return None
     for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y%m%d"):
         try:
-            return datetime.strptime(str(raw).strip(), fmt).replace(tzinfo=timezone.utc)
+            ts = datetime.strptime(str(raw).strip(), fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
+        hms = parse_time_of_day(time_raw)
+        if hms and (ts.hour, ts.minute, ts.second) == (0, 0, 0):
+            ts = ts.replace(hour=hms[0], minute=hms[1], second=hms[2])
+        return ts
     return None
 
 
@@ -220,7 +238,8 @@ def build_ocel(
                     row_preview=preview, kind="excluded" if outcome == "excluded" else "activity",
                 ))
                 continue
-            ts = _parse_time(row.get(evt_def.timestamp_column))
+            ts = _parse_time(row.get(evt_def.timestamp_column),
+                             row.get(evt_def.time_column) if evt_def.time_column else None)
             if ts is None:
                 skip_log.append(SkipRecord(
                     event_type=evt_def.name, source_table=evt_def.source_table,

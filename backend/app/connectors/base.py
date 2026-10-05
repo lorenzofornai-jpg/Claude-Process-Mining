@@ -16,7 +16,9 @@ from dataclasses import dataclass, field
 @dataclass
 class ColumnSchema:
     name: str
-    inferred_type: str  # "string" | "integer" | "float" | "date" | "boolean"
+    inferred_type: str  # "string" | "integer" | "float" | "date" | "time" | "boolean"
+    # solo per le colonne data: la colonna con l'ora dello stesso istante (es. CPUDT -> CPUTM)
+    time_column: str | None = None
     sample_values: list[str] = field(default_factory=list)
     null_ratio: float = 0.0
     distinct_ratio: float = 0.0  # 1.0 = tutti i valori distinti (candidato chiave)

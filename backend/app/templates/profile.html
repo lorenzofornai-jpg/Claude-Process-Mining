@@ -55,7 +55,7 @@
         <td class="mono tiny">{{ t.key|join(" + ") if t.key else "—" }}</td>
         <td class="tiny">
           {% for d in t.dates %}
-          <div><span class="mono">{{ d.column }}</span>: {{ d.min or "?" }} → {{ d.max or "?" }}
+          <div><span class="mono">{{ d.column }}{% if d.time_column %} + {{ d.time_column }}{% endif %}</span>: {{ d.min or "?" }} → {{ d.max or "?" }}
             <span class="muted">· {{ "con ora" if d.has_time else "solo data" }}{% if d.filled_pct < 100 %} · valorizzata {{ d.filled_pct }}%{% endif %}</span></div>
           {% else %}<span class="muted">nessuna colonna data</span>{% endfor %}
         </td>

@@ -12,6 +12,8 @@ usare gli stessi nomi di oggetti ed eventi.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app.connectors.base import TableSchema
 from app.services import catalog, sap_dictionary
 
@@ -35,6 +37,7 @@ def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
     """Regole dal dizionario SAP, solo per le colonne presenti (con il nome
     esatto della colonna caricata, qualunque sia il maiuscolo/minuscolo)."""
     actual = {c.name.upper(): c.name for c in table.columns}
+    with_time = {c.name.upper() for c in table.columns if c.time_column}
     rules: list[dict] = []
     obj = entry["object"]
     if obj:
@@ -48,11 +51,15 @@ def sap_rules(table: TableSchema, code: str, entry: dict) -> list[dict]:
                 rules.append(_rule(actual[col], "object_type.attribute", 0.9,
                                    f"Dizionario SAP: {code}.{col} = {descr}.", object_type=obj_type))
     for evt, date_cols, evt_attrs in entry["events"]:
-        date_col = next((d for d in date_cols if d in actual), None)
+        # a parita' di significato si preferisce la data che ha anche l'ora (es. CPUDT + CPUTM
+        # invece di BUDAT, che in SAP e' solo un giorno): gli eventi dello stesso giorno si ordinano
+        present = [d for d in date_cols if d in actual]
+        date_col = next((d for d in present if d in with_time), present[0] if present else None)
         if date_col is None:
             continue
+        note = f" Preferita a {present[0]} perché ha anche l'ora." if date_col != present[0] else ""
         rules.append(_rule(actual[date_col], "event_type.timestamp", 0.92,
-                           f"Dizionario SAP: {code}.{date_col} è la data dell'attività «{evt}».", event_type=evt))
+                           f"Dizionario SAP: {code}.{date_col} è la data dell'attività «{evt}».{note}", event_type=evt))
         for col, descr in evt_attrs.items():
             if col in actual:
                 rules.append(_rule(actual[col], "event_type.attribute", 0.88,
@@ -95,6 +102,35 @@ def rules_for(table: TableSchema, builtin_templates: dict[str, list[dict]]) -> t
     return None
 
 
+def _with_time_columns(proposals: list, tables: list[TableSchema]) -> list:
+    """Data e ora in colonne separate (CPUDT + CPUTM, created_date + created_time):
+    una colonna di sole ore non e' mai la data di un evento ne' un attributo utile;
+    se e' abbinata alla data di un evento diventa la sua ora (event_type.time)."""
+    time_cols = {(t.name, c.name) for t in tables for c in t.columns if c.inferred_type == "time"}
+    time_of = {(t.name, c.name): c.time_column for t in tables for c in t.columns if c.time_column}
+    if not time_cols:
+        return proposals
+    has_time = {(p.source_table, p.event_type) for p in proposals if p.ocel_element == "event_type.time"}
+    out = []
+    added = []
+    for p in proposals:
+        key = (p.source_table, p.source_column)
+        if key in time_cols and p.ocel_element in ("event_type.timestamp", "object_type.attribute",
+                                                   "event_type.attribute"):
+            continue
+        out.append(p)
+        tc = time_of.get(key)
+        if p.ocel_element == "event_type.timestamp" and tc and (p.source_table, p.event_type) not in has_time:
+            has_time.add((p.source_table, p.event_type))
+            added.append(replace(
+                p, source_column=tc, ocel_element="event_type.time", object_type=None, attribute_name=None,
+                qualifier=None, related_object_type=None, confidence=0.9, activity_values=None,
+                rationale=(f"{tc} contiene l'ora di {p.source_column}: unite danno l'istante esatto dell'evento, "
+                           "così gli eventi dello stesso giorno si ordinano e i tempi si misurano al minuto."),
+            ))
+    return out + added
+
+
 def finalize(proposals: list, tables: list[TableSchema]) -> list:
     """Toglie i collegamenti del dizionario SAP che nel dataset caricato non
     reggono: oggetto collegato assente, evento assente, oppure (collegamento
@@ -106,6 +142,7 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
             objects.setdefault(p.object_type, []).append(p.source_column)
     event_table = {p.event_type: p.source_table for p in proposals if p.ocel_element == "event_type.timestamp"}
     columns = {t.name: {c.name for c in t.columns} for t in tables}
+    proposals = _with_time_columns(proposals, tables)
 
     # codici della colonna attivita' gia' coperti da un'altra tabella del dataset: esclusi
     for p in proposals:

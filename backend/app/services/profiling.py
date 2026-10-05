@@ -24,6 +24,8 @@ from datetime import datetime
 
 import pandas as pd
 
+from app.services.timeparts import parse_time_of_day
+
 PLACEHOLDER_DATE_RE = re.compile(
     r"^(0{8}|0{4}-0{2}-0{2}|9999-?12-?31|1900-?01-?01|1899-?12-?3[01]|1970-?01-?01)(\b|T|\s|$)"
 )
@@ -109,7 +111,11 @@ def profile_tables(
     date_columns: dict[str, list[str]],
     period: tuple[str | None, str | None] = (None, None),
     today: datetime | None = None,
+    time_pairs: dict[str, dict[str, str]] | None = None,
 ) -> dict:
+    """time_pairs: {tabella: {colonna data: colonna con l'ora}} (es. CPUDT -> CPUTM):
+    la data si valuta con la sua ora, come verra' usata negli eventi."""
+    time_pairs = time_pairs or {}
     today = pd.Timestamp(today or datetime.now())
     p_from = pd.to_datetime(period[0], errors="coerce") if period[0] else None
     p_to = pd.to_datetime(period[1], errors="coerce") if period[1] else None
@@ -143,7 +149,8 @@ def profile_tables(
                                  "Per questo vengono escluse dal mapping AI (meno costi, meno righe da rivedere).",
                                  "Se dovrebbero essere valorizzate (es. un campo \"approvatore\" sempre vuoto), "
                                  "probabilmente l'estrazione ha preso il campo sbagliato: verificalo e ricarica i dati."))
-        t["key"] = _find_key(df, set(date_columns.get(name, [])))
+        time_cols = set(time_pairs.get(name, {}).values())
+        t["key"] = _find_key(df, set(date_columns.get(name, [])) | time_cols)
         if t["key"] is None and not t["duplicates"]:
             issues.append(_issue("attenzione", name, "Nessuna chiave univoca trovata (né una colonna né una coppia)",
                                  "Senza una chiave le righe non si possono identificare come oggetti distinti, né collegare in modo affidabile ad altre tabelle.",
@@ -154,9 +161,15 @@ def profile_tables(
                 continue
             raw = df[col]
             parsed, placeholder, placeholder_values = _parse_dates(raw)
+            tc = time_pairs.get(name, {}).get(col)
+            if tc in df.columns and len(parsed):
+                hms = df.loc[parsed.index, tc].map(parse_time_of_day)
+                add = hms.map(lambda x: pd.Timedelta(hours=x[0], minutes=x[1], seconds=x[2]) if x else pd.Timedelta(0))
+                at_midnight = (parsed.dt.hour == 0) & (parsed.dt.minute == 0) & (parsed.dt.second == 0)
+                parsed = parsed.where(~at_midnight, parsed + add)
             nonnull = int(raw.notna().sum())
             ok = parsed.dropna()
-            d = {"column": col, "filled_pct": round(100 * nonnull / n), "min": None, "max": None,
+            d = {"column": col, "time_column": tc if tc in df.columns else None, "filled_pct": round(100 * nonnull / n), "min": None, "max": None,
                  "has_time": False, "placeholders": int(placeholder.sum()), "future": 0,
                  "unparsable": int(parsed.isna().sum()), "outside_period": 0, "midnight_pct": None}
             if len(ok):
@@ -176,7 +189,7 @@ def profile_tables(
             t["dates"].append(d)
             any_time_info.append(d["has_time"])
 
-            label = col  # la tabella e' gia' indicata accanto al titolo
+            label = f"{col} + {d['time_column']}" if d["time_column"] else col  # la tabella e' gia' indicata accanto al titolo
             if d["placeholders"]:
                 issues.append(_issue("attenzione", name, f"{label}: {d['placeholders']} date segnaposto ({', '.join(placeholder_values)})",
                                      "Sono valori convenzionali, non date reali: se usate come istante dell'evento falsano tempi e ordinamento.",
@@ -187,8 +200,13 @@ def profile_tables(
                                      "Controlla il formato (es. date con testo, formati misti) nell'estrazione."))
             if d["future"]:
                 issues.append(_issue("attenzione", name, f"{label}: {d['future']} date nel futuro",
-                                     "Eventi nel futuro sono di solito date pianificate (es. consegna prevista), non eventi avvenuti: inserirli come eventi altera il processo.",
-                                     "Se la colonna è una data prevista, trattala come attributo e non come evento."))
+                                     "Un evento è qualcosa che è già successo. Date nel futuro di solito sono date pianificate "
+                                     "(consegna prevista, scadenza di pagamento): usate come eventi metterebbero nel processo "
+                                     "passi che non sono ancora avvenuti.",
+                                     "Se la colonna è una data prevista: nella revisione del mapping rifiuta la riga che la usa "
+                                     "come data/ora di un evento (oppure, con \"Modifica\", trasformala in attributo, così resta "
+                                     "disponibile per l'analisi, es. confronto tra consegna prevista e reale). Se invece sono fatti "
+                                     "già avvenuti, le date sono sbagliate: segnalalo a chi ha fatto l'estrazione."))
             if d["midnight_pct"] is not None and d["midnight_pct"] >= 50:
                 issues.append(_issue("attenzione", name, f"{label}: {d['midnight_pct']}% degli orari è 00:00:00",
                                      "Probabile registrazione batch o ora non significativa: i tempi tra attività calcolati al minuto sarebbero fittizi.",
