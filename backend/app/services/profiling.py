@@ -24,7 +24,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from app.services.timeparts import parse_time_of_day
+from app.services.timeparts import looks_like_time, parse_time_of_day
 
 PLACEHOLDER_DATE_RE = re.compile(
     r"^(0{8}|0{4}-0{2}-0{2}|9999-?12-?31|1900-?01-?01|1899-?12-?3[01]|1970-?01-?01)(\b|T|\s|$)"
@@ -316,6 +316,8 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
         s = s[s != ""]
         if len(s) < 0.9 * n:
             continue
+        if looks_like_time(c, s):
+            continue  # un'ora (es. EVENT_TIME, CPUTM) dice quando, non cosa: si unisce alla sua data
         distinct = s.unique()
         if not 2 <= len(distinct) <= MAX_ACTIVITY_VALUES or len(distinct) > 0.5 * n:
             continue
