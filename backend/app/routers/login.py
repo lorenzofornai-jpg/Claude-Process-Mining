@@ -93,12 +93,16 @@ def switch_language(request: Request, code: str):
                 db.commit()
             finally:
                 db.close()
-    back = request.headers.get("referer") or "/"
-    parsed = urlparse(back)
-    # solo pagine di questa app: mai un redirect verso un altro sito
-    target = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "") if (
-        not parsed.netloc or parsed.netloc == request.headers.get("host")) else "/"
-    if not target.startswith("/") or target.startswith("//"):
+    # Si torna alla pagina da cui si e' cliccato: il selettore la passa in ?next=. Il Referer resta
+    # solo come riserva: dietro l'inoltro porte di Codespaces l'host cambia (e Safari puo' ometterlo),
+    # e l'utente finiva su «I miei processi» invece di restare sulla revisione. Si tiene solo il
+    # percorso (mai l'host): il redirect non puo' portare fuori dall'app.
+    candidate = request.query_params.get("next") or ""
+    if not candidate:
+        parsed = urlparse(request.headers.get("referer") or "")
+        candidate = (parsed.path or "") + (f"?{parsed.query}" if parsed.query else "")
+    target = candidate if candidate.startswith("/") and not candidate.startswith("//") and "\\" not in candidate else "/"
+    if target.startswith("/lang/"):
         target = "/"
     return RedirectResponse(target, status_code=303)
 
