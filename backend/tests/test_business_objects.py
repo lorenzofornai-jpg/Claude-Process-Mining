@@ -90,3 +90,34 @@ def test_apply_aligns_any_mapping_to_confirmed_objects():
     linked = Counter(r["objectId"].split(":")[0] for e in ocel["events"] if e["type"] in ("Approved", "Shipped")
                      for r in e["relationships"])
     assert linked == {"Return": 4, "Sales Order": 8}
+
+
+def test_confirmed_name_used_on_another_table_does_not_create_objects():
+    """Il mapper chiama «Return» anche le righe del log (tabella che non ospita oggetti): niente oggetti finti,
+    ma i collegamenti a «Return» restano collegamenti."""
+    def p(table, col, el, **kw):
+        base = dict(source_table=table, source_column=col, ocel_element=el, object_type=None, event_type=None,
+                    attribute_name=None, qualifier=None, related_object_type=None, confidence=0.6,
+                    rationale="", based_on_template=None, activity_values=None)
+        base.update(kw)
+        return MappingProposal(**base)
+    proposals = [
+        p("orders", "order_id", "object_type.key", object_type="Sales Order"),
+        p("orders", "created_on", "event_type.timestamp", event_type="Create Order"),
+        p("order_status_log", "order_id", "object_type.key", object_type="Return"),
+        p("order_status_log", "changed_on", "event_type.timestamp", event_type="Status Change"),
+        p("order_status_log", "order_id", "e2o_relationship", event_type="Status Change", related_object_type="Return"),
+    ]
+    confirmed = [
+        {"name": "Sales Order", "table": "orders", "key": ["order_id"], "filter": {"column": "order_type", "values": ["SALE"]},
+         "role": "lead", "include": True},
+        {"name": "Return", "table": "orders", "key": ["order_id"], "filter": {"column": "order_type", "values": ["RETURN"]},
+         "role": "needed", "include": True},
+    ]
+    out, rejected = bo.apply(proposals, confirmed, DATA)
+    assert [(out[i].source_table, out[i].ocel_element) for i in rejected] == [("order_status_log", "object_type.key")]
+    rel = next(x for x in out if x.ocel_element == "e2o_relationship")
+    assert rel.related_object_type == "Return"
+    rows = [{**x.__dict__} for i, x in enumerate(out) if i not in rejected]
+    ocel, _, _ = build_ocel(DATA, rows)
+    assert Counter(o["type"] for o in ocel["objects"]) == {"Sales Order": 6, "Return": 3}

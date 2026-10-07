@@ -298,7 +298,8 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
         base_of_table[table] = target
         if table in mapper_name:
             rename[mapper_name[table]] = target
-    dropped_types = {n for t, n in mapper_name.items() if t not in by_table}
+    # tipi che restano: quelli di partenza delle tabelle che ospitano oggetti e i nomi di business confermati
+    kept = set(base_of_table.values()) | {o["name"] for o in confirmed}
 
     out: list[MappingProposal] = []
     rejected: set[int] = set()
@@ -309,10 +310,13 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
             p.related_object_type = rename[p.related_object_type]
         if p.ocel_element == "object_type.split" and p.source_table in by_table:
             continue  # la divisione la decidono gli oggetti confermati (sotto)
-        if p.ocel_element in ("object_type.key", "object_type.attribute") and p.object_type in dropped_types:
+        # una tabella che non ospita oggetti confermati non definisce oggetti, anche se il mapper le ha dato il nome
+        # di uno di loro (es. le righe contabili chiamate «Incasso»: creerebbero incassi con i numeri delle fatture)
+        if p.ocel_element in ("object_type.key", "object_type.attribute") and (
+                p.source_table not in by_table or p.object_type not in kept):
             p.rationale = msg("Non è tra gli oggetti di business confermati: proposta rifiutata (puoi ripristinarla).")
             rejected.add(len(out))
-        elif p.ocel_element == "e2o_relationship" and p.related_object_type in dropped_types:
+        elif p.ocel_element == "e2o_relationship" and p.related_object_type and p.related_object_type not in kept:
             p.ocel_element, p.attribute_name = "event_type.attribute", p.source_column
             p.rationale = msg("{o} non è tra gli oggetti di business confermati: resta come attributo dell'evento "
                               "(dimensione per filtrare e confrontare).", o=p.related_object_type)

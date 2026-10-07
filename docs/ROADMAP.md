@@ -126,6 +126,9 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   colonna. Bozza senza costi o proposta di Claude (guida, necessari, di contesto) dagli obiettivi dell'assessment, con
   nome di business, tabella, chiave e filtro per valore; l'utente conferma, rinomina, divide o aggiunge. Il mapping si
   allinea agli oggetti confermati qualunque sia il mapper; l'oggetto guida apre Process Overview e obiettivo misurabile.
+- ✅ **Process Explorer senza sovrapposizioni** (7 ottobre 2026): percorsi a linee spezzate calcolati dall'app
+  (punti intermedi di dagre accanto alle fermate, una corsia orizzontale per ogni tratto tra due righe, ritorni
+  all'indietro spostati di lato) e numeri sulle linee posati dove non coprono fermate, punti, altri numeri o linee.
 - ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
   di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
   attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,

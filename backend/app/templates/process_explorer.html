@@ -259,13 +259,15 @@
           "border-width": 2.5, "border-color": "data(color)" } },
       { selector: "node.end", style: { "shape": "ellipse", "width": 14, "height": 14, "background-color": "data(color)", "border-width": 0 } },
       { selector: "edge", style: {
-          "curve-style": "round-taxi", "taxi-direction": "vertical", "taxi-turn": "data(turn)", "taxi-turn-min-distance": 8, "taxi-radius": 12,
+          "curve-style": "straight",
           "width": "data(width)", "line-color": "data(color)", "target-arrow-color": "data(color)",
-          "target-arrow-shape": "triangle", "arrow-scale": 0.75, "label": "data(label)", "font-size": 9,
+          "target-arrow-shape": "triangle", "arrow-scale": 0.75, "label": "", "font-size": 9,
           "color": css("--text"), "text-background-color": css("--card-bg"), "text-background-opacity": 1,
           "text-background-padding": 2, "text-background-shape": "round-rectangle",
           "text-border-width": 1, "text-border-color": "data(color)", "text-border-opacity": 1,
           "loop-direction": "90deg", "loop-sweep": "-50deg", "control-point-step-size": 30 } },
+      { selector: "edge.routed", style: { "curve-style": "round-segments", "segment-weights": "data(w)",
+          "segment-distances": "data(d)", "edge-distances": "node-position", "segment-radii": 10 } },
       { selector: "edge.loop", style: { "curve-style": "bezier" } },
       { selector: "edge.entry", style: { "line-style": "dashed", "line-dash-pattern": [7, 5] } },
       { selector: "edge.nolabel", style: { "label": "" } },
@@ -385,27 +387,48 @@
       [e.source, e.target].forEach(function (id) { (typesAt[id] = typesAt[id] || {})[e.type] = true; });
     });
 
-    // 1) disposizione a livelli con dagre, senza gli inizi: le attivita' sono "stazioni" larghe quanto punti + etichetta
-    var g = new dagre.graphlib.Graph({ multigraph: true });
-    g.setGraph({ rankdir: "TB", nodesep: 56, ranksep: 92, ranker: "network-simplex", acyclicer: "greedy", marginx: 0, marginy: 0 });
-    g.setDefaultEdgeLabel(function () { return {}; });
+    // 1) disposizione a livelli con dagre. Le attivita' sono "stazioni" larghe quanto punti + etichetta; gli inizi
+    //    stanno tutti sulla prima riga (legati con peso alto a una radice invisibile). Dagre instrada i collegamenti
+    //    lunghi con punti intermedi accanto alle stazioni: le linee girano intorno alle fermate invece di attraversarle.
+    var maxOut = 1;
     Object.keys(typesAt).forEach(function (id) {
-      var n = byId[id]; if (!n || n.kind === "start") return;
+      maxOut = Math.max(maxOut, edges.filter(function (e) { return e.source === id && e.target !== id; }).length);
+    });
+    var g = new dagre.graphlib.Graph({ multigraph: true });
+    g.setGraph({ rankdir: "TB", nodesep: 50, edgesep: 22, ranksep: Math.min(170, Math.max(92, 56 + 9 * maxOut)),
+                 ranker: "network-simplex", acyclicer: "greedy", marginx: 0, marginy: 0 });
+    g.setDefaultEdgeLabel(function () { return {}; });
+    var ROOT = "__root__";
+    g.setNode(ROOT, { width: 1, height: 1 });
+    Object.keys(typesAt).forEach(function (id) {
+      var n = byId[id]; if (!n) return;
+      if (n.kind === "start") {
+        g.setNode(id, { width: 26 + labelWidth(tn(n.label)), height: 30 });
+        g.setEdge(ROOT, id, { weight: 1000, minlen: 1 }, "root|" + id);
+        return;
+      }
       var nTypes = data.types.filter(function (t) { return typesAt[id][t]; }).length;
       if (n.kind === "activity") g.setNode(id, { width: nTypes * DOT_GAP + 8 + labelWidth(an(n.label)), height: 40 });
       else g.setNode(id, { width: 20, height: 20 });
     });
     edges.forEach(function (e) {
-      if (e.source !== e.target && !isStart(e.source))
+      if (e.source !== e.target)
         g.setEdge(e.source, e.target, { weight: Math.max(1, Math.round(100 * e.count / maxCount)), minlen: 1 }, e.id);
     });
     dagre.layout(g);
 
-    // 2) punti e fini nelle posizioni calcolate
+    // 2) punti, inizi e fini nelle posizioni calcolate
     var els = [], pos = {}, rects = [], dotId = function (act, t) { return "d\u0001" + act + "\u0001" + t; };
     Object.keys(typesAt).forEach(function (id) {
-      var n = byId[id], p = g.node(id); if (!n || !p || n.kind === "start") return;
+      var n = byId[id], p = g.node(id); if (!n || !p) return;
       var left = p.x - p.width / 2;
+      if (n.kind === "start") {
+        pos[id] = { x: left + 7, y: p.y };
+        els.push({ group: "nodes", classes: "start", data: { id: id, color: n.color, type: n.type, raw: n }, position: pos[id] });
+        addStartLabel(n, left + 20, p.y);
+        rects.push({ x1: left - 4, x2: left + p.width + 4, y1: p.y - 20, y2: p.y + 20 });
+        return;
+      }
       if (n.kind === "activity") {
         var tl = data.types.filter(function (t) { return typesAt[id][t]; });
         tl.forEach(function (t, i) {
@@ -420,42 +443,70 @@
       rects.push({ x1: left - 4, x2: left + p.width + 4, y1: p.y - 24, y2: p.y + 24 });
     });
 
-    // 3) tutte le linee partono dalla stessa riga in alto, sopra la stazione in cui ogni tipo entra di piu';
-    //    il tratto fino alla prima attivita' e' tratteggiato: l'oggetto non e' ancora entrato nel processo
-    var minY = Math.min.apply(null, Object.keys(pos).map(function (k) { return pos[k].y; }));
-    var topY = minY - 110;
-    var starts = data.types.map(function (t) {
-      var id = "__start__|" + t, n = byId[id];
-      if (!n || !typesAt[id]) return null;
-      var first = edges.filter(function (e) { return e.source === id; }).sort(function (a, b) { return b.count - a.count; })[0];
-      var target = first && pos[dotId(first.target, t)];
-      return { id: id, n: n, x: target ? target.x : 0, w: 26 + labelWidth(tn(n.label)) };
-    }).filter(Boolean).sort(function (a, b) { return a.x - b.x; });
-    var lastRight = -Infinity;
-    starts.forEach(function (st) {
-      var x = Math.max(st.x, lastRight + 18);
-      lastRight = x + st.w;
-      els.push({ group: "nodes", classes: "start", data: { id: st.id, color: st.n.color, type: st.n.type, raw: st.n }, position: { x: x, y: topY } });
-      addStartLabel(st.n, x + 13, topY);
-      rects.push({ x1: x - 10, x2: x + st.w, y1: topY - 20, y2: topY + 20 });
+    // 3) percorsi a linee spezzate (come le mappe della metropolitana): si scende dal punto, si gira su una
+    //    "corsia" propria tra le due righe di stazioni (ogni tratto orizzontale ha la sua altezza: le linee non si
+    //    sovrappongono) e si scende lungo la colonna del punto d'arrivo o dei punti intermedi di dagre
+    routes = {};
+    var rowYs = {};
+    g.nodes().forEach(function (id) { if (id !== ROOT) rowYs[Math.round(g.node(id).y)] = true; });
+    var gaps = {};   // tra due righe: richieste di corsia, assegnate dopo per distribuirle nello spazio disponibile
+    var ordered = edges.slice().sort(function (a, b) { return b.count - a.count; });
+    ordered.forEach(function (e) {
+      if (e.source === e.target) return;
+      var s = pos[isStart(e.source) ? e.source : dotId(e.source, e.type)];
+      var t = pos[isEnd(e.target) ? e.target : dotId(e.target, e.type)];
+      if (!s || !t) return;
+      var de = g.edge({ v: e.source, w: e.target, name: e.id });
+      // solo i punti intermedi sulle righe delle stazioni (dove dagre ha messo il collegamento accanto alle fermate):
+      // quelli a meta' tra due righe sono il posto per un'etichetta e farebbero fare giri inutili
+      var via = (de && de.points ? de.points.slice(1, -1) : []).filter(function (p) { return rowYs[Math.round(p.y)]; });
+      var path = [{ x: s.x, y: s.y }], cur = { x: s.x, y: s.y }, end = { x: t.x, y: t.y };
+      // collegamento all'indietro (ritorno a un'attivita' precedente): sale accanto ai punti, spostato a sinistra,
+      // cosi' non corre sopra le linee che scendono nello stesso punto
+      if (t.y < s.y - 1) {
+        cur = { x: s.x - 10, y: s.y - 10 }; path.push(cur);
+        end = { x: t.x - 10, y: t.y + 10 };
+      }
+      via.concat([end]).forEach(function (wp) {
+        if (Math.abs(wp.x - cur.x) > 0.5 && Math.abs(wp.y - cur.y) > 1) {
+          var y1 = Math.min(cur.y, wp.y), y2 = Math.max(cur.y, wp.y), key = Math.round(y1) + "|" + Math.round(y2);
+          var gap = gaps[key] = gaps[key] || { y1: y1, y2: y2, list: [] };
+          var a = { x: cur.x, y: null }, b = { x: wp.x, y: null };
+          gap.list.push({ a: a, b: b, down: wp.y > cur.y });
+          path.push(a, b);
+        }
+        cur = { x: wp.x, y: wp.y };
+      });
+      if (end.x !== t.x) path.push(end);
+      path.push({ x: t.x, y: t.y });
+      routes[e.id] = path;
+    });
+    Object.keys(gaps).forEach(function (k) {
+      var gp = gaps[k], top = gp.y1 + 26, bottom = gp.y2 - 26, n = gp.list.length;
+      var step = n > 1 ? Math.min(9, Math.max(3, (bottom - top) / (n - 1))) : 0;
+      gp.list.forEach(function (r, i) { r.a.y = r.b.y = top + i * step; });
     });
 
     edges.forEach(function (e) {
       var s = isStart(e.source) ? e.source : dotId(e.source, e.type);
       var t = isEnd(e.target) ? e.target : dotId(e.target, e.type);
-      // ogni tipo gira a un'altezza diversa: le linee di tipi diversi corrono affiancate invece di sovrapporsi
-      var ti = Math.max(0, data.types.indexOf(e.type));
-      // le linee dei tipi trasversali (es. cliente) sono piu' sottili e in trasparenza: non coprono i flussi dei documenti
       var hub = !!(TYPES[e.type] || {}).hub && data.hub_mode === "all";
-      els.push({ group: "edges", classes: (s === t ? "loop " : "") + (isStart(e.source) ? "entry " : "") + (hub ? "hub" : ""),
-        data: { id: e.id, source: s, target: t, color: e.color, type: e.type, hub: hub,
-        // le linee d'ingresso girano subito sotto la riga delle partenze e scendono lungo la colonna del loro punto
-        // (a sinistra delle etichette), cosi' non passano dietro i riquadri delle fermate
-        turn: isStart(e.source) ? 22 + (ti % 6) * 7 : 14 + (ti % 6) * 11,
-        width: (hub ? 1.2 + 1.8 : 1.8 + 3.4) * Math.sqrt(e.count / maxCount) + (hub ? 0.6 : 0), label: edgeLabel(e), raw: e } });
+      var path = routes[e.id], inner = path ? path.slice(1, -1) : [];
+      var d = { id: e.id, source: s, target: t, color: e.color, type: e.type, hub: hub,
+        width: (hub ? 1.2 + 1.8 : 1.8 + 3.4) * Math.sqrt(e.count / maxCount) + (hub ? 0.6 : 0), label: edgeLabel(e), raw: e };
+      if (inner.length) {
+        var a = path[0], b = path[path.length - 1], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1, L = Math.sqrt(L2);
+        d.w = inner.map(function (p) { return ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2; }).join(" ");
+        d.d = inner.map(function (p) { return ((p.y - a.y) * dx - (p.x - a.x) * dy) / L; }).join(" ");
+      }
+      els.push({ group: "edges", data: d,
+        classes: (s === t ? "loop " : inner.length ? "routed " : "") + (isStart(e.source) ? "entry " : "") + (hub ? "hub" : "") });
     });
     cy.add(els);
     cy.nodes().ungrabify();
+    Object.keys(routes).forEach(function (id) {
+      routes[id].forEach(function (p) { rects.push({ x1: p.x - 4, x2: p.x + 4, y1: p.y - 4, y2: p.y + 4 }); });
+    });
     graphBox = {
       x1: Math.min.apply(null, rects.map(function (r) { return r.x1; })), x2: Math.max.apply(null, rects.map(function (r) { return r.x2; })),
       y1: Math.min.apply(null, rects.map(function (r) { return r.y1; })), y2: Math.max.apply(null, rects.map(function (r) { return r.y2; }))
@@ -466,29 +517,70 @@
     renderLegend();
   }
 
-  // Numeri sulle linee senza sovrapposizioni: si mettono prima i piu' importanti (le linee in evidenza, poi le piu'
-  // frequenti); un numero che coprirebbe un altro numero, un punto o un'etichetta si nasconde (resta nel dettaglio).
+  // Numeri sulle linee senza sovrapposizioni: etichette proprie (non quelle del grafo) messe prima per le linee in
+  // evidenza, poi per le piu' frequenti. Ogni numero cerca un posto lungo il suo percorso, preferendo i tratti che
+  // sono solo suoi (le corsie orizzontali e le discese intermedie), dove non copre fermate, punti, altri numeri o
+  // altre linee; se non c'e' posto non si mostra (resta nel dettaglio del collegamento).
+  var routes = {}, edgeLabels = [];
   function placeLabels(focus) {
-    var boxes = [];
+    edgeLabels.forEach(function (x) { x.remove(); }); edgeLabels = [];
+    var boxes = [], lines = [];
     cy.nodes().forEach(function (n) { var p = n.position(); boxes.push({ x1: p.x - 9, x2: p.x + 9, y1: p.y - 9, y2: p.y + 9 }); });
     Object.keys(stations).forEach(function (k) {
       var b = stations[k], x = parseFloat(b.style.left), y = parseFloat(b.style.top), w = b.offsetWidth, h = b.offsetHeight;
-      if (!b.classList.contains("faded")) boxes.push({ x1: x, x2: x + w, y1: y - h / 2, y2: y + h / 2 });
+      if (!b.classList.contains("faded")) boxes.push({ x1: x - 2, x2: x + w + 2, y1: y - h / 2 - 2, y2: y + h / 2 + 2 });
     });
-    function hits(r) { return boxes.some(function (o) { return r.x1 < o.x2 && r.x2 > o.x1 && r.y1 < o.y2 && r.y2 > o.y1; }); }
+    function segs(id) {
+      var p = routes[id], out = [];
+      if (!p) return out;
+      for (var i = 1; i < p.length; i++) out.push({ a: p[i - 1], b: p[i], i: i, n: p.length - 1 });
+      return out;
+    }
+    cy.edges().forEach(function (ed) {
+      if (focus && !focus[ed.id()]) return;
+      segs(ed.id()).forEach(function (s) {
+        lines.push({ id: ed.id(), x1: Math.min(s.a.x, s.b.x) - 3, x2: Math.max(s.a.x, s.b.x) + 3,
+                     y1: Math.min(s.a.y, s.b.y) - 3, y2: Math.max(s.a.y, s.b.y) + 3 });
+      });
+    });
+    function hits(r, id) {
+      return boxes.some(function (o) { return r.x1 < o.x2 && r.x2 > o.x1 && r.y1 < o.y2 && r.y2 > o.y1; }) ||
+        lines.some(function (o) { return o.id !== id && r.x1 < o.x2 && r.x2 > o.x1 && r.y1 < o.y2 && r.y2 > o.y1; });
+    }
     var list = cy.edges().toArray().sort(function (a, b) {
       var fa = focus && focus[a.id()] ? 1 : 0, fb = focus && focus[b.id()] ? 1 : 0;
       var ha = a.data("hub") ? 1 : 0, hb = b.data("hub") ? 1 : 0;
       return fb - fa || ha - hb || b.data("raw").count - a.data("raw").count;
     });
-    cy.edges().removeClass("nolabel");
     list.forEach(function (ed) {
-      if (!ed.data("label") || (focus && !focus[ed.id()])) { ed.addClass("nolabel"); return; }
-      var bb = ed.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeMainLabels: true,
-                                includeSourceLabels: false, includeTargetLabels: false });
-      if (!bb || !isFinite(bb.x1) || bb.w === 0) return;
-      var r = { x1: bb.x1 - 2, x2: bb.x2 + 2, y1: bb.y1 - 2, y2: bb.y2 + 2 };
-      if (hits(r)) ed.addClass("nolabel"); else boxes.push(r);
+      var text = ed.data("label");
+      if (!text || (focus && !focus[ed.id()])) return;
+      var w = text.length * 5.2 + 10, h = 13, cands = [];
+      var ss = segs(ed.id());
+      if (!ss.length) {  // ciclo sulla stessa attivita': accanto al punto
+        var p = ed.source().position(); cands.push({ x: p.x + 22, y: p.y - 16, own: 1 });
+      }
+      ss.forEach(function (s) {
+        var len = Math.abs(s.b.x - s.a.x) + Math.abs(s.b.y - s.a.y);
+        if (len < 18) return;
+        // tratti solo suoi: non il primo (esce dal punto, condiviso) ne' l'ultimo (entra nel punto, condiviso)
+        var own = s.i > 1 && s.i < s.n ? 1 : 0;
+        [0.5, 0.3, 0.7, 0.15, 0.85].forEach(function (f) {
+          cands.push({ x: s.a.x + (s.b.x - s.a.x) * f, y: s.a.y + (s.b.y - s.a.y) * f, own: own, len: len, f: f });
+        });
+      });
+      cands.sort(function (a, b) { return b.own - a.own || (b.len || 0) - (a.len || 0); });
+      var spot = null;
+      for (var i = 0; i < cands.length && !spot; i++) {
+        var c = cands[i], r = { x1: c.x - w / 2, x2: c.x + w / 2, y1: c.y - h / 2, y2: c.y + h / 2 };
+        if (!hits(r, ed.id())) spot = r;
+      }
+      if (!spot) return;
+      boxes.push(spot);
+      var lab = el("div", "edge-label" + (ed.hasClass("faded") ? " faded" : ""), text);
+      lab.style.left = spot.x1 + "px"; lab.style.top = spot.y1 + "px"; lab.style.borderColor = ed.data("color");
+      lab.addEventListener("click", function () { showEdge(ed); });
+      layer.appendChild(lab); edgeLabels.push(lab);
     });
   }
 
