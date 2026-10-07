@@ -114,6 +114,11 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   `objective_coverage`): le domande di business libere diventano obiettivi distinti, con come si misurano, i dati
   presenti e quelli mancanti con dove trovarli nel sistema dichiarato. Nato dal caso AR (DSO, touchless, dispute,
   termini di pagamento rispetto a ordini e contratti).
+- ✅ **Profilo dei dati più preciso** (7 ottobre 2026), regole generiche verificate anche su dati non SAP:
+  colonna attività scelta per nome (EVENT_NAME, ACTION… prima di stato o motivo; «name» non è più scambiato per
+  un utente); motivi e causali proposti come attributi dell'evento; tabelle che ripetono le righe di un'altra
+  (indici, viste, export filtrati) con un solo avviso ed esclusione dal mapping su casella; date previste con i
+  giorni da sommare indicate come scadenza, collegate all'obiettivo dell'assessment che ne ha bisogno.
 - ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
   di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
   attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,

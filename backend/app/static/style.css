@@ -761,3 +761,9 @@ textarea.autogrow { min-height: 110px; max-height: 60vh; overflow-y: auto; line-
 .objcov-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .objcov-actions button { margin: 0; }
 .cov-dim { color: var(--muted); }
+
+/* Profilo: tabelle che ripetono un'altra, da escludere dal mapping */
+fieldset.copies { border: 1px solid var(--border, #e3e6ee); border-radius: 10px; padding: 10px 14px 12px; margin: 0 0 14px; }
+fieldset.copies legend { font-weight: 600; padding: 0 6px; }
+.copy-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; cursor: pointer; }
+.copy-row input { margin-top: 3px; }

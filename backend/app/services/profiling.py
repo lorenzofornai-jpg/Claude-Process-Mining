@@ -24,7 +24,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from app.i18n import msg, render
+from app.i18n import concat, msg, render
 from app.services.timeparts import looks_like_time, parse_time_of_day
 
 PLACEHOLDER_DATE_RE = re.compile(
@@ -64,9 +64,20 @@ DECIMAL_RE = re.compile(r"^-?\d+[.,]\d+$")
 # nomi tipici di una colonna che dice cosa e' successo nella riga
 ACTIVITY_HINT_RE = re.compile(
     r"(activit|attivit|action|azione|event|step|fase|phase|status|stato|state|^type$|_type$|^tipo|_tipo|"
-    r"operation|operazion|causal|reason_code|movement|moviment|transaction|transazion|change|"
+    r"operation|operazion|causal|movement|moviment|transaction|transazion|change|"
     r"vgabe|bewtp|bwart|blart|vorgang|tcode)",
     re.I,
+)
+# nomi che dicono senza dubbi «quale operazione»: vincono su stato, tipo, causale...
+STRONG_ACTIVITY_RE = re.compile(
+    r"(activit|attivit|event|action|azione|operation|operazion|^step|_step|task|vorgang|concept:name)", re.I
+)
+# motivo di un'operazione (perche', non che cosa): attributo dell'evento, non attivita'.
+# «causale» resta un indizio di attivita': in molti gestionali e' il tipo di operazione.
+REASON_HINT_RE = re.compile(r"(reason|motiv|grund|rstgr|abgru|^cause$|_cause$|^causa$|_causa$)", re.I)
+# numero di giorni da sommare a una data base (es. giorni di pagamento)
+DAYS_HINT_RE = re.compile(
+    r"(days|giorni|tage|ztag|zbd\dt|^gg|_gg$|ggpag|term_?days|net_?days|payment_?days)", re.I
 )
 # colonne di utenti/persone: poche modalita' testuali, ma non sono attivita'
 USER_HINT_RE = re.compile(
@@ -114,9 +125,12 @@ def profile_tables(
     today: datetime | None = None,
     time_pairs: dict[str, dict[str, str]] | None = None,
     planned: dict[str, dict[str, str]] | None = None,
+    due_objectives: list[str] | None = None,
 ) -> dict:
     """time_pairs: {tabella: {colonna data: colonna con l'ora}} (es. CPUDT -> CPUTM):
-    la data si valuta con la sua ora, come verra' usata negli eventi."""
+    la data si valuta con la sua ora, come verra' usata negli eventi.
+    due_objectives: obiettivi dell'assessment che hanno bisogno di una scadenza (es. puntualita' dei
+    pagamenti): le date previste diventano il dato che serve a quegli obiettivi, e si dice."""
     time_pairs = time_pairs or {}
     planned = planned or {}
     today = pd.Timestamp(today or datetime.now())
@@ -204,13 +218,10 @@ def profile_tables(
                                      "Controlla il formato (es. date con testo, formati misti) nell'estrazione."))
             reason = planned.get(name, {}).get(col)
             if reason:
-                issues.append(_issue("attenzione", name, msg("{c}: probabile data prevista o di scadenza", c=col),
-                                     msg("Motivo: {r}. Una data così è stabilita in anticipo, non registra qualcosa "
-                                         "che è successo: come evento metterebbe nel processo un passo che nessuno ha svolto "
-                                         "e falserebbe sequenze e tempi.", r=reason),
-                                     "Nel mapping non va usata come data di un evento: tienila come attributo (resta utile, "
-                                     "es. per sapere se un pagamento o una consegna è arrivata in ritardo). Le proposte che "
-                                     "la usano come evento saranno segnalate come incerte in revisione."))
+                days = _days_column(df, col)
+                if days:
+                    t.setdefault("planned_days", {})[col] = days
+                issues.append(_planned_issue(df, name, col, reason, due_objectives or [], days))
             elif d["future"]:
                 issues.append(_issue("attenzione", name, msg("{c}: {n} date nel futuro", c=label, n=d["future"]),
                                      "Un evento è qualcosa che è già successo. Date nel futuro di solito sono date pianificate "
@@ -273,6 +284,18 @@ def profile_tables(
                 "Nel mapping verrà proposta come colonna attività: ogni valore diventa un'attività con un nome "
                 "leggibile, da confermare (o escludere) in revisione.",
             ))
+        t["reason_columns"] = _reason_columns(df, t["key"])
+        for rc in t["reason_columns"]:
+            shown = ", ".join(rc["values"][:6]) + ("…" if len(rc["values"]) > 6 else "")
+            issues.append(_issue(
+                "info", t["name"],
+                msg("{c}: probabile motivo o causale ({n} valori: {v})", c=rc["column"], n=len(rc["values"]), v=shown),
+                "Dice perché è stata fatta un'operazione, non quale: usata come attività mescolerebbe i passi del "
+                "processo con le loro motivazioni.",
+                ("Nel mapping verrà proposta come attributo dell'evento: servirà a filtrare e confrontare i casi per "
+                 "motivo (es. quanti blocchi, rifiuti o rettifiche per ciascun motivo)." if dates else
+                 "Nel mapping verrà proposta come attributo dell'oggetto: servirà a filtrare e confrontare i casi per motivo."),
+            ))
     for r in relationships:
         if r["coverage_pct"] < COVERAGE_WARN * 100:
             issues.append(_issue("attenzione", r["child_table"],
@@ -289,6 +312,25 @@ def profile_tables(
                                      "I suoi eventi non potranno essere legati agli oggetti del processo.",
                                      "Includi nell'estrazione la colonna che la collega alle altre tabelle (es. numero documento di riferimento) o descrivi il collegamento nel passo successivo."))
 
+    # tabelle che ripetono le righe di un'altra (indici, viste, export filtrati): un solo avviso per tabella
+    copies = _find_copies(frames)
+    for cp in copies:
+        issues = [i for i in issues if i["table"] != cp["table"] or i["severity"] == "bloccante"]
+        title = (msg("Ripete la tabella {a}: tutte le sue {n} righe sono già lì", a=cp["of"], n=cp["rows"])
+                 if cp["share"] >= 1 else
+                 msg("Ripete in gran parte la tabella {a}: {p}% delle sue righe sono già lì", a=cp["of"], p=round(100 * cp["share"])))
+        impact = msg("Mappata insieme a {a} genererebbe due volte gli stessi oggetti ed eventi: conteggi doppi e oggetti "
+                     "in più che in realtà sono gli stessi. Succede con tabelle indice, viste o estrazioni filtrate "
+                     "della stessa tabella (in SAP, ad esempio, BSAD, BSID, BSAK e BSIK ripetono righe di BSEG).", a=cp["of"])
+        if cp["exclude"]:
+            extra = (msg("Le sue colonne in più ({c}) ci sono già in altre tabelle.", c=", ".join(cp["extra"]))
+                     if cp["extra"] else msg("Non ha colonne che {a} non abbia.", a=cp["of"]))
+            action = concat(extra, msg("Per questo verrà esclusa dal mapping: puoi rimetterla con la casella in fondo alla pagina."))
+        else:
+            action = msg("Ha colonne che le altre tabelle non hanno ({c}): resta nel mapping solo per quelle, come "
+                         "attributi; oggetti ed eventi si prendono da {a}. Se non ti servono, escludila con la casella "
+                         "in fondo alla pagina.", c=", ".join(cp["new"]), a=cp["of"])
+        issues.append(_issue("attenzione", cp["table"], title, impact, action))
     issues.sort(key=lambda i: (SEVERITY_ORDER[i["severity"]], i["table"] or ""))
     counts = {s: sum(1 for i in issues if i["severity"] == s) for s in SEVERITY_ORDER}
     if counts["bloccante"]:
@@ -297,7 +339,7 @@ def profile_tables(
         verdict = ("attenzione", "Si può proseguire, ma ci sono punti da verificare")
     else:
         verdict = ("ok", "Dati pronti per il mapping")
-    return {"tables": tables, "relationships": relationships, "issues": issues, "counts": counts,
+    return {"tables": tables, "relationships": relationships, "issues": issues, "counts": counts, "copies": copies,
             "verdict": {"level": verdict[0], "label": verdict[1]},
             "total_rows": sum(t["rows"] for t in tables)}
 
@@ -320,10 +362,16 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
     if key and not repeated_link:
         return []  # una riga per oggetto: uno stato qui e' un attributo, non una sequenza di attivita'
     links = {col for r in relationships if r["child_table"] == table for col in r["child_column"].split("+")}
-    out = []
-    for c in df.columns:
-        if c in dates or (key and c in key) or USER_HINT_RE.search(c):
+    found = []
+    for i, c in enumerate(df.columns):
+        if c in dates or (key and c in key):
             continue
+        strong = bool(STRONG_ACTIVITY_RE.search(c))
+        # EVENT_NAME, ACTIVITY_NAME: «name» qui e' il nome dell'operazione, non di una persona
+        if USER_HINT_RE.search(re.sub(r"(name|nome)", "", c, flags=re.I) if strong else c):
+            continue
+        if REASON_HINT_RE.search(c) and not strong:
+            continue  # il motivo dice perche', non che cosa: vedi _reason_columns
         name_hint = bool(ACTIVITY_HINT_RE.search(c))
         if not name_hint and (c in links or ID_HINT_RE.search(c)):
             continue  # riferimento a un oggetto (numero ordine, id caso...), non un'operazione
@@ -341,17 +389,126 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
         labels = s.str.contains(r"[A-Za-zÀ-ÿ]").mean() > 0.9 and s.str.len().mean() >= 4
         if not (name_hint or labels):
             continue
-        # due colonne che si determinano a vicenda (es. EKBE.VGABE e BEWTP) dicono la stessa cosa:
-        # si segnala solo la prima
-        if any(_same_partition(df, c, o["column"]) for o in out):
-            continue
         counts = s.value_counts()
-        out.append({"column": c, "name_hint": name_hint, "values": [str(v) for v in counts.index],
-                    "counts": {str(k): int(v) for k, v in counts.items()}})
+        found.append(((0 if strong else 1 if name_hint else 2, i),
+                      {"column": c, "name_hint": name_hint, "values": [str(v) for v in counts.index],
+                       "counts": {str(k): int(v) for k, v in counts.items()}}))
+    out = []
+    # due colonne che si determinano a vicenda (es. EKBE.VGABE e BEWTP) dicono la stessa cosa: si segnala
+    # solo quella col nome piu' da attivita' (EVENT_NAME prima di STATUS), a parita' la prima
+    for _, cand in sorted(found, key=lambda x: x[0]):
+        if not any(_same_partition(df, cand["column"], o["column"]) for o in out):
+            out.append(cand)
+    out.sort(key=lambda o: list(df.columns).index(o["column"]))
     # con una colonna dal nome indicativo, le altre (solo etichette testuali) sono quasi sempre dimensioni
     if any(o["name_hint"] for o in out):
         out = [o for o in out if o["name_hint"]]
     return out
+
+
+def _reason_columns(df: pd.DataFrame, key: list[str] | None) -> list[dict]:
+    """Colonne con il motivo o la causale di un'operazione (motivo di blocco, di rifiuto, di rettifica...):
+    poche modalita', anche se valorizzate solo su parte delle righe. Sono attributi utili per filtrare e
+    confrontare, non attivita'."""
+    out = []
+    for c in df.columns:
+        if (key and c in key) or not REASON_HINT_RE.search(c) or STRONG_ACTIVITY_RE.search(c):
+            continue
+        s = df[c].dropna().astype(str).str.strip()
+        s = s[s != ""]
+        if s.empty:
+            continue
+        counts = s.value_counts()
+        if len(counts) > MAX_ACTIVITY_VALUES:
+            continue
+        out.append({"column": c, "values": [str(v) for v in counts.index],
+                    "filled_pct": round(100 * len(s) / len(df))})
+    return out
+
+
+def _find_copies(frames: dict[str, pd.DataFrame]) -> list[dict]:
+    """Tabelle le cui righe (sulle colonne in comune con un'altra tabella) sono quasi tutte gia' in
+    quell'altra tabella: indici o viste (SAP BSAD/BSID su BSEG), export filtrati, stessa tabella caricata
+    due volte. Servono molte colonne in comune (almeno 3 e almeno il 60% delle sue), e non solo chiavi:
+    anche la maggior parte dei contenuti (importi, date...). Se le sue colonne in
+    piu' esistono gia' in altre tabelle (o non ne ha), non aggiunge nulla e si propone di escluderla."""
+    def norm(df, cols):
+        return df[cols].astype(str).apply(lambda s: s.str.strip()).replace({"nan": "", "None": ""}).agg("|".join, axis=1)
+
+    names = list(frames)
+    lower_cols = {n: {c.lower(): c for c in frames[n].columns} for n in names}
+    out, taken = [], set()
+    for b in names:
+        db = frames[b]
+        if len(db) < 2:
+            continue
+        best = None
+        for a in names:
+            if a == b or a in taken or len(frames[a]) < len(db):
+                continue
+            common = [c for c in db.columns if c.lower() in lower_cols[a]]
+            if len(common) < 3 or len(common) < 0.6 * len(db.columns):
+                continue
+            # in comune non solo chiavi e riferimenti (testata e posizioni li condividono sempre),
+            # ma anche i contenuti: importi, date, condizioni (colonne non costanti)
+            content = [c for c in db.columns if not ID_HINT_RE.search(c) and db[c].nunique() > 1]
+            shared = [c for c in content if c in common]
+            if len(shared) < 2 or len(shared) < 0.5 * len(content):
+                continue
+            da = frames[a]
+            in_a = set(norm(da, [lower_cols[a][c.lower()] for c in common]))
+            share = float(norm(db, common).isin(in_a).mean())
+            # due tabelle identiche: e' la seconda caricata a ripetere la prima
+            if len(da) == len(db) and names.index(a) > names.index(b):
+                continue
+            if share >= 0.95 and (best is None or share > best[1]):
+                best = (a, share, common)
+        if not best:
+            continue
+        a, share, common = best
+        extra = [c for c in db.columns if c not in common]
+        elsewhere = {c.lower() for n in names if n != b for c in frames[n].columns}
+        new = [c for c in extra if c.lower() not in elsewhere and db[c].notna().any()]
+        out.append({"table": b, "of": a, "share": share, "rows": len(db), "extra": extra, "new": new,
+                    "exclude": not new})
+        taken.add(b)
+    return out
+
+
+def _days_column(df: pd.DataFrame, exclude: str) -> str | None:
+    """Colonna della stessa tabella con un numero di giorni da sommare a una data base (es. giorni di
+    pagamento): nome indicativo e valori interi tra 0 e 400."""
+    for c in df.columns:
+        if c == exclude or not DAYS_HINT_RE.search(c):
+            continue
+        s = df[c].dropna().astype(str).str.strip()
+        s = s[s != ""]
+        if s.empty:
+            continue
+        num = pd.to_numeric(s, errors="coerce")
+        if num.notna().mean() >= 0.9 and ((num.dropna() % 1) == 0).all() and num.min() >= 0 and num.max() <= 400:
+            return c
+    return None
+
+
+def _planned_issue(df: pd.DataFrame, table: str, col: str, reason, due_objectives: list[str], days: str | None) -> dict:
+    """Data prevista o di scadenza: non e' un evento, ma con i giorni da aggiungere (se ci sono) da' la
+    scadenza, il riferimento per misurare i ritardi."""
+    impact = msg("Una data così è stabilita in anticipo, non registra qualcosa che è successo: come evento "
+                 "metterebbe nel processo un passo che nessuno ha svolto e falserebbe sequenze e tempi. "
+                 "Indizio: {r}.", r=reason)
+    if days:
+        action = msg("Nel mapping non va usata come data di un evento: tienila come attributo insieme a {d} "
+                     "(numero di giorni). {c} + {d} dà probabilmente la scadenza, il riferimento per dire se "
+                     "un pagamento o una consegna è arrivata in ritardo.", c=col, d=days)
+    else:
+        action = msg("Nel mapping non va usata come data di un evento: tienila come attributo (resta utile, "
+                     "es. per sapere se un pagamento o una consegna è arrivata in ritardo).")
+    goal = (msg("È il dato che serve all'obiettivo dell'assessment «{o}».", o=msg(due_objectives[0]))
+            if due_objectives else None)
+    return _issue("attenzione", table, msg("{c}: probabile data prevista o di scadenza", c=col), impact,
+                  concat(action, goal, msg("Le proposte che la usano come evento saranno segnalate come "
+                                           "incerte in revisione.")))
 
 
 def _same_partition(df: pd.DataFrame, a: str, b: str) -> bool:
@@ -426,11 +583,21 @@ def compact_for_mapping(profile: dict) -> dict:
             for r in profile["relationships"]
         ],
         # date previste o di scadenza (non fatti avvenuti): mai la data di un evento
-        "planned_dates": {t["name"]: {c: render("it", r) for c, r in t["planned_dates"].items()}
+        # con i giorni da sommare, se ci sono: data + giorni = scadenza (entrambe attributi)
+        "planned_dates": {t["name"]: {c: render("it", r) + (f"; scadenza = {c} + {t['planned_days'][c]} (giorni), mappa anche {t['planned_days'][c]} come attributo"
+                                                             if c in t.get("planned_days", {}) else "")
+                                      for c, r in t["planned_dates"].items()}
                           for t in profile["tables"] if t.get("planned_dates")},
         # colonne che distinguono operazioni diverse nella stessa tabella: tutti i valori distinti
         "activity_columns": {
             t["name"]: {a["column"]: a["values"] for a in t.get("activity_columns", [])}
             for t in profile["tables"] if t.get("activity_columns")
         },
+        # motivo o causale di un'operazione: attributo, mai attivita'
+        "reason_columns": {
+            t["name"]: {r["column"]: r["values"] for r in t.get("reason_columns", [])}
+            for t in profile["tables"] if t.get("reason_columns")
+        },
+        # tabelle che ripetono le righe di un'altra: oggetti ed eventi vengono dall'altra
+        "copy_of": {c["table"]: {"of": c["of"], "new_columns": c["new"]} for c in profile.get("copies", [])},
     }

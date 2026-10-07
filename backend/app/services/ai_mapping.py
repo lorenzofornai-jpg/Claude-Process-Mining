@@ -358,7 +358,10 @@ manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabell
   tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi. Se il
   data_profile indica per la tabella una colonna attivita' (activity_columns: tipo movimento, azione,
   stato, causale), quella data genera UN solo evento "contenitore" (nome generico, es. "Order History"):
-  le singole attivita' verranno lette dai valori della colonna, tabella per tabella.
+  le singole attivita' verranno lette dai valori della colonna, tabella per tabella. Le colonne in
+  reason_columns (motivo o causale di un'operazione) non distinguono eventi.
+- Una tabella in copy_of ripete le righe di un'altra tabella (indice, vista, estrazione filtrata): non
+  definisce object_types ne' event_types; oggetti ed eventi vengono dalla tabella indicata in "of".
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
 (riconosciute senza AI): non ripeterlo, ma riusa ESATTAMENTE quei nomi quando una tabella si riferisce
 agli stessi oggetti. Le tabelle anagrafiche senza date plausibili definiscono oggetti ma non eventi.
@@ -385,7 +388,9 @@ Contesto ("process_context"):
 - "data_profile": evidenze MISURATE per questa tabella: candidate_keys (migliori object_type.key),
   date_columns, relationships (colonna -> chiave di un'altra tabella: candidate e2o_relationship),
   activity_columns (colonna -> tutti i suoi valori distinti: probabile colonna che dice quale
-  operazione e' registrata in ogni riga).
+  operazione e' registrata in ogni riga), reason_columns (colonna -> valori: motivo o causale
+  dell'operazione), planned_dates (date previste, con i giorni da sommare se ci sono), copy_of (la tabella
+  ripete le righe di un'altra).
 "already_defined_model" e' il modello comune dell'intero dataset: riusa ESATTAMENTE quei nomi per
 oggetti ed eventi. "known_pattern", se presente, e' un mapping gia' validato da un umano per una
 tabella con lo stesso nome: seguilo (confidence alta) salvo evidenze contrarie.
@@ -419,6 +424,12 @@ Regole per contenere costi e lavoro di revisione:
 - Colonne con "planned" (date previste o di scadenza: scadenza di pagamento, consegna prevista, data base
   per la scadenza come SAP ZFBDT): NON sono fatti avvenuti, mai "timestamp"; mappale come attributo
   (obj_attr dell'oggetto, o evt_attr dell'evento a cui si riferiscono): servono a misurare ritardi.
+- Colonne in reason_columns (motivo di blocco, rifiuto, rettifica...): "evt_attr" dell'evento della riga
+  (o "obj_attr" se la tabella non genera eventi), MAI "activity": dicono perche', non quale operazione.
+  Se i loro valori parlano di contestazioni o dispute, chiama l'attributo in modo che si capisca.
+- Tabella con copy_of: ripete le righe della tabella "of", che gia' genera oggetti ed eventi. Niente "key"
+  di nuovi oggetti, niente "timestamp": mappa solo le colonne in new_columns, come "obj_attr" dell'oggetto
+  della tabella "of" (stesso nome di tipo oggetto). Se new_columns e' vuoto, non mappare nulla.
 - Colonne di tipo "time" (solo ora, es. CPUTM, ERZET): mai "timestamp", non mapparle; vengono unite in
   automatico alla colonna data indicata in "with_time". A parita' di significato scegli come "timestamp"
   la data che ha "with_time" (es. CPUDT con CPUTM invece di BUDAT, che e' solo un giorno).
@@ -461,6 +472,9 @@ def _profile_for_table(profile: dict | None, table: str) -> dict | None:
         "relationships": [r for r in profile.get("relationships", [])
                           if r.startswith(f"{table}.") or f"-> {table}." in r],
         "activity_columns": profile.get("activity_columns", {}).get(table, {}),
+        "reason_columns": profile.get("reason_columns", {}).get(table, {}),
+        "planned_dates": profile.get("planned_dates", {}).get(table, {}),
+        "copy_of": profile.get("copy_of", {}).get(table),
     }
 
 

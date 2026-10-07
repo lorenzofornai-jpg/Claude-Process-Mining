@@ -453,9 +453,13 @@ async def handle_upload(
     date_cols = {t.name: [c.name for c in t.columns if c.inferred_type == "date"] for t in tables_schema}
     time_pairs = {t.name: {c.name: c.time_column for c in t.columns if c.time_column} for t in tables_schema}
     planned = {t.name: {c.name: c.planned_reason for c in t.columns if c.planned_reason} for t in tables_schema}
+    # obiettivi dell'assessment che hanno bisogno di una scadenza: il profilo lo dice sulle date previste
+    due_objectives = [o for o in answers.get("objectives") or []
+                      if "due_date" in coverage.OBJECTIVE_NEEDS.get(o, {}).get("needs", [])
+                      + coverage.OBJECTIVE_NEEDS.get(o, {}).get("useful", [])]
     sess["profile"] = await run_in_threadpool(
         profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to")),
-        None, time_pairs, planned,
+        None, time_pairs, planned, due_objectives,
     )
     sess["relevance"] = None
     return RedirectResponse(url=f"/ingestion/profile?workspace_id={workspace_id}", status_code=303)
@@ -481,7 +485,9 @@ def profile_page(request: Request, workspace_id: str):
 def _coverage_context(request: Request, workspace_id: str, sess: dict) -> dict:
     """Copertura degli obiettivi per la pagina del profilo: livello senza costi, ultima valutazione
     con Claude per queste stesse tabelle (se c'e') e costo indicativo di una nuova valutazione."""
-    tables = sess.get("tables_schema_objs") or []
+    # le tabelle che ripetono un'altra e verranno escluse non contano: le loro colonne sono gia' altrove
+    skip = {c["table"] for c in (sess.get("profile") or {}).get("copies", []) if c["exclude"]}
+    tables = [t for t in sess.get("tables_schema_objs") or [] if t.name not in skip]
     answers, _ = load_assessment(workspace_id)
     quick = coverage.quick_coverage(answers, tables)
     signature = coverage.tables_signature(tables)
@@ -553,6 +559,17 @@ async def profile_continue(request: Request, workspace_id: str = Form(...)):
     tables_schema = sess.get("tables_schema_objs")
     if not tables_schema or not sess.get("profile"):
         return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    # tabelle che ripetono le righe di un'altra: escluse se l'utente lascia la casella spuntata
+    form = await request.form()
+    copies = sess["profile"].get("copies", [])
+    excluded = {name for name in form.getlist("exclude") if name in {c["table"] for c in copies}}
+    if excluded:
+        tables_schema = [t for t in tables_schema if t.name not in excluded]
+        sess["tables_schema_objs"] = tables_schema
+        sess["tables_schema"] = [t for t in sess.get("tables_schema", []) if t["name"] not in excluded]
+        sess["tables_data"] = {k: v for k, v in sess.get("tables_data", {}).items() if k not in excluded}
+        sess["profile"]["copies"] = [c for c in copies if c["table"] not in excluded]
+        sess["excluded_tables"] = sorted(excluded | set(sess.get("excluded_tables") or []))
     # le evidenze misurate (chiavi, date, collegamenti) arrivano all'AI Mapping con il contesto
     sess["context"]["data_profile"] = compact_for_mapping(sess["profile"])
     # le spiegazioni scritte da Claude (pertinenza, motivazioni del mapping) nella lingua dell'utente

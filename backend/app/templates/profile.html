@@ -98,10 +98,21 @@
   <p class="tiny muted">{{ _("Nessun collegamento trovato tra le tabelle.") }}</p>
   {% endif %}
 
-  <form method="post" action="/ingestion/profile/continue" class="actions" style="margin-top:24px">
+  <form method="post" action="/ingestion/profile/continue" style="margin-top:24px">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-    <button type="submit" class="primary">{{ _("Prosegui comunque") if v.level == "bloccante" else _("Prosegui: descrivi le tabelle") }}</button>
-    <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Carica altri file") }}</a>
+    {% if profile.copies %}
+    <fieldset class="copies">
+      <legend>{{ _("Tabelle che ripetono le righe di un'altra") }}</legend>
+      {% for c in profile.copies %}
+      <label class="copy-row"><input type="checkbox" name="exclude" value="{{ c.table }}" {% if c.exclude %}checked{% endif %}>
+        <span>{{ _("Escludi {t} dal mapping (ripete {a})", t=c.table, a=c.of) }}{% if c.new %} · <span class="muted tiny">{{ _("colonne che solo lei ha: {c}", c=c.new|join(", ")) }}</span>{% endif %}</span></label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <div class="actions">
+      <button type="submit" class="primary">{{ _("Prosegui comunque") if v.level == "bloccante" else _("Prosegui: descrivi le tabelle") }}</button>
+      <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Carica altri file") }}</a>
+    </div>
   </form>
 </div>
 {% include "_ask_claude.html" %}
