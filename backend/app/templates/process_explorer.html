@@ -50,7 +50,7 @@
           <input type="checkbox" id="hub-all">
           <span>{{ _("Tipi trasversali: mostra la linea su tutti gli eventi collegati") }}</span>
         </label>
-        <p class="tiny muted hub-help">{{ _("Spento: la linea di un tipo trasversale passa solo dai suoi eventi propri (es. cambio di rischio del cliente), non da quelli che appartengono alla storia di un documento, dove compare solo come numero nella fermata.") }}</p>
+        <div class="tiny muted hub-help" id="hub-help"></div>
         {% endif %}
       </div>
 
@@ -216,6 +216,8 @@
     asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }},
     asRenameError: {{ _("Non è stato possibile salvare il nome.")|tojson }},
     restoreName: {{ _("Torna al nome originale: {o}")|tojson }},
+    hubHelpOwn: {{ _("Spento: la linea di {t} passa solo dai suoi eventi propri ({a}); negli altri eventi {t} compare come numero nella fermata.")|tojson }},
+    hubHelpNone: {{ _("Spento: {t} non ha eventi propri, quindi non ha una linea e compare solo come numero nelle fermate.")|tojson }},
     expand: {{ _("Schermo intero")|tojson }},
     collapse: {{ _("Riduci a pagina")|tojson }}
   };
@@ -740,7 +742,18 @@
   });
 
   // ---------- nomi personali nell'elenco dei tipi ----------
+  // spiegazione dell'interruttore con i tipi trasversali e gli eventi propri di questo dataset
+  function renderHubHelp() {
+    var box = document.getElementById("hub-help"); if (!box) return;
+    box.textContent = "";
+    Object.keys(TYPES).filter(function (t) { return TYPES[t].hub; }).forEach(function (t) {
+      var own = TYPES[t].own_activities || [];
+      box.appendChild(el("p", "", own.length ? fmt(T.hubHelpOwn, { t: tn(t), a: own.map(an).join(", ") })
+                                             : fmt(T.hubHelpNone, { t: tn(t) })));
+    });
+  }
   function renderTypeNames() {
+    renderHubHelp();
     document.querySelectorAll(".tn").forEach(function (sp) { sp.textContent = tn(sp.dataset.type); });
     // per risparmiare spazio solo la freccia ↺; il nome originale e' nel suggerimento e per i lettori di schermo
     document.querySelectorAll(".tn-reset").forEach(function (b) {

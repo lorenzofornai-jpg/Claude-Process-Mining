@@ -124,7 +124,8 @@ class ExplorerModel:
     def type_summary(self) -> list[dict]:
         return [{"name": t, "color": self.colors[t], "objects": self.object_counts[t],
                  "with_events": self.with_events[t], "events": self.related_events[t],
-                 "hub": self.is_hub(t), "avg": round(self.avg_events(t), 1)} for t in self.types]
+                 "hub": self.is_hub(t), "avg": round(self.avg_events(t), 1),
+                 "own_activities": self.own_activities(t) if self.is_hub(t) else []} for t in self.types]
 
     def own_activities(self, t: str) -> list[str]:
         """Attivita' degli eventi propri di un tipo trasversale (vuoto per gli altri tipi)."""

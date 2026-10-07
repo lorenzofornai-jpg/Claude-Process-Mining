@@ -841,7 +841,6 @@ EN: dict[str, str] = {
     "trasversale": "cross-cutting",
     # Process Explorer, tipi trasversali
     "Tipi trasversali: mostra la linea su tutti gli eventi collegati": "Cross-cutting types: show the line on all related events",
-    "Spento: la linea di un tipo trasversale passa solo dai suoi eventi propri (es. cambio di rischio del cliente), non da quelli che appartengono alla storia di un documento, dove compare solo come numero nella fermata.": "Off: the line of a cross-cutting type only goes through its own events (e.g. the customer's risk change), not through those that belong to a document's history, where it only appears as a number at the stop.",
     "Tipo trasversale: ogni oggetto partecipa in media a {n} eventi, anche di documenti diversi. Con tutti gli eventi collegati la linea mostra l'ordine delle attività per ogni {t}, non il percorso di un singolo documento.": "Cross-cutting type: each object takes part in {n} events on average, including events of different documents. With all related events, the line shows the order of activities for each {t}, not the path of a single document.",
     "Tipo trasversale: la linea passa solo dagli eventi propri di {t} ({a}). Negli eventi che appartengono alla storia di un documento {t} compare come numero nella fermata.": "Cross-cutting type: the line only goes through the own events of {t} ({a}). In events that belong to a document's history, {t} appears as a number at the stop.",
     "Tipo trasversale: {t} non ha eventi propri, compare solo come numero nelle fermate dei documenti. Per vedere la sua linea su tutti gli eventi collegati usa l'interruttore sotto i tipi di oggetto.": "Cross-cutting type: {t} has no own events, it only appears as a number at the documents' stops. To see its line on all related events use the switch below the object types.",
@@ -873,4 +872,6 @@ EN: dict[str, str] = {
     "Schermo intero": "Full screen",
     "Riduci a pagina": "Back to page",
     "Torna al nome originale: {o}": "Back to the original name: {o}",
+    "Spento: la linea di {t} passa solo dai suoi eventi propri ({a}); negli altri eventi {t} compare come numero nella fermata.": "Off: the {t} line only goes through its own events ({a}); in the other events {t} appears as a number at the stop.",
+    "Spento: {t} non ha eventi propri, quindi non ha una linea e compare solo come numero nelle fermate.": "Off: {t} has no own events, so it has no line and only appears as a number at the stops.",
 }
