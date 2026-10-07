@@ -805,9 +805,7 @@ EN: dict[str, str] = {
     "{n} min": "{n} min",
     "{n} s": "{n} s",
     "Non è stato possibile calcolare il grafo.": "The graph could not be computed.",
-    "Scegli uno strumento di analisi e il dataset (OCEL 2.0) su cui lavorare.": "Choose an analysis tool and the dataset (OCEL 2.0) to work on.",
     "Il grafo dei flussi del processo, un colore per ogni tipo di oggetto: attività, percorsi, frequenze e tempi.": "The process flow graph, one colour per object type: activities, paths, frequencies and times.",
-    "Analisi in costruzione: altri strumenti arriveranno nei prossimi passi.": "Analysis under construction: more tools will come in the next steps.",
     # Process Explorer, vista metropolitana
     "Controllo del grafo": "Graph control",
     "Cerca": "Search",
@@ -874,4 +872,7 @@ EN: dict[str, str] = {
     "Torna al nome originale: {o}": "Back to the original name: {o}",
     "Spento: la linea di {t} passa solo dai suoi eventi propri ({a}); negli altri eventi {t} compare come numero nella fermata.": "Off: the {t} line only goes through its own events ({a}); in the other events {t} appears as a number at the stop.",
     "Spento: {t} non ha eventi propri, quindi non ha una linea e compare solo come numero nelle fermate.": "Off: {t} has no own events, so it has no line and only appears as a number at the stops.",
+    "Scegli un dataset del processo e l'analisi da aprire.": "Choose a dataset of the process and the analysis to open.",
+    "aggiornato il {d}": "updated on {d}",
+    "Apri": "Open",
 }

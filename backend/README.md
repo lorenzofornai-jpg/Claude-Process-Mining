@@ -168,7 +168,8 @@ membro come guardia contro zip bomb).
   processi a cui è stato assegnato (`ProcessAssignment.role =
   "data_analyst"`), stessa logica di accesso/403 del Data Engineer ma
   modulo diverso. Il Modulo 2 (`routers/analysis.py`) ha la pagina d'ingresso
-  (verifica del ruolo + elenco dei dataset OCEL 2.0 pronti per il processo) e il
+  (verifica del ruolo; gerarchia processo → dataset → analisi del dataset; lo scarico OCEL resta al
+  Data Engineer) e il
   **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;
   calcolo in `services/explorer.py`, JSON da `/analysis/explorer/graph`, pagina
   `templates/process_explorer.html`: vista a linee di metropolitana con Cytoscape.js + dagre in `static/vendor/`), con l'assistente

@@ -136,6 +136,8 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   modello `EXPLAIN_MODEL`). **Nomi personali**: chiedendo all'assistente («chiamalo Invoice») un tipo di
   oggetto o un'attività prende un nome proprio dopo la conferma, solo nell'analisi di quell'utente e per quel
   dataset (tabella `analysis_alias`); il dataset non cambia; la freccia ↺ accanto al nome nell'elenco dei tipi riporta il nome originale.
+- ✅ **Pagina Analisi riorganizzata** (7 ottobre 2026): processo → dataset → analisi del dataset (per ora Process
+  Explorer). Tolti lo scarico OCEL (strumento del Data Engineer) e l'avviso «in costruzione».
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 

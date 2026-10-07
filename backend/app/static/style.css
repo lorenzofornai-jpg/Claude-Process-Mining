@@ -601,6 +601,11 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
   .graph-canvas { height: 70vh; min-height: 440px; }
   .graph-detail { left: 12px; right: 12px; width: auto; top: auto; bottom: 58px; max-height: 50%; }
 }
+.eyebrow { margin: 0 0 2px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--brand); }
+.dataset-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; margin-top: 18px; }
+.dataset-head h2 { margin: 0 0 2px; font-size: 18px; }
+.dataset-head p { margin: 0; }
+.dataset-card .analysis-tools { margin: 12px 0 0; }
 .analysis-tools { display: grid; gap: 12px; margin: 14px 0; }
 .analysis-tool { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; background: var(--card-bg-soft); }
 .analysis-tool h3 { margin: 0 0 4px; }
