@@ -1305,6 +1305,9 @@ async def explain_message(request: Request):
         print(f"Chiedi a Claude non riuscito ({exc!r}).")
         return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
                             status_code=502)
+    if result.get("truncated"):
+        result["answer"] = result["answer"].rstrip() + "…\n\n" + t(
+            lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")
     return JSONResponse({"available": True, **result})
 
 

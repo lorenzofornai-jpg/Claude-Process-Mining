@@ -18,8 +18,10 @@ from app.config import EXPLAIN_MODEL
 from app.connectors.base import TableSchema
 from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
 
-MAX_OUTPUT_TOKENS = 900
-TYPICAL_OUTPUT_TOKENS = 450
+# Limite largo: il modello puo' usare parte dei token per ragionare prima di rispondere, e con un
+# limite stretto la risposta veniva troncata a meta' frase. Il costo massimo mostrato tiene conto di questo.
+MAX_OUTPUT_TOKENS = 2500
+TYPICAL_OUTPUT_TOKENS = 600
 
 SYSTEM_PROMPT = """\
 Sei l'assistente di un'app di process mining. L'utente (Data Engineer, non necessariamente esperto di
@@ -79,17 +81,18 @@ def ask(payload: str) -> dict:
     import anthropic
 
     client = anthropic.Anthropic()
-    response = client.messages.create(
-        model=EXPLAIN_MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": payload}],
-    )
+    request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT,
+                   messages=[{"role": "user", "content": payload}])
+    try:
+        # ragionamento minimo: e' una spiegazione breve, non un problema difficile
+        response = client.messages.create(**request, output_config={"effort": "low"})
+    except (TypeError, anthropic.BadRequestError):
+        response = client.messages.create(**request)  # modello che non accetta il parametro
     price_in, price_out = _price()
     usage = response.usage
     cost = ((usage.input_tokens or 0) * price_in + (usage.output_tokens or 0) * price_out) / 1_000_000
     answer = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-    return {"answer": answer, "cost_usd": round(cost, 4)}
+    return {"answer": answer, "cost_usd": round(cost, 4), "truncated": response.stop_reason == "max_tokens"}
 
 
 def available() -> bool:

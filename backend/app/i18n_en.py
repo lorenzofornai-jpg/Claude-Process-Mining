@@ -766,4 +766,5 @@ EN: dict[str, str] = {
     "Claude non è configurato su questo server (manca la chiave API): la spiegazione non è disponibile.": "Claude is not configured on this server (missing API key): the explanation is not available.",
     "Accesso negato.": "Access denied.",
     "Torna alla revisione": "Back to the review",
+    "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)": "(Answer cut off because it was too long: ask a more specific question to get the rest.)",
 }

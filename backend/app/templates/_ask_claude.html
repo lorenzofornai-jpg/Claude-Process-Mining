@@ -79,6 +79,7 @@
     request(false).then(function (d) {
       if (d.error) { el("ask-answer").textContent = d.error; el("ask-send").disabled = false; return; }
       el("ask-answer").textContent = d.answer;
+      el("ask-answer").scrollIntoView({block: "start", behavior: "smooth"});
       el("ask-cost").textContent = fill(T.spent, {c: money(d.cost_usd)});
       el("ask-send").textContent = fill(T.again, {c: money(estimate ? estimate.cost_usd : d.cost_usd)});
       el("ask-send").disabled = false;
