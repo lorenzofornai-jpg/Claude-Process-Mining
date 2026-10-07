@@ -127,7 +127,8 @@ UI_LABELS = {
 
 
 def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, graph: dict,
-                  mapping: dict, aliases: dict, focus: str | None, ui_labels: dict | None = None) -> str:
+                  mapping: dict, aliases: dict, focus: str | None, ui_labels: dict | None = None,
+                  objective: dict | None = None) -> str:
     """Contesto in JSON per Claude: processo, dataset, provenienza, vista corrente."""
     types = [{
         "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
@@ -158,6 +159,8 @@ def build_context(*, language: str, process_name: str, assessment: dict, dataset
         "dataset": {**dataset, "object_types": types},
         "source_mapping": mapping,
         "aliases": aliases,
+        # obiettivo misurabile salvato: oggetto, filtro, attivita' di inizio e fine (il tempo che conta per il business)
+        "measurable_objective": objective,
         "view": view,
     }
     text = json.dumps(payload, ensure_ascii=False, default=list, separators=(",", ":"))

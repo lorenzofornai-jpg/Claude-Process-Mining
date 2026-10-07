@@ -51,6 +51,10 @@ class ExplorerModel:
     def __init__(self, ocel: dict):
         type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
         self.type_of = type_of
+        # attributi degli oggetti (ultimo valore), per filtri come «tipo documento = fattura»
+        self.object_attrs: dict[str, dict[str, str]] = {
+            o["id"]: {a.get("name"): str(a.get("value")) for a in o.get("attributes") or [] if a.get("name")}
+            for o in ocel.get("objects", [])}
         self.object_counts: dict[str, int] = defaultdict(int)
         for t in type_of.values():
             self.object_counts[t] += 1

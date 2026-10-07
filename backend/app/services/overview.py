@@ -98,9 +98,17 @@ def _steps(acts: list[str]) -> tuple:
     return tuple(out)
 
 
-def build_overview(model: ExplorerModel, lead: str, scope: str = "object") -> dict:
+def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objective: dict | None = None) -> dict:
+    """scope: object | related | objective (da inizio a fine dell'obiettivo misurabile, se e' su questo tipo).
+    Con un obiettivo sul tipo guida si analizzano solo gli oggetti del suo filtro (es. solo le fatture)."""
     hubs = {t for t in model.types if model.is_hub(t)}
     seqs = model.sequences_by_type.get(lead, [])
+    obj = objective if objective and objective.get("object_type") == lead else None
+    if obj and obj.get("filter_attribute"):
+        fa, fv = obj["filter_attribute"], set(obj.get("filter_values") or [])
+        seqs = [(oid, seq) for oid, seq in seqs if model.object_attrs.get(oid, {}).get(fa) in fv]
+    if scope == "objective" and not obj:
+        scope = "object"
 
     # ---------- tutti i tipi di oggetto ----------
     def lifetime(seq):
@@ -142,6 +150,12 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object") -> di
         obj_events[oid] = [idx for _, _, idx in seq]
 
     def throughput(oid, seq):
+        if scope == "objective":
+            t0 = next((ts for ts, a, _ in seq if a == obj["start_activity"]), None)
+            if t0 is None or math.isnan(t0):
+                return None
+            ends = [ts for ts, a, _ in seq if a == obj["end_activity"] and not math.isnan(ts) and ts >= t0]
+            return (ends[0] - t0) if ends else None
         if scope == "related":
             idxs = set(obj_events[oid])
             for r in related_by_obj[oid]:
@@ -199,7 +213,23 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object") -> di
                      for a, o in act_objs.items() if a not in happy_acts), key=lambda x: -x["objects"])
 
     all_tp = [tps[o] for o, _ in seqs]
+    # pratiche aperte: iniziate e non finite, con l'eta' all'ultimo evento del dataset
+    open_info = None
+    if obj:
+        times = [x for x in model.event_times if not math.isnan(x)]
+        data_end = max(times) if times else None
+        ages = []
+        for oid, seq in seqs:
+            t0 = next((ts for ts, a, _ in seq if a == obj["start_activity"]), None)
+            if t0 is None or math.isnan(t0):
+                continue
+            if not any(a == obj["end_activity"] and ts >= t0 for ts, a, _ in seq):
+                ages.append(data_end - t0 if data_end is not None else None)
+        known = [a for a in ages if a is not None]
+        open_info = {"count": len(ages), "median_age": statistics.median(known) if known else None,
+                     "max_age": max(known) if known else None}
     return {
+        "objective": obj, "open": open_info,
         "lead": lead, "scope": scope, "lead_options": lead_options(model),
         "hub_types": [t for t in model.types if t in hubs],
         "types": types, "relations": relations,

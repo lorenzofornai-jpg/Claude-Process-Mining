@@ -170,7 +170,9 @@ membro come guardia contro zip bomb).
   modulo diverso. Il Modulo 2 (`routers/analysis.py`) ha la pagina d'ingresso
   (verifica del ruolo; gerarchia processo → dataset → analisi del dataset; lo scarico OCEL resta al
   Data Engineer) il
-  **Process Overview** (`/analysis/overview`, `services/overview.py`: oggetto guida, volumi, tempi, varianti) e il
+  **Process Overview** (`/analysis/overview`, `services/overview.py`: oggetto guida, volumi, tempi, varianti),
+  l'**obiettivo misurabile** (`services/objectives.py`, `/analysis/objective`, riquadro `_objective.html` anche nella
+  pagina Risultato dell'ingestion) e il
   **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;
   calcolo in `services/explorer.py`, JSON da `/analysis/explorer/graph`, pagina
   `templates/process_explorer.html`: vista a linee di metropolitana con Cytoscape.js + dagre in `static/vendor/`), con l'assistente

@@ -22,6 +22,9 @@
     <div class="ov-types" id="ov-types"></div>
   </section>
 
+  {% set objective_ws = workspace_id %}{% set objective_config = config.id %}{% set objective_collapsed = has_objective %}
+  {% include "_objective.html" %}
+
   <div class="ov-controls">
     <label class="ov-lead">{{ _("Oggetto guida") }}
       <select id="lead-select"></select>
@@ -29,7 +32,8 @@
     <div>
       <div class="tiny muted ov-control-label">{{ _("Tempo di attraversamento") }}</div>
       <div class="segmented" role="group" aria-label="{{ _("Tempo di attraversamento") }}">
-        <button type="button" class="seg active" data-scope="object">{{ _("Solo l'oggetto") }}</button>
+        <button type="button" class="seg" data-scope="objective" id="seg-objective" hidden>{{ _("Da inizio a fine") }}</button>
+        <button type="button" class="seg" data-scope="object">{{ _("Solo l'oggetto") }}</button>
         <button type="button" class="seg" data-scope="related">{{ _("Con gli oggetti collegati") }}</button>
       </div>
     </div>
@@ -50,7 +54,7 @@
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var TYPES = {{ object_types|tojson }};
   var ALIASES = {{ aliases|tojson }};
-  var lead = {{ default_lead|tojson }}, scope = "object", data = null, shown = 5;
+  var lead = {{ default_lead|tojson }}, scope = {{ ("objective" if has_objective else "object")|tojson }}, data = null, shown = 5;
   function tn(n) { return ALIASES.object_type[n] || n; }
   function an(n) { return ALIASES.activity[n] || n; }
   var T = {
@@ -61,6 +65,11 @@
     p90: {{ _("9 oggetti su 10 entro {d}")|tojson }},
     variants: {{ _("Varianti")|tojson }},
     lifetime: {{ _("durata mediana {d}")|tojson }},
+    zeroLife: {{ _("durata mediana 0: per lo più un solo evento per oggetto")|tojson }},
+    scopeObjective: {{ _("Dal primo «{s}» al primo «{e}» successivo di ogni {t}; chi non ha ancora «{e}» è contato tra gli aperti.")|tojson }},
+    filterNote: {{ _("Analizzati solo i {t} con {a} = {v} (dall'obiettivo misurabile).")|tojson }},
+    openKpi: {{ _("Aperti")|tojson }},
+    openSub: {{ _("età mediana {d}, massima {m}")|tojson }},
     noLifetime: {{ _("senza durata")|tojson }},
     hub: {{ _("trasversale")|tojson }},
     hubTip: {{ _("Tipo trasversale: collega documenti diversi, non misura le performance di un processo.")|tojson }},
@@ -186,7 +195,8 @@
       if (t.hub) head.appendChild(el("span", "hub-tag", T.hub));
       card.appendChild(head);
       card.appendChild(el("div", "tiny", num(t.objects) + " " + T.objects.toLowerCase() + " · " + num(t.events) + " " + T.events.toLowerCase()));
-      card.appendChild(el("div", "tiny muted", t.median_lifetime ? fmt(T.lifetime, { d: dur(t.median_lifetime) }) : T.noLifetime));
+      card.appendChild(el("div", "tiny muted", t.median_lifetime ? fmt(T.lifetime, { d: dur(t.median_lifetime) })
+                                               : (t.median_lifetime === 0 ? T.zeroLife : T.noLifetime)));
       box.appendChild(card);
     });
   }
@@ -194,7 +204,14 @@
   function render() {
     fillSelect(data.lead_options);
     renderTypes();
-    document.getElementById("scope-help").textContent = fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) });
+    var segObj = document.getElementById("seg-objective");
+    segObj.hidden = !data.objective;
+    if (data.objective) segObj.textContent = an(data.objective.start_activity) + " → " + an(data.objective.end_activity);
+    if (data.scope !== scope) scope = data.scope;
+    document.querySelectorAll(".seg[data-scope]").forEach(function (x) { x.classList.toggle("active", x.dataset.scope === scope); });
+    document.getElementById("scope-help").textContent = scope === "objective"
+      ? fmt(T.scopeObjective, { s: an(data.objective.start_activity), e: an(data.objective.end_activity), t: tn(lead) })
+      : fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) });
     var body = document.getElementById("ov-body"); body.textContent = "";
     var L = tn(lead), st = data.throughput.stats, vol = data.volumes;
 
@@ -203,7 +220,10 @@
     k.appendChild(kpi(T.objects + " · " + L, num(vol.objects)));
     k.appendChild(kpi(T.events, num(vol.events), fmt(T.perObject, { n: num(vol.events_per_object, 1) })));
     k.appendChild(kpi(T.medianTime, st ? dur(st.median) : "—", st ? fmt(T.p90, { d: dur(st.p90) }) : ""));
+    if (data.open) k.appendChild(kpi(T.openKpi, num(data.open.count), data.open.count ? fmt(T.openSub, { d: dur(data.open.median_age), m: dur(data.open.max_age) }) : ""));
     k.appendChild(kpi(T.variants, num(data.variants_total)));
+    if (data.objective && data.objective.filter_attribute)
+      body.appendChild(el("p", "tiny ov-filter-note", fmt(T.filterNote, { t: L, a: data.objective.filter_attribute, v: (data.objective.filter_values || []).join(", ") })));
     body.appendChild(k);
 
     // relazioni
@@ -283,6 +303,9 @@
     s5.appendChild(oc);
     body.appendChild(s5);
   }
+
+  // obiettivo salvato (dal riquadro in alto): si riparte da lui
+  window.onObjectiveSaved = function (b) { lead = b.object_type; scope = "objective"; load(); };
 
   load();
 })();

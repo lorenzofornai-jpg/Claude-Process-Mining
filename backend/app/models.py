@@ -344,3 +344,22 @@ class AnalysisAlias(Base):
     original: Mapped[str] = mapped_column(String(200))
     alias: Mapped[str] = mapped_column(String(200))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AnalysisObjective(Base):
+    """Obiettivo misurabile di un dataset: il tempo da un'attivita' di inizio a una di fine su un
+    tipo di oggetto (es. fattura: da «registrazione» a «pareggio»), eventualmente solo per gli
+    oggetti con certi valori di un attributo (es. tipo documento = fattura). Nasce dalle risposte
+    dell'assessment, si controlla sul dataset generato e guida il Process Overview."""
+
+    __tablename__ = "analysis_objective"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"))
+    object_type: Mapped[str] = mapped_column(String(200))
+    filter_attribute: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    filter_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    start_activity: Mapped[str] = mapped_column(String(200))
+    end_activity: Mapped[str] = mapped_column(String(200))
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

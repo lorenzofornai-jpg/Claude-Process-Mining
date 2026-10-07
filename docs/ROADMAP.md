@@ -105,6 +105,18 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».
+- ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
+  di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
+  attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,
+  controllato dal vivo e salvato dalla pagina Risultato (Data Engineer, anche sulla bozza) o dall'Overview (Data
+  Analyst). Il controllo è generico: inizio/fine su tipi diversi (manca un collegamento), tipo che mescola oggetti
+  di natura diversa (propone il filtro sulla colonna che li distingue, es. BLART = RV), pratiche aperte con età,
+  fine senza inizio o prima dell'inizio. L'Overview parte dall'obiettivo: oggetto guida e filtro, tempo «da inizio a
+  fine», aperti. Nato dal caso AR (fatture e incassi nello stesso tipo: mediana 0 → 27,3 giorni fattura→incasso,
+  73,5 giorni con blocco sollecito contro 24,6).
+- ⬜ Prossimi passi dell'obiettivo: data di riferimento (scadenza) e quota entro scadenza; confronto per dimensione
+  (es. con/senza blocco, per cliente); nel mapping, proposte guidate dall'obiettivo (sottotipi, tabelle di pareggio
+  come relazioni tra oggetti, date previste come attributi).
 - ✅ **Process Overview** (7 ottobre 2026): prima analisi della pagina Analisi, prima del Process Explorer. In alto
   tutti i tipi di oggetto (oggetti, eventi, durata mediana); l'utente sceglie l'**oggetto guida** (i tipi trasversali
   sono esclusi), come le «perspectives» di Celonis e il «leading object type» di Adams et al. 2022. Su di lui:

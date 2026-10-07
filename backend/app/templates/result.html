@@ -58,6 +58,9 @@
     </tbody>
   </table>
 
+  {% set objective_ws = workspace_id %}{% set objective_config = result.ingestion_config_id %}
+  {% include "_objective.html" %}
+
   <div class="actions">
     <a class="secondary button-link" href="/ingestion/download/{{ workspace_id }}">{{ _("Scarica dataset OCEL 2.0 (JSON)") }}</a>
     {% if structure_status != "approved" %}
