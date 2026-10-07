@@ -42,6 +42,8 @@ def default_lead(model: ExplorerModel, main_object: str | None = None) -> str | 
     options = lead_options(model)
     if not options:
         return None
+    if main_object in options:  # oggetto guida confermato prima del mapping: e' proprio un tipo del dataset
+        return main_object
     if main_object:
         words = {w for w in main_object.lower().replace("/", " ").split() if len(w) >= 4}
         scored = [(sum(1 for w in words if w in t.lower()), t) for t in options]

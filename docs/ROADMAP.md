@@ -122,9 +122,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ **Oggetti divisi per valore** (7 ottobre 2026): primo passo verso oggetti con valenza di business. Una tabella
   non è un oggetto: la trasformazione ora divide i record di una tabella in più tipi di oggetto secondo una colonna
   (es. tipo documento: fatture, incassi; esclusi gli altri). Da revisione o proposto da Claude.
-- 🔜 **Oggetti di business guidati dagli obiettivi**: prima del mapping colonna per colonna, Claude propone gli oggetti
-  (guida, necessari, di contesto) dagli obiettivi dell'assessment e dalle tabelle, con nome di business, tabelle,
-  divisione per valore e chiave; l'utente conferma; l'obiettivo misurabile della Process Overview nasce già compilato.
+- ✅ **Oggetti di business guidati dagli obiettivi** (7 ottobre 2026): nuovo passo prima del mapping colonna per
+  colonna. Bozza senza costi o proposta di Claude (guida, necessari, di contesto) dagli obiettivi dell'assessment, con
+  nome di business, tabella, chiave e filtro per valore; l'utente conferma, rinomina, divide o aggiunge. Il mapping si
+  allinea agli oggetti confermati qualunque sia il mapper; l'oggetto guida apre Process Overview e obiettivo misurabile.
 - ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
   di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
   attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card wide">
+  <h1>{{ _("Oggetti di business") }}</h1>
+  <p class="muted">
+    {{ _("Processo: {p}.", p=strong(context.process_name)) }}
+    {{ _("Gli oggetti sono le cose di cui misuri le prestazioni (fatture, incassi, ordini, righe d'ordine, ticket), non le tabelle: una tabella può contenere più oggetti, e log e anagrafiche di solito non sono oggetti. Scegli quali entrano nel dataset: il mapping colonna per colonna partirà da qui.") }}
+  </p>
+
+  {% if answers.objectives or answers.key_questions %}
+  <div class="bo-goals tiny">
+    <strong>{{ _("I tuoi obiettivi") }}:</strong>
+    {% for o in answers.objectives or [] %}<span class="bo-chip">{{ _(o) }}</span>{% endfor %}
+    {% if answers.key_questions %}<blockquote>{{ answers.key_questions }}</blockquote>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="bo-source">
+    {% if proposal.source == "claude" %}
+    <span class="tiny">{{ _("Proposta di Claude") }} · {{ _("costo {c}", c=money(proposal.cost_usd or 0) ~ " $") }}</span>
+    {% if proposal.summary %}<p class="bo-summary">{{ proposal.summary }}</p>{% endif %}
+    {% if proposal.truncated %}<p class="tiny cov-miss">{{ _("Risposta interrotta perché troppo lunga: alcune voci potrebbero mancare.") }}</p>{% endif %}
+    {% else %}
+    <span class="tiny">{{ _("Bozza automatica, senza costi: regole generiche su chiavi, date, log e anagrafiche. I nomi sono quelli delle tabelle: rinominali con i nomi che usi tu.") }}</span>
+    {% endif %}
+    {% if claude_ok %}
+    <div class="bo-claude">
+      <button type="button" class="secondary" id="bo-ask">{{ _("Rifai la proposta con Claude") if proposal.source == "claude" else _("Proponi con Claude") }}{% if estimate %} · ~{{ money(estimate.cost_usd) }} ${% endif %}</button>
+      <span class="tiny muted">{% if estimate %}{{ _("Claude legge obiettivi e tabelle e propone oggetti con nomi di business, ruoli e filtri. Costo indicativo (massimo {m}).", m=money(estimate.max_usd) ~ " $") }}{% endif %}</span>
+      <p class="as-error" id="bo-error" hidden></p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if sess_error %}<div class="banner error">{{ _("Scegli almeno un oggetto, oppure salta questo passo.") }}</div>{% endif %}
+
+  <form method="post" action="/ingestion/business-objects" id="bo-form">
+    <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+    {% set role_labels = {"lead": _("Oggetto guida"), "needed": _("Necessario"), "context": _("Di contesto")} %}
+    <div class="bo-list">
+      {% for o in proposal.objects %}{% set i = loop.index0 %}
+      <section class="bo-item {{ 'bo-off' if not o.include }}">
+        <div class="bo-head">
+          <label class="bo-include"><input type="checkbox" name="include_{{ i }}" value="1" {% if o.include %}checked{% endif %}>
+            <span class="sr-only">{{ _("Includi") }}</span></label>
+          <input type="text" class="bo-name" name="name_{{ i }}" value="{{ o.name }}" aria-label="{{ _('Nome') }}">
+          <label class="bo-lead tiny"><input type="radio" name="lead" value="{{ i }}" {% if o.role == "lead" %}checked{% endif %}> {{ _("Oggetto guida") }}</label>
+          <select name="role_{{ i }}" class="bo-role tiny" aria-label="{{ _('Ruolo') }}" {% if o.role == "lead" %}hidden{% endif %}>
+            <option value="needed" {% if o.role == "needed" %}selected{% endif %}>{{ _("Necessario") }}</option>
+            <option value="context" {% if o.role == "context" %}selected{% endif %}>{{ _("Di contesto") }}</option>
+          </select>
+        </div>
+        <div class="tiny bo-meta">
+          <span class="mono">{{ o.table }}</span>
+          · {{ _("chiave") }} <span class="mono">{{ o.key|join(" + ") if o.key else "—" }}</span>
+          {% if o.filter %}· {{ _("solo le righe con {c} = {v}", c=o.filter.column, v=o.filter["values"]|join(", ")) }}{% endif %}
+          {% if o.objective %}<span class="bo-chip">{{ o.objective }}</span>{% endif %}
+        </div>
+        {% if o.why %}<p class="tiny muted bo-why">{{ o.why|tr }}</p>{% endif %}
+        {% if o.split_hint and not o.filter %}
+        <div class="bo-split tiny">
+          <input type="hidden" name="split_col_{{ i }}" value="{{ o.split_hint.column }}">
+          <button type="submit" name="action" value="split|{{ i }}" class="secondary">{{ _("Dividi per {c}", c=o.split_hint.column) }}</button>
+          <span class="muted">{{ _("un oggetto per valore ({v}), da rinominare", v=o.split_hint["values"].keys()|join(", ")) }}</span>
+        </div>
+        {% endif %}
+      </section>
+      {% endfor %}
+    </div>
+
+    {% if proposal.not_objects %}
+    <h2 class="bo-sub">{{ _("Non diventano oggetti") }}</h2>
+    <ul class="bo-not tiny">
+      {% for n in proposal.not_objects %}
+      <li><span class="mono">{{ n.table }}</span> → {{ {"events": _("eventi"), "attributes": _("attributi (dimensioni)"), "excluded": _("esclusa")}[n.becomes] }}{% if n.why %} · <span class="muted">{{ n.why|tr }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <details class="bo-add">
+      <summary>{{ _("Aggiungi un oggetto") }}</summary>
+      <div class="bo-add-fields">
+        <label>{{ _("Tabella") }}
+          <select name="add_table" id="bo-add-table">{% for tb in tables %}<option value="{{ tb.name }}">{{ tb.name }}</option>{% endfor %}</select></label>
+        <label>{{ _("Nome") }} <input type="text" name="add_name" placeholder="{{ _('es. Nota di credito') }}"></label>
+        <label>{{ _("Solo le righe con (facoltativo)") }}
+          <select name="add_filter_col" id="bo-add-col"><option value="">—</option></select></label>
+        <label>{{ _("uguale a (valori separati da virgola)") }} <input type="text" name="add_filter_values" placeholder="DG, G2"></label>
+        <button type="submit" name="action" value="add" class="secondary">{{ _("Aggiungi") }}</button>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button type="submit" name="action" value="confirm" class="primary">{{ _("Conferma e avvia il mapping") }}</button>
+      <button type="submit" name="action" value="skip" class="secondary">{{ _("Salta: mapping tabella per tabella") }}</button>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  var TABLES = {{ tables|tojson }};
+  var tsel = document.getElementById("bo-add-table"), csel = document.getElementById("bo-add-col");
+  function cols() {
+    var t = TABLES.find(function (x) { return x.name === tsel.value; }) || { columns: [] };
+    csel.innerHTML = '<option value="">—</option>';
+    t.columns.forEach(function (c) { var o = document.createElement("option"); o.value = c; o.textContent = c; csel.appendChild(o); });
+  }
+  if (tsel) { tsel.addEventListener("change", cols); cols(); }
+  // l'oggetto guida e' sempre incluso; il ruolo si sceglie solo per gli altri
+  document.querySelectorAll('input[name="lead"]').forEach(function (r) {
+    r.addEventListener("change", function () {
+      document.querySelectorAll(".bo-item").forEach(function (item) {
+        var radio = item.querySelector('input[name="lead"]'), role = item.querySelector(".bo-role");
+        role.hidden = radio.checked;
+        if (radio.checked) { var cb = item.querySelector('.bo-include input'); cb.checked = true; item.classList.remove("bo-off"); }
+      });
+    });
+  });
+  document.querySelectorAll(".bo-include input").forEach(function (cb) {
+    cb.addEventListener("change", function () { cb.closest(".bo-item").classList.toggle("bo-off", !cb.checked); });
+  });
+  var ask = document.getElementById("bo-ask"), err = document.getElementById("bo-error");
+  if (ask) ask.addEventListener("click", function () {
+    ask.disabled = true; var label = ask.textContent; ask.textContent = {{ _("Proposta in corso…")|tojson }};
+    fetch("/ingestion/business-objects/propose", { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace_id: {{ workspace_id|tojson }} }) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+      .then(function () { location.reload(); })
+      .catch(function (e) { err.hidden = false; err.textContent = e.message || {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }};
+                            ask.disabled = false; ask.textContent = label; });
+  });
+})();
+</script>
+{% endblock %}

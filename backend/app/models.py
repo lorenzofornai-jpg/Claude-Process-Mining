@@ -157,6 +157,9 @@ class IngestionConfig(Base):
     # anche questo: non e' un'entita' separata, e' un flag su un IngestionConfig che
     # ha gia' cascade completo (vedi delete_structure in routers/ingestion.py).
     in_catalog: Mapped[bool] = mapped_column(Boolean, default=False)
+    # oggetti di business confermati prima del mapping (services/business_objects.py): nome, tabella,
+    # chiave, filtro, ruolo (guida/necessario/contesto) e perche'; None se il passo e' stato saltato
+    business_objects: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     object_types: Mapped[list["ObjectTypeDef"]] = relationship(back_populates="config", cascade="all, delete-orphan")

@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, msg, setup_templates, t, ui_labels
+from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import AnalysisAlias, AnalysisObjective, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
@@ -241,6 +241,12 @@ async def explorer_assistant(request: Request):
         ws = db.get(ProcessWorkspace, workspace_id)
         rows = db.query(FieldMapping).filter_by(ingestion_config_id=config.id).all()
         mapping = analysis_assistant.mapping_summary(rows)
+        if config.business_objects:
+            # perche' questi oggetti: scelti prima del mapping a partire dagli obiettivi
+            mapping["business_objects"] = [
+                {"name": o["name"], "table": o["table"], "role": o["role"], "included": o["include"],
+                 "why": render(lang, o.get("why")), **({"rows_where": o["filter"]} if o.get("filter") else {})}
+                for o in config.business_objects]
     finally:
         db.close()
     answers, _ = load_assessment(workspace_id)
@@ -296,7 +302,7 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
             "config": config, "run": run, "configs": configs,
             "object_types": model.type_summary(), "aliases": _aliases(user.id, config.id),
             "default_lead": (saved_objective(config.id) or {}).get("object_type")
-                            or overview.default_lead(model, answers.get("main_object")),
+                            or overview.default_lead(model, with_business_lead(answers, config.id).get("main_object")),
             "has_objective": saved_objective(config.id) is not None,
         },
     )
@@ -343,6 +349,24 @@ def _config_model(workspace_id: str, config_id: str):
     return run, explorer.load_model(run.ocel_file_path)
 
 
+def business_lead(config_id: str) -> str | None:
+    """L'oggetto guida confermato tra gli oggetti di business prima del mapping (se il passo e' stato fatto)."""
+    from app.services import business_objects
+    db = SessionLocal()
+    try:
+        config = db.get(IngestionConfig, config_id)
+        return business_objects.lead(config.business_objects or []) if config else None
+    finally:
+        db.close()
+
+
+def with_business_lead(answers: dict, config_id: str) -> dict:
+    """Risposte dell'assessment con l'oggetto guida confermato come oggetto principale: la Process Overview
+    e l'obiettivo misurabile partono da li'."""
+    lead = business_lead(config_id)
+    return {**answers, "main_object": lead} if lead else answers
+
+
 def saved_objective(config_id: str) -> dict | None:
     db = SessionLocal()
     try:
@@ -375,7 +399,7 @@ def objective_get(request: Request, workspace_id: str, config_id: str):
     binding = saved_objective(config_id)
     saved = binding is not None
     if binding is None:
-        binding = objectives.propose(model, answers)
+        binding = objectives.propose(model, with_business_lead(answers, config_id))
     return JSONResponse({
         "options": objectives.options(model), "binding": binding, "saved": saved,
         "goal": objectives.goal_texts(answers),

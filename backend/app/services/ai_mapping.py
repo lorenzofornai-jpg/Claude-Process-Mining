@@ -361,6 +361,11 @@ manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabell
   stato, causale), quella data genera UN solo evento "contenitore" (nome generico, es. "Order History"):
   le singole attivita' verranno lette dai valori della colonna, tabella per tabella. Le colonne in
   reason_columns (motivo o causale di un'operazione) non distinguono eventi.
+- "process_context.business_objects", se presente, sono gli oggetti di business confermati dall'utente:
+  sono gli UNICI object_types (usa esattamente quei nomi); una tabella che non ne ospita nessuno non
+  definisce oggetti (i suoi dati sono eventi o attributi). Un oggetto con only_rows_where e' solo una parte
+  della sua tabella: definisci per quella tabella un solo object_type con il nome del primo oggetto (la
+  divisione per valore viene aggiunta in automatico).
 - Una tabella in copy_of ripete le righe di un'altra tabella (indice, vista, estrazione filtrata): non
   definisce object_types ne' event_types; oggetti ed eventi vengono dalla tabella indicata in "of".
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
@@ -422,6 +427,14 @@ Elemento ("el") per ogni colonna mappata; piu' righe per la stessa colonna se se
   usa nota utente, document_excerpts e la conoscenza del sistema sorgente. Gli eventi della tabella
   restano dove sono (se i nomi delle attivita' devono distinguersi per tipo, usa anche "activity" sulla
   stessa colonna); un "relation" puo' puntare a uno dei tipi della divisione (es. rel "Invoice").
+
+"process_context.business_objects", se presente, sono gli oggetti di business confermati dall'utente:
+sono gli UNICI tipi di oggetto. Usa esattamente quei nomi in obj e rel. Una tabella che non ospita nessuno di
+quegli oggetti non ha "key": le sue date sono eventi, i suoi riferimenti sono "relation" verso gli oggetti
+confermati e le altre colonne utili sono attributi (un riferimento a un'anagrafica non confermata come oggetto,
+es. il cliente, e' un "evt_attr" o "obj_attr": serve da dimensione). Per un oggetto con only_rows_where
+(solo una parte della tabella) la divisione per valore viene aggiunta in automatico: non proporre "split";
+un "relation" puo' puntare direttamente al nome di business (es. rel "Invoice").
 
 Regole per contenere costi e lavoro di revisione:
 - Mappa SOLO le colonne utili al process mining: chiavi, date di processo, collegamenti, e gli

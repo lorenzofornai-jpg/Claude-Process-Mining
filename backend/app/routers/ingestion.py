@@ -36,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import coverage, explain
+from app.services import business_objects, coverage, explain
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -655,18 +655,174 @@ async def submit_table_descriptions(request: Request, background_tasks: Backgrou
         sess["context"].pop("document_excerpts", None)
     sess["document_context"] = {"docs": excerpts["used_docs"], "excerpts": excerpts["excerpt_count"],
                                 "tables": sorted(excerpts["by_table"])}
+    # prima del mapping colonna per colonna: quali oggetti di business entrano nel dataset
+    return RedirectResponse(url=f"/ingestion/business-objects?workspace_id={workspace_id}", status_code=303)
 
+
+def _start_mapping(sess: dict, background_tasks: BackgroundTasks, workspace_id: str) -> RedirectResponse:
     sess["mapping_rows"] = None
     sess["mapping_status"] = "pending"
     sess["mapping_error"] = None
     sess["mapping_started"] = time.time()
     sess["mapping_progress"] = None
-
     background_tasks.add_task(
-        _run_ai_mapping, sess, _without_empty_columns(tables_schema), sess["tables_data"], sess["dataset_label"], descriptions
+        _run_ai_mapping, sess, _without_empty_columns(sess["tables_schema_objs"]), sess["tables_data"],
+        sess["dataset_label"], sess.get("table_descriptions", {}),
+    )
+    return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+
+
+# ---------- oggetti di business (prima del mapping) ----------
+
+def _bo_signature(sess: dict) -> str:
+    return coverage.tables_signature(sess.get("tables_schema_objs") or [])
+
+
+def _bo_proposal(sess: dict, workspace_id: str) -> dict:
+    """Proposta corrente: quella di Claude o modificata dall'utente se c'e' per queste tabelle, altrimenti la bozza."""
+    current = sess.get("bo_proposal")
+    if current and current.get("signature") == _bo_signature(sess):
+        return current
+    answers, _ = load_assessment(workspace_id)
+    current = business_objects.draft(sess["tables_schema_objs"], sess.get("profile") or {}, answers)
+    current["signature"] = _bo_signature(sess)
+    sess["bo_proposal"] = current
+    return current
+
+
+def _bo_payload(request: Request, sess: dict, workspace_id: str) -> str:
+    answers, _ = load_assessment(workspace_id)
+    return business_objects.build_payload(
+        language=get_lang(request), process_name=sess["context"].get("process_name", ""), answers=answers,
+        tables=sess["tables_schema_objs"], data_profile=sess["context"].get("data_profile") or {},
+        descriptions=sess.get("table_descriptions", {}))
+
+
+@router.get("/ingestion/business-objects", response_class=HTMLResponse)
+def business_objects_page(request: Request, workspace_id: str):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    if not sess.get("tables_schema_objs"):
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    proposal = _bo_proposal(sess, workspace_id)
+    answers, _ = load_assessment(workspace_id)
+    claude_ok = AI_MAPPER == "claude" and explain.available()
+    profile_tables_ = {t["name"]: t for t in (sess.get("profile") or {}).get("tables", [])}
+    return templates.TemplateResponse(
+        "business_objects.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"], "step": 2,
+            "proposal": proposal, "answers": answers, "claude_ok": claude_ok, "sess_error": sess.pop("bo_error", False),
+            "estimate": business_objects.estimate(_bo_payload(request, sess, workspace_id)) if claude_ok else None,
+            "tables": [{"name": tb.name, "columns": [c.name for c in tb.columns],
+                        "key": (profile_tables_.get(tb.name) or {}).get("key") or []} for tb in sess["tables_schema_objs"]],
+        }
     )
 
-    return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
+
+@router.post("/ingestion/business-objects/propose")
+async def business_objects_propose(request: Request):
+    """Proposta di Claude (costo indicativo mostrato prima nel pulsante)."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    sess = _load_session(user.id, workspace_id)
+    if not sess.get("tables_schema_objs"):
+        return JSONResponse({"error": t(get_lang(request), "Carica prima i dati.")}, status_code=400)
+    if AI_MAPPER != "claude" or not explain.available():
+        return JSONResponse({"error": t(get_lang(request), "Claude non è configurato su questo server.")}, status_code=400)
+    try:
+        out = await run_in_threadpool(business_objects.ask, _bo_payload(request, sess, workspace_id))
+    except Exception as exc:  # rete, chiave, risposta non leggibile
+        print(f"Oggetti di business: richiesta a Claude non riuscita ({exc!r})")
+        return JSONResponse({"error": t(get_lang(request), "La richiesta a Claude non è riuscita: riprova tra poco.")}, status_code=502)
+    result = out["result"]
+    objects = business_objects.normalize(result["objects"], sess["tables_schema_objs"])
+    if not objects:
+        return JSONResponse({"error": t(get_lang(request), "Claude non ha proposto oggetti utilizzabili: resta la bozza.")}, status_code=502)
+    sess["bo_proposal"] = {"source": "claude", "objects": objects, "not_objects": result["not_objects"],
+                           "summary": result["summary"], "cost_usd": out["cost_usd"], "truncated": out["truncated"],
+                           "signature": _bo_signature(sess)}
+    return JSONResponse({"ok": True, "cost_usd": out["cost_usd"]})
+
+
+def _bo_from_form(form, proposal: dict) -> list[dict]:
+    """Le scelte dell'utente (incluso, nome, ruolo; un solo oggetto guida) sulla proposta corrente."""
+    lead = form.get("lead")
+    objects = []
+    for i, o in enumerate(proposal["objects"]):
+        o = dict(o)
+        o["include"] = form.get(f"include_{i}") == "1"
+        name = (form.get(f"name_{i}") or "").strip()
+        if name:
+            o["name"] = name
+        role = form.get(f"role_{i}")
+        if role in ("needed", "context"):
+            o["role"] = role
+        if lead is not None:
+            if str(i) == lead:
+                o["role"], o["include"] = "lead", True
+            elif o["role"] == "lead":
+                o["role"] = "needed"
+        objects.append(o)
+    return objects
+
+
+@router.post("/ingestion/business-objects")
+async def business_objects_submit(request: Request, background_tasks: BackgroundTasks,
+                                  workspace_id: str = Form(...), action: str = Form(...)):
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    sess = _load_session(user.id, workspace_id)
+    if not sess.get("tables_schema_objs"):
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
+    form = await request.form()
+    proposal = _bo_proposal(sess, workspace_id)
+    tables = sess["tables_schema_objs"]
+    back = RedirectResponse(url=f"/ingestion/business-objects?workspace_id={workspace_id}", status_code=303)
+    if action == "skip":
+        sess["business_objects"] = None
+        sess["context"].pop("business_objects", None)
+        return _start_mapping(sess, background_tasks, workspace_id)
+    objects = _bo_from_form(form, proposal)
+    if action.startswith("split|"):
+        i = int(action.split("|", 1)[1])
+        column = form.get(f"split_col_{i}")
+        if 0 <= i < len(objects) and column:
+            data = sess.get("tables_data", {}).get(objects[i]["table"], [])
+            values = sorted({str(r.get(column) or "").strip() for r in data} - {"", "nan"})
+            if 2 <= len(values) <= 20:
+                objects[i:i + 1] = business_objects.split_object(objects[i], column, values)
+    elif action == "add":
+        table = form.get("add_table")
+        name = (form.get("add_name") or "").strip()
+        tb = next((x for x in tables if x.name == table), None)
+        if tb and name:
+            key = next((x["key"] for x in (sess.get("profile") or {}).get("tables", []) if x["name"] == table), None) or []
+            column = form.get("add_filter_col") or None
+            values = [v.strip() for v in (form.get("add_filter_values") or "").split(",") if v.strip()]
+            objects.append({"name": name, "table": table, "key": key,
+                            "filter": {"column": column, "values": values} if column and values else None,
+                            "role": "needed", "include": True, "objective": "",
+                            "why": msg("Aggiunto da te.")})
+    objects = business_objects.normalize(objects, tables)
+    proposal = {**proposal, "objects": objects, "signature": _bo_signature(sess)}
+    sess["bo_proposal"] = proposal
+    if action != "confirm":
+        return back
+    confirmed = [o for o in objects if o["include"]]
+    if not confirmed:
+        sess["bo_error"] = True
+        return back
+    if not business_objects.lead(objects):
+        confirmed[0]["role"] = "lead"
+    sess["business_objects"] = objects
+    sess["context"]["business_objects"] = business_objects.for_context(objects)
+    return _start_mapping(sess, background_tasks, workspace_id)
 
 
 def _run_ai_mapping(
@@ -696,6 +852,12 @@ def _run_ai_mapping(
             mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
             proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"], table_descriptions)
 
+        rejected: set[int] = set()
+        if sess.get("business_objects"):
+            # il mapping si allinea agli oggetti di business confermati (nomi, divisioni, oggetti esclusi)
+            proposals, rejected = business_objects.apply(
+                proposals, sess["business_objects"], tables_data,
+                other_label=t(sess["context"].get("language") or "it", "altro"))
         rows = []
         for i, p in enumerate(proposals):
             d = asdict(p)
@@ -703,7 +865,8 @@ def _run_ai_mapping(
             # Tutto parte come "proposed": e' il pulsante "Accetta tutte >= soglia" a promuovere
             # le righe ad alta confidence a "confirmed" in un click, esplicitamente. Pre-confermarle
             # gia' qui renderebbe quel pulsante un no-op silenzioso (bug reale trovato in test).
-            d["status"] = "proposed"
+            # (gia' rifiutate: le proposte di oggetti che non sono tra gli oggetti di business confermati)
+            d["status"] = "rejected" if i in rejected else "proposed"
             # snapshot immutabile di cio' che l'AI ha proposto in origine: sopravvive a
             # eventuali correzioni manuali successive, per audit trail (FieldMapping.original_ai_proposal)
             d["original_ai_proposal"] = {
@@ -1343,6 +1506,9 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
                 activity_column=ed.activity_column,
             ))
 
+        if sess.get("business_objects") is not None:
+            # oggetti di business confermati prima del mapping (testi come JSON: si traducono quando si mostrano)
+            config.business_objects = json.loads(json.dumps(sess["business_objects"], default=str))
         for r in rows:
             overridden = r["status"] == "overridden"
             db.add(FieldMapping(

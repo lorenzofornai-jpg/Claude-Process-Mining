@@ -82,7 +82,10 @@ def propose(model: ExplorerModel, answers: dict) -> dict | None:
         return sum(1 for _, seq in model.sequences_by_type.get(t, []) if len({a for _, a, _ in seq}) >= 2)
     by_name = [(sum(1 for w in words if w in t.lower()), t) for t in cands]
     by_name = [x for x in by_name if x[0]]
-    t = max(by_name)[1] if by_name else max(cands, key=lambda c: (multi(c), model.with_events[c]))
+    if answers.get("main_object") in cands:  # oggetto guida confermato prima del mapping
+        t = answers["main_object"]
+    else:
+        t = max(by_name)[1] if by_name else max(cands, key=lambda c: (multi(c), model.with_events[c]))
 
     seqs = model.sequences_by_type.get(t, [])
     firsts = Counter(seq[0][1] for _, seq in seqs if seq)
