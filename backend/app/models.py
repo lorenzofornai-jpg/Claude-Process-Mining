@@ -328,3 +328,19 @@ class ProcessDocument(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AnalysisAlias(Base):
+    """Nome personale di un tipo di oggetto o di un'attivita' nell'analisi di un utente
+    (es. «Accounting Document» → «Invoice»). Vale solo per chi l'ha scelto e solo per
+    quel dataset: il dataset OCEL non cambia."""
+
+    __tablename__ = "analysis_alias"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"))
+    kind: Mapped[str] = mapped_column(String(20))  # object_type | activity
+    original: Mapped[str] = mapped_column(String(200))
+    alias: Mapped[str] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

@@ -23,6 +23,7 @@
         <button type="button" class="seg active" data-metric="frequency">{{ _("Frequenza") }}</button>
         <button type="button" class="seg" data-metric="time">{{ _("Tempo") }}</button>
       </div>
+      <button type="button" class="secondary as-open" id="as-open">✦ {{ _("Assistente") }}</button>
     </div>
   </div>
 
@@ -38,9 +39,10 @@
             <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
               <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
               <span class="swatch" style="background:{{ ot.color }}"></span>
-              <span class="type-name">{{ ot.name }}{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
+              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ aliases.object_type.get(ot.name, ot.name) }}</span><span class="tn-orig tiny muted" data-type="{{ ot.name }}"></span>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
               <span class="type-count tiny muted">{{ ot.objects }}</span>
             </label>
+            <button type="button" class="link-button tiny tn-reset" data-type="{{ ot.name }}" hidden>↺ {{ _("nome originale") }}</button>
           </li>
           {% endfor %}
         </ul>
@@ -92,6 +94,7 @@
         <aside class="graph-detail" id="detail" hidden>
           <button type="button" class="detail-close" id="detail-close" aria-label="{{ _("Chiudi") }}">×</button>
           <div id="detail-body"></div>
+          <button type="button" class="link-button tiny detail-ask" id="detail-ask">✦ {{ _("Chiedi all'assistente") }}</button>
         </aside>
 
         <div class="graph-legend tiny" id="graph-legend" hidden></div>
@@ -107,6 +110,28 @@
       </div>
     </section>
   </div>
+
+  <aside class="assistant" id="assistant" hidden aria-label="{{ _("Assistente dell'analisi") }}">
+    <div class="assistant-head">
+      <strong>✦ {{ _("Assistente dell'analisi") }}</strong>
+      <span class="assistant-head-tools">
+        <button type="button" class="link-button tiny" id="as-new">{{ _("Nuova conversazione") }}</button>
+        <button type="button" class="detail-close" id="as-close" aria-label="{{ _("Chiudi") }}">×</button>
+      </span>
+    </div>
+    <div class="assistant-body" id="as-body">
+      <p class="tiny muted as-intro">{{ _("Chiedimi cosa significa un oggetto, un'attività o un numero del grafo. Puoi anche dare un nome tuo a un tipo di oggetto o a un'attività (es. «chiama Accounting Document Invoice»): cambia solo nella tua analisi, non nel dataset.") }}</p>
+      <div class="as-suggest" id="as-suggest"></div>
+      <div id="as-messages"></div>
+    </div>
+    <form class="assistant-input" id="as-form">
+      <textarea id="as-text" rows="2" placeholder="{{ _("Scrivi una domanda…") }}" aria-label="{{ _("Scrivi una domanda…") }}"></textarea>
+      <div class="as-row">
+        <span class="tiny muted" id="as-cost"></span>
+        <button type="submit" class="primary" id="as-send">{{ _("Invia") }}</button>
+      </div>
+    </form>
+  </aside>
 
   <p class="tiny muted" style="margin-top:14px">
     {{ _("Come leggere il grafo: ogni tipo di oggetto è una linea colorata, come in una mappa della metropolitana. Le fermate sono le attività: un punto per ogni tipo di oggetto che ci passa. Il numero sulla linea dice quante volte un oggetto passa da un'attività alla successiva; in modalità «Tempo» è il tempo mediano del passaggio.") }}
@@ -124,6 +149,10 @@
   var COLORS = {}, TYPES = {};
   {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};
   {% endfor %}
+  // nomi personali dell'utente (solo nella sua analisi): tn = tipo di oggetto, an = attivita'
+  var ALIASES = {{ aliases|tojson }};
+  function tn(name) { return ALIASES.object_type[name] || name; }
+  function an(name) { return ALIASES.activity[name] || name; }
   var T = {
     nOfM: {{ _("{n} di {m}")|tojson }},
     top: {{ _("Le più frequenti: {n} di {m}")|tojson }},
@@ -167,7 +196,25 @@
     hours: {{ _("{n} h")|tojson }},
     minutes: {{ _("{n} min")|tojson }},
     seconds: {{ _("{n} s")|tojson }},
-    error: {{ _("Non è stato possibile calcolare il grafo.")|tojson }}
+    error: {{ _("Non è stato possibile calcolare il grafo.")|tojson }},
+    asCost: {{ _("Costo indicativo per domanda: ~{c} (max {m})")|tojson }},
+    asSpent: {{ _("speso finora: {s}")|tojson }},
+    asThinking: {{ _("Sto pensando…")|tojson }},
+    asSugWhat: {{ _("Cos'è un {t}?")|tojson }},
+    asSugRead: {{ _("Come si legge questo grafo?")|tojson }},
+    asSugSlow: {{ _("Quali sono i passaggi più lenti?")|tojson }},
+    asSugHub: {{ _("Perché {t} è trasversale?")|tojson }},
+    asAbout: {{ _("Spiegami: {x}")|tojson }},
+    asRenameQ: {{ _("Rinominare «{o}» in «{n}» nella tua analisi?")|tojson }},
+    asResetQ: {{ _("Tornare al nome originale «{o}»?")|tojson }},
+    asRenamed: {{ _("Fatto: ora «{o}» si chiama «{n}» nella tua analisi.")|tojson }},
+    asReset: {{ _("Fatto: «{o}» ha di nuovo il nome originale.")|tojson }},
+    asConfirm: {{ _("Conferma")|tojson }},
+    asCancel: {{ _("Annulla")|tojson }},
+    asCancelled: {{ _("Nome non cambiato.")|tojson }},
+    asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }},
+    asRenameError: {{ _("Non è stato possibile salvare il nome.")|tojson }},
+    origName: {{ _("originale: {o}")|tojson }}
   };
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
   function num(n) { return Number(n).toLocaleString(LANG); }
@@ -255,9 +302,9 @@
   // ---------- pannello: attivita' e collegamenti ----------
   function matches(text) { var s = search.value.trim().toLowerCase(); return !s || text.toLowerCase().indexOf(s) >= 0; }
   function nodeName(id) {
-    if (isStart(id)) return T.start + " · " + id.slice(10);
-    if (isEnd(id)) return T.end + " · " + id.slice(8);
-    return id;
+    if (isStart(id)) return T.start + " · " + tn(id.slice(10));
+    if (isEnd(id)) return T.end + " · " + tn(id.slice(8));
+    return an(id);
   }
 
   function renderLists() {
@@ -271,7 +318,7 @@
     var ordered = list.filter(function (a) { return a.selected; }).concat(list.filter(function (a) { return !a.selected; }));
     var shown = 0;
     ordered.forEach(function (a, i) {
-      if (!matches(a.name)) return;
+      if (!matches(a.name + " " + an(a.name))) return;
       shown++;
       var li = el("li", a.selected && ordered[i + 1] && !ordered[i + 1].selected ? "sep" : "");
       var lab = el("label"), cb = el("input"); cb.type = "checkbox"; cb.checked = a.selected;
@@ -280,7 +327,7 @@
         actSet = cb.checked ? actSet.concat([a.name]) : actSet.filter(function (x) { return x !== a.name; });
         schedule();
       });
-      lab.appendChild(cb); lab.appendChild(el("span", "item-name", a.name)); lab.appendChild(el("span", "item-count", compact(a.events)));
+      lab.appendChild(cb); lab.appendChild(el("span", "item-name", an(a.name))); lab.appendChild(el("span", "item-count", compact(a.events)));
       li.appendChild(lab); ul.appendChild(li);
     });
     if (!shown) ul.appendChild(el("li", "muted tiny", T.noActs));
@@ -295,11 +342,11 @@
     var shown = 0;
     data.edges.forEach(function (e) {
       var label = nodeName(e.source) + " → " + nodeName(e.target);
-      if (!matches(label + " " + e.type)) return;
+      if (!matches(label + " " + e.source + " " + e.target + " " + e.type + " " + tn(e.type))) return;
       shown++;
       var li = el("li"), lab = el("label"), cb = el("input"); cb.type = "checkbox"; cb.checked = edgeVisible(e);
       cb.addEventListener("change", function () { edgeOverride[edgeKey(e)] = cb.checked; renderPaths(); draw(); });
-      lab.appendChild(cb); lab.appendChild(swatch(e.color)); lab.title = e.type;
+      lab.appendChild(cb); lab.appendChild(swatch(e.color)); lab.title = tn(e.type);
       lab.appendChild(el("span", "item-name", label)); lab.appendChild(el("span", "item-count", compact(e.count)));
       li.appendChild(lab); ul.appendChild(li);
     });
@@ -340,7 +387,7 @@
     Object.keys(typesAt).forEach(function (id) {
       var n = byId[id]; if (!n || n.kind === "start") return;
       var nTypes = data.types.filter(function (t) { return typesAt[id][t]; }).length;
-      if (n.kind === "activity") g.setNode(id, { width: nTypes * DOT_GAP + 8 + labelWidth(n.label), height: 40 });
+      if (n.kind === "activity") g.setNode(id, { width: nTypes * DOT_GAP + 8 + labelWidth(an(n.label)), height: 40 });
       else g.setNode(id, { width: 20, height: 20 });
     });
     edges.forEach(function (e) {
@@ -377,7 +424,7 @@
       if (!n || !typesAt[id]) return null;
       var first = edges.filter(function (e) { return e.source === id; }).sort(function (a, b) { return b.count - a.count; })[0];
       var target = first && pos[dotId(first.target, t)];
-      return { id: id, n: n, x: target ? target.x : 0, w: 26 + labelWidth(n.label) };
+      return { id: id, n: n, x: target ? target.x : 0, w: 26 + labelWidth(tn(n.label)) };
     }).filter(Boolean).sort(function (a, b) { return a.x - b.x; });
     var lastRight = -Infinity;
     starts.forEach(function (st) {
@@ -441,7 +488,7 @@
   function addStationLabel(n, types, x, y) {
     var box = el("div", "station-label");
     box.style.left = x + "px"; box.style.top = y + "px";
-    box.appendChild(el("div", "station-name", n.label));
+    box.appendChild(el("div", "station-name", an(n.label)));
     var line = el("div", "station-counts");
     var byType = {}; n.types.forEach(function (x) { byType[x.type] = x; });
     types.forEach(function (t, i) {
@@ -455,7 +502,7 @@
       if (types.indexOf(x.type) >= 0 || !(TYPES[x.type] || {}).hub) return;
       line.appendChild(el("span", "sep-bar", "·"));
       var sq = el("span", "sq sq-hollow"); sq.style.borderColor = COLORS[x.type]; line.appendChild(sq);
-      line.appendChild(document.createTextNode(compact(x.objects) + " " + x.type));
+      line.appendChild(document.createTextNode(compact(x.objects) + " " + tn(x.type)));
     });
     box.appendChild(line);
     box.addEventListener("click", function () { showActivity(n.id); });
@@ -467,7 +514,7 @@
   function addStartLabel(n, x, y) {
     var box = el("div", "station-label start-label");
     box.style.left = x + "px"; box.style.top = y + "px";
-    box.appendChild(el("div", "station-name", n.label));
+    box.appendChild(el("div", "station-name", tn(n.label)));
     box.appendChild(el("div", "station-counts", "# " + fmt(T.objectsN, { n: compact(n.count) })));
     box.addEventListener("click", function () { showType(n.type); });
     layer.appendChild(box);
@@ -497,7 +544,7 @@
   function renderLegend() {
     var box = document.getElementById("graph-legend"); box.textContent = "";
     (data ? data.types : []).forEach(function (t) {
-      var row = el("div", "legend-row legend-type"); row.appendChild(swatch(COLORS[t])); row.appendChild(el("span", "", t));
+      var row = el("div", "legend-row legend-type"); row.appendChild(swatch(COLORS[t])); row.appendChild(el("span", "", tn(t)));
       row.addEventListener("click", function () { showType(t); });
       box.appendChild(row);
     });
@@ -544,7 +591,7 @@
     currentFocus = eids; placeLabels(eids);
     var info = TYPES[t] || {};
     openDetail();
-    var h = el("h3"); h.appendChild(swatch(COLORS[t])); h.appendChild(document.createTextNode(fmt(T.lineOf, { t: t }))); body.appendChild(h);
+    var h = el("h3"); h.appendChild(swatch(COLORS[t])); h.appendChild(document.createTextNode(fmt(T.lineOf, { t: tn(t) }))); body.appendChild(h);
     var tb = el("table", "detail-table");
     kv(tb, T.objects, num(info.objects || 0));
     var sum = function (f) { return vis.filter(f).reduce(function (a, e) { return a + e.count; }, 0); };
@@ -554,8 +601,8 @@
     if (info.hub) {
       var own = (data.own_activities || {})[t] || [];
       body.appendChild(el("p", "tiny hub-note", data.hub_mode === "all"
-        ? fmt(T.hubNoteAll, { n: num(Math.round(info.avg)), t: t })
-        : (own.length ? fmt(T.hubNoteOwn, { t: t, a: own.join(", ") }) : fmt(T.hubNoOwn, { t: t }))));
+        ? fmt(T.hubNoteAll, { n: num(Math.round(info.avg)), t: tn(t) })
+        : (own.length ? fmt(T.hubNoteOwn, { t: tn(t), a: own.map(an).join(", ") }) : fmt(T.hubNoOwn, { t: tn(t) }))));
     }
     edgeList(T.mainPaths, vis.filter(function (e) { return !isStart(e.source) && !isEnd(e.target); }).slice(0, 10),
              function (e) { return null; });
@@ -584,12 +631,12 @@
     var vis = data.edges.filter(edgeVisible);
     var inc = vis.filter(function (e) { return e.target === id; }), out = vis.filter(function (e) { return e.source === id; });
     openDetail(); focusOn(id, inc.concat(out));
-    body.appendChild(el("h3", "", n.label));
+    body.appendChild(el("h3", "", an(n.label)));
     var t = el("table", "detail-table"); kv(t, T.events, num(n.count)); body.appendChild(t);
     var bt = el("table", "detail-table"), head = el("tr");
     [T.type, T.events, T.objects].forEach(function (h) { head.appendChild(el("th", "", h)); }); bt.appendChild(head);
     n.types.forEach(function (x) {
-      var tr = el("tr"), td = el("td"); td.appendChild(swatch(x.color)); td.appendChild(document.createTextNode(x.type));
+      var tr = el("tr"), td = el("td"); td.appendChild(swatch(x.color)); td.appendChild(document.createTextNode(tn(x.type)));
       tr.appendChild(td); tr.appendChild(el("td", "", num(x.events))); tr.appendChild(el("td", "", num(x.objects))); bt.appendChild(tr);
     });
     body.appendChild(bt);
@@ -602,7 +649,7 @@
     var n = node.data("raw"), vis = data.edges.filter(edgeVisible);
     var mine = vis.filter(function (e) { return e.source === n.id || e.target === n.id; });
     openDetail(); focusOn(n.id, mine);
-    body.appendChild(el("h3", "", fmt(n.kind === "start" ? T.startOf : T.endOf, { t: n.label })));
+    body.appendChild(el("h3", "", fmt(n.kind === "start" ? T.startOf : T.endOf, { t: tn(n.label) })));
     body.appendChild(el("p", "", fmt(n.kind === "start" ? T.startCount : T.endCount, { n: num(n.count) })));
     if (n.kind === "start") edgeList(T.outgoing, mine, function (e) { return e.target; });
     else edgeList(T.incoming, mine, function (e) { return e.source; });
@@ -615,7 +662,7 @@
     fadeExcept(ids, eids); edge.select();
     body.appendChild(el("h3", "", nodeName(e.source) + " → " + nodeName(e.target)));
     var t = el("table", "detail-table"), tr = el("tr"), td = el("td");
-    tr.appendChild(el("th", "", T.type)); td.appendChild(swatch(e.color)); td.appendChild(document.createTextNode(e.type)); tr.appendChild(td); t.appendChild(tr);
+    tr.appendChild(el("th", "", T.type)); td.appendChild(swatch(e.color)); td.appendChild(document.createTextNode(tn(e.type))); tr.appendChild(td); t.appendChild(tr);
     kv(t, T.transitions, num(e.count)); kv(t, T.objects, num(e.objects));
     if (e.duration) {
       kv(t, T.median, dur(e.duration.median)); kv(t, T.mean, dur(e.duration.mean));
@@ -674,6 +721,127 @@
   var ds = document.getElementById("dataset-select");
   if (ds) ds.addEventListener("change", function () {
     location.href = "/analysis/explorer?workspace_id=" + encodeURIComponent(WS) + "&config_id=" + encodeURIComponent(ds.value);
+  });
+
+  // ---------- nomi personali nell'elenco dei tipi ----------
+  function renderTypeNames() {
+    document.querySelectorAll(".tn").forEach(function (sp) { sp.textContent = tn(sp.dataset.type); });
+    document.querySelectorAll(".tn-orig").forEach(function (sp) {
+      var t = sp.dataset.type; sp.textContent = ALIASES.object_type[t] ? " (" + fmt(T.origName, { o: t }) + ")" : "";
+    });
+    document.querySelectorAll(".tn-reset").forEach(function (b) { b.hidden = !ALIASES.object_type[b.dataset.type]; });
+  }
+  function saveAlias(kind, original, alias) {
+    return fetch("/analysis/explorer/alias", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: WS, config_id: CONFIG, kind: kind, original: original, alias: alias })
+    }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (res) { ALIASES = res.aliases; renderTypeNames(); if (data) { renderLists(); draw(); } return res; });
+  }
+  document.querySelectorAll(".tn-reset").forEach(function (b) {
+    b.addEventListener("click", function () { saveAlias("object_type", b.dataset.type, ""); });
+  });
+  renderTypeNames();
+
+  // ---------- assistente dell'analisi ----------
+  var asPanel = document.getElementById("assistant"), asMsgs = document.getElementById("as-messages");
+  var asText = document.getElementById("as-text"), asCost = document.getElementById("as-cost");
+  var asSend = document.getElementById("as-send");
+  var history = [], spent = 0, asBusy = false, asFocus = null;
+  function usd(x) { return Number(x).toLocaleString(LANG, { style: "currency", currency: "USD", minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+  function viewState() {
+    var hubAll = document.getElementById("hub-all");
+    return { types: selectedTypes(), acts: actMode, act: actSet || [], top: actTop, paths: Number(pathSlider.value),
+             hub: hubAll && hubAll.checked ? "all" : "own" };
+  }
+  function asPost(messages, estimateOnly) {
+    return fetch("/analysis/explorer/assistant", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: WS, config_id: CONFIG, messages: messages, view: viewState(),
+                             focus: asFocus, estimate: !!estimateOnly })
+    }).then(function (r) { return r.json().then(function (j) { j._status = r.status; return j; }); });
+  }
+  function updateEstimate() {
+    asPost(history.concat([{ role: "user", content: asText.value || "?" }]), true).then(function (j) {
+      if (j.available === false) { asCost.textContent = j.error; asSend.disabled = true; asText.disabled = true; return; }
+      if (j.cost_usd === undefined) return;
+      asCost.textContent = fmt(T.asCost, { c: usd(j.cost_usd), m: usd(j.max_usd) }) + (spent ? " · " + fmt(T.asSpent, { s: usd(spent) }) : "");
+    }).catch(function () {});
+  }
+  function renderSuggestions() {
+    var box = document.getElementById("as-suggest"); box.textContent = "";
+    if (history.length) return;
+    var types = selectedTypes(), hub = Object.keys(TYPES).filter(function (t) { return TYPES[t].hub; })[0];
+    var sug = [];
+    if (types.length) sug.push(fmt(T.asSugWhat, { t: tn(types[0]) }));
+    sug.push(T.asSugRead, T.asSugSlow);
+    if (hub) sug.push(fmt(T.asSugHub, { t: tn(hub) }));
+    sug.forEach(function (q) {
+      var b = el("button", "as-chip", q); b.type = "button";
+      b.addEventListener("click", function () { asText.value = q; ask(); });
+      box.appendChild(b);
+    });
+  }
+  function bubble(role, text, cost) {
+    var b = el("div", "as-msg as-" + role, text);
+    if (cost) b.appendChild(el("div", "as-msg-cost", usd(cost)));
+    asMsgs.appendChild(b);
+    asMsgs.parentNode.scrollTop = asMsgs.parentNode.scrollHeight;
+    return b;
+  }
+  function actionCard(a) {
+    var kind = a.kind, o = a.original, n = (a.new_name || "").trim();
+    var shown = kind === "object_type" ? o : o;
+    var card = el("div", "as-action");
+    card.appendChild(el("div", "", n ? fmt(T.asRenameQ, { o: shown, n: n }) : fmt(T.asResetQ, { o: shown })));
+    var row = el("div", "as-action-row"), ok = el("button", "primary", T.asConfirm), no = el("button", "secondary", T.asCancel);
+    ok.type = no.type = "button";
+    ok.addEventListener("click", function () {
+      ok.disabled = no.disabled = true;
+      saveAlias(kind, o, n).then(function () {
+        card.textContent = "✓ " + (n ? fmt(T.asRenamed, { o: o, n: n }) : fmt(T.asReset, { o: o }));
+        history.push({ role: "user", content: n ? fmt(T.asRenamed, { o: o, n: n }) : fmt(T.asReset, { o: o }) });
+      }).catch(function () { ok.disabled = no.disabled = false; card.appendChild(el("div", "as-error", T.asRenameError)); });
+    });
+    no.addEventListener("click", function () { card.textContent = T.asCancelled; });
+    row.appendChild(ok); row.appendChild(no); card.appendChild(row);
+    asMsgs.appendChild(card);
+  }
+  function ask() {
+    var q = asText.value.trim();
+    if (!q || asBusy) return;
+    asBusy = true; asSend.disabled = true;
+    history.push({ role: "user", content: q });
+    asText.value = ""; renderSuggestions();
+    bubble("user", q);
+    var wait = bubble("assistant", T.asThinking); wait.classList.add("as-wait");
+    asPost(history, false).then(function (j) {
+      wait.remove();
+      if (j.available === false || j.error) { bubble("error", j.error || T.asError); history.pop(); return; }
+      spent += j.cost_usd || 0;
+      var text = j.answer || "";
+      history.push({ role: "assistant", content: text || "(rename_label)" });
+      if (text) bubble("assistant", text, j.cost_usd);
+      (j.actions || []).forEach(actionCard);
+    }).catch(function () { wait.remove(); bubble("error", T.asError); history.pop(); })
+      .finally(function () { asBusy = false; asSend.disabled = false; updateEstimate(); });
+  }
+  function openAssistant(prefill, focus) {
+    asPanel.hidden = false; asFocus = focus || null;
+    if (prefill) asText.value = prefill;
+    renderSuggestions(); updateEstimate();
+    asText.focus();
+  }
+  document.getElementById("as-open").addEventListener("click", function () { openAssistant(); });
+  document.getElementById("as-close").addEventListener("click", function () { asPanel.hidden = true; });
+  document.getElementById("as-new").addEventListener("click", function () {
+    history = []; asMsgs.textContent = ""; asFocus = null; renderSuggestions(); updateEstimate();
+  });
+  document.getElementById("as-form").addEventListener("submit", function (e) { e.preventDefault(); ask(); });
+  asText.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
+  document.getElementById("detail-ask").addEventListener("click", function () {
+    var h = body.querySelector("h3"), title = h ? h.textContent : "";
+    openAssistant(fmt(T.asAbout, { x: title }), title);
   });
 
   load();

@@ -126,6 +126,14 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   come numero nella fermata. Un interruttore mostra la linea su tutti gli eventi collegati (sottile e in
   trasparenza). Scelta di modello: il cliente resta un oggetto nell'ingestion (ha eventi propri e collega
   documenti diversi); la lettura corretta si risolve nell'analisi.
+- ✅ **Assistente dell'analisi** (7 ottobre 2026): pannello «✦ Assistente» nel Process Explorer (anche
+  «Chiedi all'assistente» dal dettaglio di una fermata o di un collegamento). Risponde su oggetti, attività e
+  numeri usando il contesto del processo (assessment), la provenienza dai dati sorgente (tabelle e colonne
+  del mapping) e la vista corrente (tipi scelti, collegamenti visibili con passaggi e tempi). Costo indicativo
+  mostrato prima dell'invio e speso finora; risposta nella lingua attiva (`services/analysis_assistant.py`,
+  modello `EXPLAIN_MODEL`). **Nomi personali**: chiedendo all'assistente («chiamalo Invoice») un tipo di
+  oggetto o un'attività prende un nome proprio dopo la conferma, solo nell'analisi di quell'utente e per quel
+  dataset (tabella `analysis_alias`); il dataset non cambia; «↺ nome originale» nell'elenco dei tipi.
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 
