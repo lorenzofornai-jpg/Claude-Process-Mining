@@ -78,7 +78,7 @@
         </label>
         {% elif q.type == "textarea" %}
         <label class="span-2"><span>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
-          <textarea name="{{ q.id }}" rows="2" placeholder="{{ _(q.placeholder) if q.placeholder else '' }}">{{ value or '' }}</textarea>
+          <textarea name="{{ q.id }}" rows="4" class="autogrow" lang="{{ current_lang() }}" placeholder="{{ _(q.placeholder) if q.placeholder else '' }}">{{ value or '' }}</textarea>
         </label>
         {% else %}
         <label><span>{{ _(q.label) }}{% if q.required %} <span class="req">*</span>{% endif %}</span>
@@ -159,4 +159,13 @@
     <a class="secondary button-link" href="/ingestion/dashboard">{{ _("Torna ai miei processi") }}</a>
   </div>
 </div>
+<script>
+  // le caselle di testo lunghe crescono con il contenuto: tutto il testo resta visibile mentre si scrive
+  (function () {
+    function grow(t) { t.style.height = "auto"; t.style.height = (t.scrollHeight + 2) + "px"; }
+    document.querySelectorAll("textarea.autogrow").forEach(function (t) {
+      grow(t); t.addEventListener("input", function () { grow(t); });
+    });
+  })();
+</script>
 {% endblock %}

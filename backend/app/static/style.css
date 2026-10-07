@@ -737,3 +737,4 @@ button.ov-type:hover { border-color: var(--brand); }
 .objective-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .objective-actions button { margin: 0; }
 .ov-filter-note { margin: 12px 0 0; background: var(--brand-soft); border-radius: var(--radius-sm); padding: 6px 10px; }
+textarea.autogrow { min-height: 110px; max-height: 60vh; overflow-y: auto; line-height: 1.5; resize: vertical; }
