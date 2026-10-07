@@ -449,7 +449,9 @@
       var hub = !!(TYPES[e.type] || {}).hub && data.hub_mode === "all";
       els.push({ group: "edges", classes: (s === t ? "loop " : "") + (isStart(e.source) ? "entry " : "") + (hub ? "hub" : ""),
         data: { id: e.id, source: s, target: t, color: e.color, type: e.type, hub: hub,
-        turn: isStart(e.source) ? "92%" : 14 + (ti % 6) * 11,
+        // le linee d'ingresso girano subito sotto la riga delle partenze e scendono lungo la colonna del loro punto
+        // (a sinistra delle etichette), cosi' non passano dietro i riquadri delle fermate
+        turn: isStart(e.source) ? 22 + (ti % 6) * 7 : 14 + (ti % 6) * 11,
         width: (hub ? 1.2 + 1.8 : 1.8 + 3.4) * Math.sqrt(e.count / maxCount) + (hub ? 0.6 : 0), label: edgeLabel(e), raw: e } });
     });
     cy.add(els);

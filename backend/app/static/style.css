@@ -548,7 +548,8 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 #graph { position: absolute; inset: 0; }
 .station-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; pointer-events: none; }
 .station-label { position: absolute; transform: translateY(-50%); pointer-events: auto; cursor: pointer; white-space: nowrap;
-  background: var(--card-bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; font-size: 10px; line-height: 1.35;
+  background: var(--card-bg); background: color-mix(in srgb, var(--card-bg) 78%, transparent);
+  border: 1px solid var(--border); border-radius: 5px; padding: 3px 7px; font-size: 10px; line-height: 1.35;
   box-shadow: var(--shadow-sm); color: var(--text); max-width: 230px; }
 .station-label:hover { border-color: var(--brand); }
 .station-label.start-label { border: 0; box-shadow: none; background: transparent; padding: 0 4px; }
