@@ -382,40 +382,47 @@ def build_ocel(
                     row_preview=preview,
                 ))
                 continue
-            home_id = None
+            home_id, home_excluded = None, False
             if home_object_def is not None:
                 home_type, _ = home_object_def.type_for(row)
                 if home_type is None and _object_key(home_object_def, row) is not None:
-                    # l'oggetto della riga e' escluso dalla divisione per valore (es. documenti contabili che
-                    # non sono ne' fatture ne' incassi): i suoi eventi non fanno parte del processo
-                    value = _clean(row.get(home_object_def.split_column))
-                    skip_log.append(SkipRecord(
-                        event_type=evt_def.name, source_table=evt_def.source_table,
-                        reason=f"valore '{value}' di '{home_object_def.split_column}' escluso nel mapping ({home_object_def.name})",
-                        row_preview=preview, kind="excluded_object",
-                    ))
-                    continue
-                home_id = _build_object_id(home_object_def, row)
+                    home_excluded = True
+                else:
+                    home_id = _build_object_id(home_object_def, row)
+
+            relationships = []
+            if home_id:
+                relationships.append({"objectId": home_id, "qualifier": "involves"})
+            for rule in own_rules:
+                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index, split_ids):
+                    # solo verso oggetti che esistono (es. un riferimento a un ordine fuori estrazione non crea un
+                    # oggetto fantasma; un numero di incasso non diventa una fattura)
+                    if target_id not in objects:
+                        continue
+                    rel = {"objectId": target_id,
+                           "qualifier": rule.get("qualifier") or default_qualifier(rule.get("related_object_type"))}
+                    if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine
+                        relationships.append(rel)
+            if home_excluded and not relationships:
+                # l'oggetto della riga e' escluso dalla divisione per valore e l'evento non riguarda nessun altro
+                # oggetto: non fa parte del processo. Se invece riguarda altri oggetti (es. la registrazione di un
+                # documento contabile che e' la fattura vista dalla sua riga cliente) l'evento resta, legato a loro.
+                value = _clean(row.get(home_object_def.split_column))
+                skip_log.append(SkipRecord(
+                    event_type=evt_def.name, source_table=evt_def.source_table,
+                    reason=f"valore '{value}' di '{home_object_def.split_column}' escluso nel mapping ({home_object_def.name})",
+                    row_preview=preview, kind="excluded_object",
+                ))
+                continue
+
             produced[activity] = produced.get(activity, 0) + 1
             if outcome == "unmapped":
                 value = _clean(row.get(evt_def.activity_column))
                 bucket = unmapped.setdefault(evt_def.name, {})
                 bucket[value] = bucket.get(value, 0) + 1
             attrs_by_activity.setdefault(activity, list(evt_def.attribute_columns))
-
             event_counter += 1
             event_id = f"e{event_counter}"
-
-            relationships = []
-            if home_id:
-                relationships.append({"objectId": home_id, "qualifier": "involves"})
-
-            for rule in own_rules:
-                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index, split_ids):
-                    rel = {"objectId": target_id,
-                           "qualifier": rule.get("qualifier") or default_qualifier(rule.get("related_object_type"))}
-                    if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine
-                        relationships.append(rel)
 
             attrs = []
             for col in evt_def.attribute_columns:

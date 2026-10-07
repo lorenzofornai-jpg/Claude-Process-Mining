@@ -1075,4 +1075,6 @@ EN: dict[str, str] = {
     "uguale a (valori separati da virgola)": "equal to (comma-separated values)",
     "un oggetto per valore ({v}), da rinominare": "one object per value ({v}), to rename",
     "{o} non è tra gli oggetti di business confermati: resta come attributo dell'evento (dimensione per filtrare e confrontare).": "{o} is not among the confirmed business objects: it stays as an event attribute (a dimension to filter and compare).",
+    # Collegamento per chiave condivisa
+    "Gli eventi di {t} contengono la chiave di {o} ({k}): riguardano anche quell'oggetto.": "The events of {t} contain the key of {o} ({k}): they also concern that object.",
 }

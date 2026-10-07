@@ -340,4 +340,40 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
                     for v in o["filter"]["values"]:
                         values[v] = o["name"]
             out.append(_rule(table, column, "object_type.split", why, object_type=target, activity_values=values))
+    out.extend(_shared_key_links(out, confirmed, tables_data, rejected, base_of_table))
     return out, rejected
+
+
+def _shared_key_links(rows: list[MappingProposal], confirmed: list[dict], tables_data: dict[str, list[dict]],
+                      rejected: set[int], base_of_table: dict[str, str]) -> list[MappingProposal]:
+    """Gli eventi di una tabella riguardano un oggetto confermato di un'altra tabella quando contengono la sua
+    chiave (stesse colonne) e i valori corrispondono davvero (es. la registrazione della testata contabile
+    BKPF riguarda la fattura vista dalla sua riga cliente BSEG, stesso BELNR). Se il mapping non ha gia' quel
+    collegamento, lo si aggiunge: senza, gli eventi dei documenti non confermati come oggetti andrebbero persi."""
+    live = [r for i, r in enumerate(rows) if i not in rejected]
+    events = {(r.source_table, r.event_type) for r in live if r.ocel_element == "event_type.timestamp" and r.event_type}
+    linked = {(r.event_type, r.related_object_type) for r in live if r.ocel_element == "e2o_relationship"}
+    out = []
+    for table, event in sorted(events):
+        data = tables_data.get(table) or []
+        if not data:
+            continue
+        columns = set(data[0])
+        for o in confirmed:
+            key = o.get("key") or []
+            if (o["table"] == table or not key or not set(key) <= columns or (event, o["name"]) in linked
+                    or (event, base_of_table.get(o["table"])) in linked):  # gia' collegato al tipo di partenza
+                continue
+            f = o.get("filter")
+            mine = {tuple(str(r.get(k) or "").strip() for k in key) for r in data}
+            theirs = {tuple(str(r.get(k) or "").strip() for k in key) for r in tables_data.get(o["table"]) or []
+                      if not f or str(r.get(f["column"]) or "").strip() in f["values"]}
+            mine.discard(tuple("" for _ in key))
+            if not mine or len(mine & theirs) / len(mine) < 0.2:
+                continue
+            out.append(_rule(table, key[0], "e2o_relationship",
+                             msg("Gli eventi di {t} contengono la chiave di {o} ({k}): riguardano anche quell'oggetto.",
+                                 t=table, o=o["name"], k=", ".join(key)),
+                             event_type=event, related_object_type=o["name"], qualifier=f"for {o['name'].lower()}"))
+            linked.add((event, o["name"]))
+    return out

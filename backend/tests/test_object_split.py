@@ -76,3 +76,16 @@ def test_quality_report_tells_split_outcome():
     checks = {render("it", c["check_name"]): render("it", c["details"]) for c in run_data_quality_checks(ocel, skip_log, stats)}
     assert "Order diviso in: Sales Order (2), Return (1), Order (1)" in checks["Oggetti divisi per valore (informativo)"]
     assert "XX (1 righe)" in checks["Valori senza tipo di oggetto"]
+
+
+def test_event_of_excluded_row_stays_if_linked_to_other_objects():
+    """Riga esclusa dalla divisione (TEST), ma il suo evento riguarda anche la spedizione: resta, legato a lei."""
+    tables = {"orders": TABLES["orders"], "shipments": TABLES["shipments"]}
+    rules = _rules({"SO": "Sales Order", "RET": "Return", "TEST": ""}) + [
+        {"source_table": "shipments", "source_column": "order_id", "ocel_element": "e2o_relationship", "object_type": None,
+         "event_type": "Create Order", "attribute_name": None, "qualifier": "ships", "related_object_type": "Shipment",
+         "activity_values": None}]
+    tables["shipments"] = [dict(r, ship_id=r["order_id"]) for r in TABLES["shipments"]]
+    ocel, skip_log, _ = build_ocel(tables, rules)
+    order4 = [e for e in ocel["events"] if e["type"] == "Create Order" and e["time"].startswith("2026-01-04")]
+    assert [r["objectId"] for r in order4[0]["relationships"]] == ["Shipment:4"] and not skip_log
