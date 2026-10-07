@@ -871,4 +871,7 @@ EN: dict[str, str] = {
     "Nome non cambiato.": "Name not changed.",
     "Non è stato possibile salvare il nome.": "The name could not be saved.",
     "originale: {o}": "original: {o}",
+    # Process Explorer, schermo intero
+    "Schermo intero": "Full screen",
+    "Riduci a pagina": "Back to page",
 }

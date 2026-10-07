@@ -99,6 +99,8 @@
 
         <div class="graph-legend tiny" id="graph-legend" hidden></div>
         <div class="graph-controls">
+          <button type="button" class="secondary as-open-full" id="as-open-full" title="{{ _("Assistente") }}">✦</button>
+          <button type="button" class="secondary" id="expand-btn" aria-pressed="false">⛶ <span id="expand-label">{{ _("Schermo intero") }}</span></button>
           <button type="button" class="secondary" id="legend-btn">☰ {{ _("Legenda") }}</button>
           <span class="zoom-group">
             <button type="button" class="secondary" id="zoom-fit" title="{{ _("Adatta alla finestra") }}">⤢</button>
@@ -214,7 +216,9 @@
     asCancelled: {{ _("Nome non cambiato.")|tojson }},
     asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }},
     asRenameError: {{ _("Non è stato possibile salvare il nome.")|tojson }},
-    origName: {{ _("originale: {o}")|tojson }}
+    origName: {{ _("originale: {o}")|tojson }},
+    expand: {{ _("Schermo intero")|tojson }},
+    collapse: {{ _("Riduci a pagina")|tojson }}
   };
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
   function num(n) { return Number(n).toLocaleString(LANG); }
@@ -715,6 +719,19 @@
   document.getElementById("zoom-in").addEventListener("click", function () { zoomBy(1.25); });
   document.getElementById("zoom-out").addEventListener("click", function () { zoomBy(0.8); });
   document.getElementById("zoom-fit").addEventListener("click", fitAll);
+  // grafo a tutto schermo (nella finestra del browser) e ritorno alla pagina com'era
+  var graphSection = document.querySelector(".explorer-graph"), expandBtn = document.getElementById("expand-btn");
+  function setExpanded(on) {
+    graphSection.classList.toggle("expanded", on);
+    document.body.classList.toggle("graph-expanded", on);
+    expandBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    document.getElementById("expand-label").textContent = on ? T.collapse : T.expand;
+    setTimeout(function () { cy.resize(); fitAll(); syncLayer(); placeLabels(currentFocus); }, 30);
+  }
+  expandBtn.addEventListener("click", function () { setExpanded(!graphSection.classList.contains("expanded")); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && graphSection.classList.contains("expanded") && asPanel.hidden) setExpanded(false);
+  });
   document.getElementById("legend-btn").addEventListener("click", function () {
     var lg = document.getElementById("graph-legend"); lg.hidden = !lg.hidden;
   });
@@ -833,6 +850,7 @@
     asText.focus();
   }
   document.getElementById("as-open").addEventListener("click", function () { openAssistant(); });
+  document.getElementById("as-open-full").addEventListener("click", function () { openAssistant(); });
   document.getElementById("as-close").addEventListener("click", function () { asPanel.hidden = true; });
   document.getElementById("as-new").addEventListener("click", function () {
     history = []; asMsgs.textContent = ""; asFocus = null; renderSuggestions(); updateEstimate();

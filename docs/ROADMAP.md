@@ -126,6 +126,8 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   come numero nella fermata. Un interruttore mostra la linea su tutti gli eventi collegati (sottile e in
   trasparenza). Scelta di modello: il cliente resta un oggetto nell'ingestion (ha eventi propri e collega
   documenti diversi); la lettura corretta si risolve nell'analisi.
+- ✅ **Grafo a tutto schermo** (7 ottobre 2026): pulsante «Schermo intero» tra i comandi del grafo; «Riduci a pagina»
+  (o Esc) riporta la pagina com'era. A tutto schermo l'assistente si apre dal pulsante ✦ accanto.
 - ✅ **Assistente dell'analisi** (7 ottobre 2026): pannello «✦ Assistente» nel Process Explorer (anche
   «Chiedi all'assistente» dal dettaglio di una fermata o di un collegamento). Risponde su oggetti, attività e
   numeri usando il contesto del processo (assessment), la provenienza dai dati sorgente (tabelle e colonne

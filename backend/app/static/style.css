@@ -641,3 +641,13 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 @media (max-width: 700px) {
   .assistant { left: 8px; right: 8px; top: 64px; bottom: 8px; width: auto; }
 }
+
+/* grafo a tutto schermo */
+.explorer-graph.expanded { position: fixed; inset: 0; z-index: 35; border: 0; border-radius: 0; }
+.explorer-graph.expanded .graph-canvas { height: 100vh; height: 100dvh; min-height: 0; }
+body.graph-expanded { overflow: hidden; }
+body.graph-expanded .assistant { top: 16px; }
+#expand-btn[aria-pressed="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+@media (max-width: 700px) { #expand-label { display: none; } }
+.as-open-full { display: none; }
+.explorer-graph.expanded .as-open-full { display: inline-block; }
