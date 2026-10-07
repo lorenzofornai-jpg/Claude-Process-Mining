@@ -258,7 +258,7 @@ def ingestion_dashboard(request: Request):
 
 EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name", "qualifier", "related_object_type"]
 VALID_OCEL_ELEMENTS = [
-    "object_type.key", "object_type.attribute",
+    "object_type.key", "object_type.attribute", "object_type.split",
     "event_type.timestamp", "event_type.time", "event_type.activity", "event_type.attribute", "e2o_relationship",
 ]
 
@@ -266,6 +266,7 @@ VALID_OCEL_ELEMENTS = [
 ELEMENT_LABELS = {
     "object_type.key": "la chiave di un oggetto",
     "object_type.attribute": "un attributo di un oggetto",
+    "object_type.split": "la colonna che divide l'oggetto in tipi diversi (es. fatture e incassi)",
     "event_type.timestamp": "la data di un evento",
     "event_type.time": "l'ora di un evento (unita alla sua data)",
     "event_type.activity": "la colonna che dice quale attività è avvenuta",
@@ -296,6 +297,14 @@ def _target_label(r: dict):
                  for k, n in items[:6]]
         more = f" (+{len(items) - 6})" if len(items) > 6 else ""
         return msg("Attività da colonna → «{e}»: {v}{m}", e=v("event_type"), v=joined(shown), m=more)
+    if el == "object_type.split":
+        values = r.get("activity_values") or {}
+        present = r.get("present_values")
+        items = [(k, values.get(k)) for k in present] if present is not None else list(values.items())
+        shown = [f"{k} → {n}" if n else (msg("{k} → (escluso)", k=k) if n is not None else msg("{k} → (resta {o})", k=k, o=v("object_type")))
+                 for k, n in items[:6]]
+        more = f" (+{len(items) - 6})" if len(items) > 6 else ""
+        return msg("Divide {o} per valore: {v}{m}", o=v("object_type"), v=joined(shown), m=more)
     if el == "event_type.attribute":
         return msg("Attributo evento → «{e}».{a}", e=v("event_type"), a=v("attribute_name"))
     if el == "e2o_relationship":
@@ -805,7 +814,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
                                if r["ocel_element"] == "event_type.timestamp" else None)
         if r["ocel_element"] == "e2o_relationship" and not r.get("qualifier"):
             r["qualifier"] = qualifier_for(r.get("related_object_type"), r.get("rationale"))
-        if r["ocel_element"] == "event_type.activity":
+        if r["ocel_element"] in ("event_type.activity", "object_type.split"):
             # valori presenti nei dati caricati: la tabella di traduzione (es. dal dizionario SAP)
             # puo' prevedere anche codici che in questa estrazione non compaiono
             data = sess.get("tables_data", {}).get(r["source_table"], [])
@@ -967,7 +976,9 @@ def _process_order(sess: dict, rows: list[dict]) -> dict:
             times.setdefault(group_of.get(e["type"], e["type"]), []).append(e["time"])
         ranked = sorted(times, key=lambda t: sorted(times[t])[len(times[t]) // 2])
         events_order = {t: i for i, t in enumerate(ranked)}
-        obj_type = {o["id"]: o["type"] for o in ocel["objects"]}
+        # con la divisione per valore gli oggetti hanno il tipo della divisione: contano per il tipo del mapping
+        base_of = stats.get("object_subtypes") or {}
+        obj_type = {o["id"]: base_of.get(o["type"], o["type"]) for o in ocel["objects"]}
         linked_events: dict[str, set] = {}
         for e in ocel["events"]:
             for r in e["relationships"]:
@@ -1042,12 +1053,23 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                     "excluded": sorted(k for k, n in values.items() if n == "") if values else [],
                     "unnamed": sorted(k for k, n in values.items() if n is None) if values else [],
                 }
+            elif el == "object_type.split":
+                values = r.get("activity_values") or {}
+                present = r.get("present_values")
+                if present is not None:
+                    values = {k: values.get(k) for k in present}
+                d[bucket + "split"] = {
+                    "column": r["source_column"],
+                    "names": sorted({n for n in values.values() if n}),
+                    "excluded": sorted(k for k, n in values.items() if n == ""),
+                    "unnamed": sorted(k for k, n in values.items() if n is None),
+                }
             elif el == "e2o_relationship" and r.get("related_object_type"):
                 links = d.setdefault(bucket + "links", [])
                 if r["related_object_type"] not in links:
                     links.append(r["related_object_type"])
-        if el not in ("object_type.key", "event_type.timestamp", "event_type.time", "event_type.activity",
-                      "e2o_relationship"):
+        if el not in ("object_type.key", "object_type.split", "event_type.timestamp", "event_type.time",
+                      "event_type.activity", "e2o_relationship"):
             d["all_attributes"] = d.get("all_attributes", 0) + 1
             if r["status"] != "rejected":
                 d["attributes"] += 1
@@ -1057,6 +1079,7 @@ def _model_summary(rows: list[dict], order: dict | None = None) -> dict:
                 d[k] = d.get("all_" + k, [])
             d["planned"] = d.get("all_planned")
             d["activity"] = d.get("all_activity")
+            d["split"] = d.get("all_split")
             d["attributes"] = d.get("all_attributes", 0)
     order = order or {"events": {}, "objects": {}}
     for g in groups.values():
@@ -1096,13 +1119,20 @@ async def submit_review(
                 r[field] = submitted
                 changed = True
         submitted = form.get(f"field_activity_values_{r['row_id']}")
-        if submitted is not None and r["ocel_element"] == "event_type.activity":
+        if submitted is not None and r["ocel_element"] in ("event_type.activity", "object_type.split"):
             values = parse_activity_values(submitted)
             if values != (r.get("activity_values") or None):
                 r["activity_values"] = values
                 changed = True
         if changed:
             normalize_row(r)
+        if r["ocel_element"] == "object_type.split" and not r.get("activity_values") and r.get("source_column"):
+            # divisione appena scelta: si parte dai valori presenti, tutti ancora nell'oggetto del mapping;
+            # l'utente scrive accanto a ognuno il tipo di oggetto (o lo lascia vuoto per escluderlo)
+            data = sess.get("tables_data", {}).get(r["source_table"], [])
+            present = sorted({str(x.get(r["source_column"]) or "").strip() for x in data} - {"", "nan"})
+            r["activity_values"] = {v: r.get("object_type") or "" for v in present} or None
+            changed = True
         # una correzione manuale prevale sulla decisione radio: la riga resta
         # "nel mapping" ma tracciata come intervento umano, non proposta AI accettata
         if changed and r["status"] != "rejected":

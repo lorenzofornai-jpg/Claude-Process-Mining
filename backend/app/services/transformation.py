@@ -42,6 +42,28 @@ class ObjectTypeDefCompiled:
     source_table: str
     key_columns: list[str]
     attribute_columns: list[str] = field(default_factory=list)
+    # divisione per valore (object_type.split): {valore della colonna: tipo di oggetto} ("" = escluso)
+    split_column: str | None = None
+    split_values: dict[str, str] | None = None
+
+    def type_for(self, row: dict) -> tuple[str | None, str]:
+        """(tipo di oggetto, esito) per una riga: senza divisione e' sempre il tipo del mapping; con la
+        divisione e' il tipo indicato per il valore della colonna, None se il valore e' escluso.
+        Un valore non previsto (o vuoto) resta nel tipo del mapping, cosi' nessun oggetto sparisce in silenzio."""
+        if not self.split_column:
+            return self.name, "ok"
+        value = _clean(row.get(self.split_column))
+        if (self.split_values or {}).get(value) is not None:
+            name = self.split_values[value].strip()
+            return (name, "ok") if name else (None, "excluded")
+        return self.name, "unmapped"
+
+    def output_types(self) -> list[str]:
+        """Tipi di oggetto che questa definizione puo' produrre."""
+        if not self.split_column:
+            return [self.name]
+        out = [n.strip() for n in (self.split_values or {}).values() if n and n.strip()]
+        return list(dict.fromkeys(out + [self.name]))
 
 
 @dataclass
@@ -78,6 +100,8 @@ class SkipRecord:
     row_preview: dict
     # "timestamp": data mancante/illeggibile (problema di qualita');
     # "excluded": valore della colonna attivita' escluso deliberatamente nel mapping;
+    # "excluded_object": l'oggetto della riga e' escluso dalla divisione per valore (es. documenti che non
+    # sono ne' fatture ne' incassi), quindi anche il suo evento;
     # "activity": colonna attivita' vuota
     kind: str = "timestamp"
 
@@ -98,6 +122,9 @@ FIELDS_BY_ELEMENT = {
     "event_type.activity": ["event_type", "activity_values"],
     "event_type.attribute": ["event_type", "attribute_name"],
     "e2o_relationship": ["event_type", "related_object_type", "qualifier"],
+    # una tabella con documenti di natura diversa (fatture e incassi, ordini e resi) diventa piu' tipi
+    # di oggetto in base al valore di una colonna (es. tipo documento); stessa sintassi «valore = nome»
+    "object_type.split": ["object_type", "activity_values"],
 }
 
 
@@ -180,6 +207,12 @@ def compile_defs(confirmed: list[dict]) -> tuple[dict[str, ObjectTypeDefCompiled
             ed = event_defs[m["event_type"]]
             if ed.source_table == m["source_table"] and m.get("source_column"):
                 ed.time_column = m["source_column"]
+        elif m["ocel_element"] == "object_type.split" and m["object_type"] in object_defs:
+            od = object_defs[m["object_type"]]
+            if od.source_table == m["source_table"] and m.get("source_column"):
+                od.split_column = m["source_column"]
+                values = m.get("activity_values") or {}
+                od.split_values = {str(k).strip(): v for k, v in values.items()}
         elif m["ocel_element"] == "event_type.activity" and m["event_type"] in event_defs:
             ed = event_defs[m["event_type"]]
             if ed.source_table == m["source_table"] and m.get("source_column"):
@@ -190,11 +223,20 @@ def compile_defs(confirmed: list[dict]) -> tuple[dict[str, ObjectTypeDefCompiled
     return object_defs, event_defs
 
 
-def _build_object_id(obj_def: ObjectTypeDefCompiled, row: dict) -> str | None:
+def _object_key(obj_def: ObjectTypeDefCompiled, row: dict) -> str | None:
     values = [str(row.get(c, "")).strip() for c in obj_def.key_columns]
     if not obj_def.key_columns or any(v == "" or v == "nan" for v in values):
         return None
-    return f"{obj_def.name}:" + "|".join(values)
+    return "|".join(values)
+
+
+def _build_object_id(obj_def: ObjectTypeDefCompiled, row: dict) -> str | None:
+    """Id dell'oggetto della riga; con la divisione per valore il prefisso e' il tipo di quella riga."""
+    key = _object_key(obj_def, row)
+    if key is None:
+        return None
+    obj_type, _ = obj_def.type_for(row)
+    return f"{obj_type}:{key}" if obj_type else None
 
 
 def _parse_time(raw: str | None, time_raw: str | None = None) -> datetime | None:
@@ -220,14 +262,35 @@ def _resolve_related_objects(
     object_defs: dict[str, ObjectTypeDefCompiled],
     tables_data: dict[str, list[dict]],
     join_index: dict | None = None,
+    split_ids: dict[str, dict[str, str]] | None = None,
 ) -> list[str]:
-    target_def = object_defs.get(mapping["related_object_type"])
+    """split_ids: per i tipi divisi per valore, {tipo del mapping: {chiave: id dell'oggetto creato}}.
+    Il collegamento puo' puntare al tipo del mapping (va all'oggetto con quella chiave, qualunque sia
+    il suo tipo dopo la divisione) o a uno dei tipi della divisione (solo se l'oggetto e' di quel tipo)."""
+    wanted = mapping["related_object_type"]
+    target_def = object_defs.get(wanted)
+    only = None
+    if target_def is None:
+        target_def = next((o for o in object_defs.values() if o.split_column and wanted in o.output_types()), None)
+        only = wanted
     if target_def is None:
         return []
 
+    def ids_for(rows) -> list[str]:
+        out = []
+        for r in rows:
+            if target_def.split_column:
+                obj_id = (split_ids or {}).get(target_def.name, {}).get(_object_key(target_def, r) or "")
+                if obj_id and (only is None or obj_id.startswith(only + ":")):
+                    out.append(obj_id)
+            else:
+                obj_id = _build_object_id(target_def, r)
+                if obj_id:
+                    out.append(obj_id)
+        return out
+
     if all(c in event_row for c in target_def.key_columns):
-        obj_id = _build_object_id(target_def, event_row)
-        return [obj_id] if obj_id else []
+        return ids_for([event_row])
 
     join_table = mapping["source_table"]
     join_col = mapping["source_column"]
@@ -244,8 +307,7 @@ def _resolve_related_objects(
                 idx.setdefault(r.get(join_col), []).append(r)
             join_index[key] = idx
         joined_rows = join_index[key].get(value, []) if value not in (None, "") else []
-    ids = [_build_object_id(target_def, r) for r in joined_rows]
-    return [i for i in ids if i]
+    return ids_for(joined_rows)
 
 
 def build_ocel(
@@ -257,17 +319,33 @@ def build_ocel(
     relationship_rules = [m for m in confirmed if m["ocel_element"] == "e2o_relationship"]
 
     objects: dict[str, dict] = {}
+    split_ids: dict[str, dict[str, str]] = {}
+    excluded_objects: dict[str, int] = {}
+    unmapped_split: dict[str, dict[str, int]] = {}
     for obj_def in object_defs.values():
         for row in tables_data.get(obj_def.source_table, []):
-            obj_id = _build_object_id(obj_def, row)
-            if obj_id is None or obj_id in objects:
+            key = _object_key(obj_def, row)
+            if key is None:
+                continue
+            obj_type, outcome = obj_def.type_for(row)
+            if obj_type is None:
+                excluded_objects[obj_def.name] = excluded_objects.get(obj_def.name, 0) + 1
+                continue
+            if outcome == "unmapped":
+                bucket = unmapped_split.setdefault(obj_def.name, {})
+                value = _clean(row.get(obj_def.split_column))
+                bucket[value] = bucket.get(value, 0) + 1
+            obj_id = f"{obj_type}:{key}"
+            if obj_def.split_column:
+                split_ids.setdefault(obj_def.name, {}).setdefault(key, obj_id)
+            if obj_id in objects:
                 continue
             attrs = []
             for col in obj_def.attribute_columns:
                 val = row.get(col)
                 if val is not None and str(val).strip() not in ("", "nan"):
                     attrs.append({"name": col, "time": "1970-01-01T00:00:00Z", "value": str(val)})
-            objects[obj_id] = {"id": obj_id, "type": obj_def.name, "attributes": attrs}
+            objects[obj_id] = {"id": obj_id, "type": obj_type, "attributes": attrs}
 
     join_index: dict = {}
     events: list[dict] = []
@@ -304,6 +382,20 @@ def build_ocel(
                     row_preview=preview,
                 ))
                 continue
+            home_id = None
+            if home_object_def is not None:
+                home_type, _ = home_object_def.type_for(row)
+                if home_type is None and _object_key(home_object_def, row) is not None:
+                    # l'oggetto della riga e' escluso dalla divisione per valore (es. documenti contabili che
+                    # non sono ne' fatture ne' incassi): i suoi eventi non fanno parte del processo
+                    value = _clean(row.get(home_object_def.split_column))
+                    skip_log.append(SkipRecord(
+                        event_type=evt_def.name, source_table=evt_def.source_table,
+                        reason=f"valore '{value}' di '{home_object_def.split_column}' escluso nel mapping ({home_object_def.name})",
+                        row_preview=preview, kind="excluded_object",
+                    ))
+                    continue
+                home_id = _build_object_id(home_object_def, row)
             produced[activity] = produced.get(activity, 0) + 1
             if outcome == "unmapped":
                 value = _clean(row.get(evt_def.activity_column))
@@ -315,13 +407,11 @@ def build_ocel(
             event_id = f"e{event_counter}"
 
             relationships = []
-            if home_object_def is not None:
-                home_id = _build_object_id(home_object_def, row)
-                if home_id:
-                    relationships.append({"objectId": home_id, "qualifier": "involves"})
+            if home_id:
+                relationships.append({"objectId": home_id, "qualifier": "involves"})
 
             for rule in own_rules:
-                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index):
+                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index, split_ids):
                     rel = {"objectId": target_id,
                            "qualifier": rule.get("qualifier") or default_qualifier(rule.get("related_object_type"))}
                     if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine
@@ -344,9 +434,11 @@ def build_ocel(
     events.sort(key=lambda e: e["time"])
 
     ocel = {
+        # con la divisione per valore: i tipi effettivamente prodotti, con gli attributi della definizione
         "objectTypes": [
-            {"name": od.name, "attributes": [{"name": c, "type": "string"} for c in od.attribute_columns]}
-            for od in object_defs.values()
+            {"name": t, "attributes": [{"name": c, "type": "string"} for c in od.attribute_columns]}
+            for od in object_defs.values() for t in od.output_types()
+            if not od.split_column or any(o["type"] == t for o in objects.values())
         ],
         # un tipo di evento senza colonna attivita' compare sempre, anche senza eventi
         "eventTypes": [
@@ -363,13 +455,17 @@ def build_ocel(
     stats = {
         "object_count": len(objects),
         "event_count": len(events),
-        "object_types": len(object_defs),
+        "object_types": len(ocel["objectTypes"]),
         "event_types": len(ocel["eventTypes"]),
-        "skipped_count": sum(1 for s in skip_log if s.kind != "excluded"),
+        "skipped_count": sum(1 for s in skip_log if s.kind not in ("excluded", "excluded_object")),
         # per tipo di evento del mapping: attivita' prodotte con il numero di eventi,
         # e i valori della colonna attivita' tenuti senza traduzione
         "activities": {k: v for k, v in activities.items() if v},
         "unmapped_activity_values": unmapped,
+        # divisione per valore: tipo prodotto -> tipo del mapping; oggetti esclusi; valori senza tipo
+        "object_subtypes": {t: od.name for od in object_defs.values() if od.split_column for t in od.output_types()},
+        "excluded_objects": excluded_objects,
+        "unmapped_split_values": unmapped_split,
     }
     return ocel, skip_log, stats
 

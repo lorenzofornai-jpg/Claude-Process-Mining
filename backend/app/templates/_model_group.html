@@ -6,6 +6,11 @@
   <div class="tiny model-card-body">
     {% if g.kind == "obj" %}
       <div>{{ _("Chiave:") }} <span class="mono">{{ g["keys"]|join(" + ") if g["keys"] else "—" }}</span>{% if not g["keys"] and g.rejected < g.total %} <span class="sev sev-attenzione">{{ _("senza chiave") }}</span>{% endif %}</div>
+      {% if g.split %}
+      <div>{{ _("Diviso in base alla colonna {c}:", c=g.split.column) }} {{ g.split.names|join(", ") or "—" }}{% if g.split.excluded %}
+        <span class="muted">· {{ _("esclusi:") }} <span class="mono">{{ g.split.excluded|join(", ") }}</span></span>{% endif %}{% if g.split.unnamed %}
+        <span class="muted">· {{ _("restano {o}:", o=g.name) }} <span class="mono">{{ g.split.unnamed|join(", ") }}</span></span>{% endif %}</div>
+      {% endif %}
     {% else %}
       <div>{{ _("Data/ora:") }} <span class="mono">{{ g.timestamps|join(", ") if g.timestamps else "—" }}{% if g.times %} + {{ _("ora da") }} {{ g.times|join(", ") }}{% endif %}</span>{% if not g.timestamps and g.rejected < g.total %} <span class="sev sev-attenzione">{{ _("senza data") }}</span>{% endif %}</div>
       {% if g.planned and g.rejected < g.total %}

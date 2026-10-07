@@ -75,6 +75,12 @@ STRONG_ACTIVITY_RE = re.compile(
 # motivo di un'operazione (perche', non che cosa): attributo dell'evento, non attivita'.
 # «causale» resta un indizio di attivita': in molti gestionali e' il tipo di operazione.
 REASON_HINT_RE = re.compile(r"(reason|motiv|grund|rstgr|abgru|^cause$|_cause$|^causa$|_causa$)", re.I)
+# tipo o categoria dei record (tipo documento, categoria, tipo ordine...): una tabella di oggetti puo'
+# contenere oggetti di business diversi (fatture e incassi, ordini e resi)
+TYPE_HINT_RE = re.compile(
+    r"(type|tipo|kind|categor|class|blart|auart|fkart|bsart|vbtyp|koart|record_?type|doc_?type)", re.I
+)
+MAX_TYPE_VALUES = 20
 # numero di giorni da sommare a una data base (es. giorni di pagamento)
 DAYS_HINT_RE = re.compile(
     r"(days|giorni|tage|ztag|zbd\dt|^gg|_gg$|ggpag|term_?days|net_?days|payment_?days)", re.I
@@ -284,6 +290,7 @@ def profile_tables(
                 "Nel mapping verrà proposta come colonna attività: ogni valore diventa un'attività con un nome "
                 "leggibile, da confermare (o escludere) in revisione.",
             ))
+        t["type_columns"] = _type_columns(df, t["key"], dates)
         t["reason_columns"] = _reason_columns(df, t["key"])
         for rc in t["reason_columns"]:
             shown = ", ".join(rc["values"][:6]) + ("…" if len(rc["values"]) > 6 else "")
@@ -403,6 +410,25 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
     # con una colonna dal nome indicativo, le altre (solo etichette testuali) sono quasi sempre dimensioni
     if any(o["name_hint"] for o in out):
         out = [o for o in out if o["name_hint"]]
+    return out
+
+
+def _type_columns(df: pd.DataFrame, key: list[str] | None, dates: set[str]) -> list[dict]:
+    """Colonne con il tipo o la categoria dei record di una tabella di oggetti (con chiave): poche
+    modalita' sempre valorizzate. Candidate per dividere l'oggetto in tipi di business diversi."""
+    if not key:
+        return []
+    out = []
+    for c in df.columns:
+        if c in key or c in dates or not TYPE_HINT_RE.search(c):
+            continue
+        s = df[c].dropna().astype(str).str.strip()
+        s = s[s != ""]
+        if len(s) < 0.9 * len(df):
+            continue
+        counts = s.value_counts()
+        if 2 <= len(counts) <= MAX_TYPE_VALUES:
+            out.append({"column": c, "values": {str(k): int(v) for k, v in counts.items()}})
     return out
 
 
@@ -592,6 +618,11 @@ def compact_for_mapping(profile: dict) -> dict:
         "activity_columns": {
             t["name"]: {a["column"]: a["values"] for a in t.get("activity_columns", [])}
             for t in profile["tables"] if t.get("activity_columns")
+        },
+        # tipo o categoria dei record di una tabella di oggetti (con il numero di righe): candidate per "split"
+        "type_columns": {
+            t["name"]: {c["column"]: c["values"] for c in t.get("type_columns", [])}
+            for t in profile["tables"] if t.get("type_columns")
         },
         # motivo o causale di un'operazione: attributo, mai attivita'
         "reason_columns": {

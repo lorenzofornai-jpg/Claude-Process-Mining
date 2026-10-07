@@ -303,6 +303,7 @@ _ELEMENT = {
     "activity": "event_type.activity",
     "evt_attr": "event_type.attribute",
     "relation": "e2o_relationship",
+    "split": "object_type.split",
 }
 
 
@@ -313,13 +314,13 @@ class LLMActivityValue(BaseModel):
 
 class LLMColumnMapping(BaseModel):
     col: str                                   # colonna sorgente
-    el: Literal["key", "obj_attr", "timestamp", "activity", "evt_attr", "relation"]
+    el: Literal["key", "obj_attr", "timestamp", "activity", "evt_attr", "relation", "split"]
     obj: Optional[str] = None                  # object_type
     evt: Optional[str] = None                  # event_type
     attr: Optional[str] = None                 # attribute_name
     q: Optional[str] = None                    # qualifier
     rel: Optional[str] = None                  # related_object_type
-    values: Optional[list[LLMActivityValue]] = None  # solo per "activity"
+    values: Optional[list[LLMActivityValue]] = None  # solo per "activity" e "split"
     conf: float
     why: str = ""                              # rationale (vuota se confidence alta)
 
@@ -390,7 +391,8 @@ Contesto ("process_context"):
   activity_columns (colonna -> tutti i suoi valori distinti: probabile colonna che dice quale
   operazione e' registrata in ogni riga), reason_columns (colonna -> valori: motivo o causale
   dell'operazione), planned_dates (date previste, con i giorni da sommare se ci sono), copy_of (la tabella
-  ripete le righe di un'altra).
+  ripete le righe di un'altra), type_columns (colonna -> valori: tipo o categoria dei record della
+  tabella, candidata per "split").
 "already_defined_model" e' il modello comune dell'intero dataset: riusa ESATTAMENTE quei nomi per
 oggetti ed eventi. "known_pattern", se presente, e' un mapping gia' validato da un umano per una
 tabella con lo stesso nome: seguilo (confidence alta) salvo evidenze contrarie.
@@ -408,7 +410,18 @@ Elemento ("el") per ogni colonna mappata; piu' righe per la stessa colonna se se
   in activity_columns, {v: valore, act: nome attivita' leggibile in inglese, allineato al BPMN se
   presente}; act "" per i valori che non sono attivita' di processo. Se i valori sono gia' nomi di
   attivita' leggibili, values con act = v. Usalo solo se la colonna e' in activity_columns o il suo
-  significato e' inequivocabile.
+  significato e' inequivocabile;
+- "split": la tabella che definisce un oggetto contiene oggetti di business diversi, distinti da una
+  colonna (tipo documento, categoria, tipo record; es. fatture, note di credito e incassi nella stessa
+  tabella dei documenti contabili, ordini e resi nella stessa tabella degli ordini). obj = il tipo di
+  oggetto della "key" della tabella; values = un elemento per ogni valore in type_columns,
+  {v: valore, act: nome di business del tipo di oggetto in inglese, es. "Invoice", "Payment"};
+  act "" per i valori da lasciare fuori dal processo (documenti estranei agli obiettivi dell'assessment);
+  i valori non elencati restano nel tipo della "key". Proponilo quando i valori hanno cicli di vita
+  diversi e gli obiettivi dell'assessment riguardano solo alcuni di essi; per il significato dei codici
+  usa nota utente, document_excerpts e la conoscenza del sistema sorgente. Gli eventi della tabella
+  restano dove sono (se i nomi delle attivita' devono distinguersi per tipo, usa anche "activity" sulla
+  stessa colonna); un "relation" puo' puntare a uno dei tipi della divisione (es. rel "Invoice").
 
 Regole per contenere costi e lavoro di revisione:
 - Mappa SOLO le colonne utili al process mining: chiavi, date di processo, collegamenti, e gli
@@ -475,6 +488,7 @@ def _profile_for_table(profile: dict | None, table: str) -> dict | None:
         "reason_columns": profile.get("reason_columns", {}).get(table, {}),
         "planned_dates": profile.get("planned_dates", {}).get(table, {}),
         "copy_of": profile.get("copy_of", {}).get(table),
+        "type_columns": profile.get("type_columns", {}).get(table, {}),
     }
 
 
@@ -709,7 +723,7 @@ class ClaudeAIMapper(AIMapper):
                     related_object_type=m.rel, confidence=m.conf,
                     rationale=m.why or "Mapping evidente da nome e valori della colonna.",
                     based_on_template=None,
-                    activity_values=({x.v: x.act for x in m.values} or None) if m.el == "activity" and m.values else None,
+                    activity_values=({x.v: x.act for x in m.values} or None) if m.el in ("activity", "split") and m.values else None,
                 )
                 for m in parsed.columns if m.col in known_cols
             ]

@@ -119,6 +119,12 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   un utente); motivi e causali proposti come attributi dell'evento; tabelle che ripetono le righe di un'altra
   (indici, viste, export filtrati) con un solo avviso ed esclusione dal mapping su casella; date previste con i
   giorni da sommare indicate come scadenza, collegate all'obiettivo dell'assessment che ne ha bisogno.
+- ✅ **Oggetti divisi per valore** (7 ottobre 2026): primo passo verso oggetti con valenza di business. Una tabella
+  non è un oggetto: la trasformazione ora divide i record di una tabella in più tipi di oggetto secondo una colonna
+  (es. tipo documento: fatture, incassi; esclusi gli altri). Da revisione o proposto da Claude.
+- 🔜 **Oggetti di business guidati dagli obiettivi**: prima del mapping colonna per colonna, Claude propone gli oggetti
+  (guida, necessari, di contesto) dagli obiettivi dell'assessment e dalle tabelle, con nome di business, tabelle,
+  divisione per valore e chiave; l'utente conferma; l'obiettivo misurabile della Process Overview nasce già compilato.
 - ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
   di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
   attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,

@@ -100,6 +100,15 @@ def mapping_summary(rows) -> dict:
             objects.setdefault(r.object_type, {"tables": set(), "key": []})
             objects[r.object_type]["tables"].add(r.source_table)
             objects[r.object_type]["key"].append(col)
+        elif r.ocel_element == "object_type.split" and r.object_type:
+            # divisione per valore: ogni tipo prodotto viene dalle righe con quei valori della colonna
+            objects.setdefault(r.object_type, {"tables": set(), "key": []})
+            for value, name in (r.activity_values or {}).items():
+                if name:
+                    sub = objects.setdefault(name, {"tables": set(), "key": [], "filter": []})
+                    sub["tables"].add(r.source_table)
+                    sub.setdefault("filter", []).append(f"{col} = {value}")
+                    sub["split_of"] = r.object_type
         elif r.ocel_element.startswith("event_type") or r.ocel_element == "e2o_relationship":
             name = r.event_type or "?"
             ev = events.setdefault(name, {"table": r.source_table, "time": [], "activity": None, "links": []})
@@ -110,7 +119,9 @@ def mapping_summary(rows) -> dict:
             elif r.ocel_element == "e2o_relationship":
                 ev["links"].append({"object_type": r.related_object_type, "via": col, "qualifier": r.qualifier})
     return {
-        "object_types": {k: {"tables": sorted(v["tables"]), "key": v["key"]} for k, v in objects.items()},
+        "object_types": {k: {"tables": sorted(v["tables"]), "key": v["key"] or objects.get(v.get("split_of"), {}).get("key", []),
+                             **({"rows_where": v["filter"], "split_of": v["split_of"]} if v.get("filter") else {})}
+                         for k, v in objects.items()},
         "event_types": events,
     }
 

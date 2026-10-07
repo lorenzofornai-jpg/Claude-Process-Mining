@@ -227,6 +227,49 @@ def _check_activity_columns(skip_log: list[SkipRecord], stats: dict) -> list[dic
     return results
 
 
+def _check_object_split(ocel: dict, skip_log: list[SkipRecord], stats: dict) -> list[dict]:
+    """Esiti della divisione di un oggetto per valore (es. documenti contabili -> fatture e incassi):
+    quanti oggetti per tipo, quanti esclusi (con i loro eventi), quali valori non hanno un tipo."""
+    base_of = stats.get("object_subtypes") or {}
+    if not base_of:
+        return []
+    counts: dict[str, int] = defaultdict(int)
+    for o in ocel["objects"]:
+        if o["type"] in base_of:
+            counts[o["type"]] += 1
+    excluded = stats.get("excluded_objects") or {}
+    excluded_events = sum(1 for s in skip_log if s.kind == "excluded_object")
+    bases = sorted(set(base_of.values()))
+    parts = []
+    for b in bases:
+        produced = ", ".join(f"{t} ({counts[t]})" for t, base in base_of.items() if base == b and counts[t])
+        parts.append(msg("{o} diviso in: {t}", o=b, t=produced or "—"))
+        if excluded.get(b):
+            parts.append(msg("{n} oggetti esclusi", n=excluded[b]))
+    if excluded_events:
+        parts.append(msg("{n} eventi esclusi insieme ai loro oggetti", n=excluded_events))
+    results = [{
+        "check_name": "Oggetti divisi per valore (informativo)",
+        "severity": "info",
+        "passed": True,
+        "details": joined(parts, "; "),
+        "affected_count": sum(counts.values()),
+    }]
+    unmapped = stats.get("unmapped_split_values") or {}
+    if unmapped:
+        results.append({
+            "check_name": "Valori senza tipo di oggetto",
+            "severity": "warning",
+            "passed": False,
+            "details": msg("{x}. Restano nel tipo di oggetto del mapping: indica il tipo (o escludili) nella revisione del mapping.",
+                           x=joined([msg("{g}: {v}", g=group, v=joined([msg("{c} ({n} righe)", c=v, n=n)
+                                                                        for v, n in values.items()]))
+                                     for group, values in unmapped.items()], "; ")),
+            "affected_count": sum(sum(v.values()) for v in unmapped.values()),
+        })
+    return results
+
+
 def _main_type(ocel: dict, main_object: str | None) -> str | None:
     """Il tipo di oggetto che corrisponde all'oggetto principale dell'assessment (testo
     libero, es. "fattura cliente"), se lo si riconosce: serve solo a mostrarlo per primo."""
@@ -254,6 +297,7 @@ def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict 
         _check_events_before_creation(ocel, types, events, first),
         _check_truncated_histories(ocel, types, events, first),
         _check_orphan_objects(ocel),
+        *_check_object_split(ocel, skip_log, stats or {}),
         *_check_activity_columns(skip_log, stats or {}),
         _check_event_distribution(ocel),
     ]

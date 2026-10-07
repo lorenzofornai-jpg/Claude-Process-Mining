@@ -1020,4 +1020,17 @@ EN: dict[str, str] = {
     "colonne che solo lei ha: {c}": "columns only it has: {c}",
     "{c}: probabile motivo o causale ({n} valori: {v})": "{c}: probably a reason code ({n} values: {v})",
     "È il dato che serve all'obiettivo dell'assessment «{o}».": "It is the data needed for the assessment objective “{o}”.",
+    # Divisione di un oggetto per valore
+    "Divide {o} per valore: {v}{m}": "Splits {o} by value: {v}{m}",
+    "Diviso in base alla colonna {c}:": "Split by column {c}:",
+    "Oggetti divisi per valore (informativo)": "Objects split by value (informational)",
+    "Tipo di oggetto per valore (vuoto = escluso; i valori non elencati restano nell'oggetto)": "Object type per value (empty = excluded; values not listed stay in the object)",
+    "Valori senza tipo di oggetto": "Values without an object type",
+    "la colonna che divide l'oggetto in tipi diversi (es. fatture e incassi)": "the column that splits the object into different types (e.g. invoices and payments)",
+    "restano {o}:": "stay {o}:",
+    "{k} → (resta {o})": "{k} → (stays {o})",
+    "{n} eventi esclusi insieme ai loro oggetti": "{n} events excluded together with their objects",
+    "{n} oggetti esclusi": "{n} objects excluded",
+    "{o} diviso in: {t}": "{o} split into: {t}",
+    "{x}. Restano nel tipo di oggetto del mapping: indica il tipo (o escludili) nella revisione del mapping.": "{x}. They stay in the mapping's object type: set the type (or exclude them) in the mapping review.",
 }
