@@ -160,12 +160,15 @@
     paths: {{ _("Percorsi più frequenti: {p}%")|tojson }},
     times: {{ _("{n} volte")|tojson }},
     objectsN: {{ _("{n} oggetti")|tojson }},
+    objectN: {{ _("{n} oggetto")|tojson }},
     start: {{ _("Inizio")|tojson }},
     end: {{ _("Fine")|tojson }},
     startOf: {{ _("Inizio del flusso di {t}")|tojson }},
     endOf: {{ _("Fine del flusso di {t}")|tojson }},
     startCount: {{ _("{n} oggetti iniziano qui")|tojson }},
     endCount: {{ _("{n} oggetti finiscono qui")|tojson }},
+    startCount1: {{ _("1 oggetto inizia qui")|tojson }},
+    endCount1: {{ _("1 oggetto finisce qui")|tojson }},
     events: {{ _("Eventi")|tojson }},
     objects: {{ _("Oggetti")|tojson }},
     type: {{ _("Tipo")|tojson }},
@@ -201,7 +204,7 @@
     asCost: {{ _("Costo indicativo per domanda: ~{c} (max {m})")|tojson }},
     asSpent: {{ _("speso finora: {s}")|tojson }},
     asThinking: {{ _("Sto pensando…")|tojson }},
-    asSugWhat: {{ _("Cos'è un {t}?")|tojson }},
+    asSugWhat: {{ _("Cos'è «{t}»?")|tojson }},
     asSugRead: {{ _("Come si legge questo grafo?")|tojson }},
     asSugSlow: {{ _("Quali sono i passaggi più lenti?")|tojson }},
     asSugHub: {{ _("Perché {t} è trasversale?")|tojson }},
@@ -614,7 +617,7 @@
     var box = el("div", "station-label start-label");
     box.style.left = x + "px"; box.style.top = y + "px";
     box.appendChild(el("div", "station-name", tn(n.label)));
-    box.appendChild(el("div", "station-counts", "# " + fmt(T.objectsN, { n: compact(n.count) })));
+    box.appendChild(el("div", "station-counts", "# " + fmt(n.count === 1 ? T.objectN : T.objectsN, { n: compact(n.count) })));
     box.addEventListener("click", function () { showType(n.type); });
     layer.appendChild(box);
     stations[n.id] = box;
@@ -749,7 +752,8 @@
     var mine = vis.filter(function (e) { return e.source === n.id || e.target === n.id; });
     openDetail(); focusOn(n.id, mine);
     body.appendChild(el("h3", "", fmt(n.kind === "start" ? T.startOf : T.endOf, { t: tn(n.label) })));
-    body.appendChild(el("p", "", fmt(n.kind === "start" ? T.startCount : T.endCount, { n: num(n.count) })));
+    body.appendChild(el("p", "", (n.count === 1 ? (n.kind === "start" ? T.startCount1 : T.endCount1)
+      : fmt(n.kind === "start" ? T.startCount : T.endCount, { n: num(n.count) }))));
     if (n.kind === "start") edgeList(T.outgoing, mine, function (e) { return e.target; });
     else edgeList(T.incoming, mine, function (e) { return e.source; });
   }

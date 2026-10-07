@@ -24,7 +24,7 @@ import math
 import statistics
 from collections import Counter, defaultdict
 
-from app.i18n import msg, render
+from app.i18n import count, msg, render
 from app.services.explorer import ExplorerModel
 
 MAX_FILTER_VALUES = 12
@@ -170,7 +170,7 @@ def check(model: ExplorerModel, b: dict) -> dict:
                     a=act, t=t, o=others)})
         if not issues:
             issues.append({"level": "error", "text": msg(
-                "Nessun {t} ha sia «{s}» sia «{e}»: inizio e fine sono collegati a oggetti diversi dello stesso tipo. Controlla che la fine sia collegata allo stesso oggetto dell'inizio (es. alla fattura e non al documento di pagamento).",
+                "Nessun oggetto di tipo {t} ha sia «{s}» sia «{e}»: inizio e fine sono collegati a oggetti diversi dello stesso tipo. Controlla che la fine sia collegata allo stesso oggetto dell'inizio (es. alla fattura e non al documento di pagamento).",
                 t=t, s=s, e=e)})
 
     # tipo che mescola oggetti di natura diversa: c'e' una colonna che separa chi ha l'inizio da chi no?
@@ -179,28 +179,32 @@ def check(model: ExplorerModel, b: dict) -> dict:
         if suggestion:
             res["suggested_filter"] = suggestion
             issues.append({"level": "warning", "suggest": suggestion, "text": msg(
-                "Il {p} dei {t} non ha né «{s}» né «{e}»: il tipo mescola oggetti di natura diversa. La colonna {a} li distingue: l'inizio c'è solo per {a} = {v}. Conviene misurare solo quelli.",
+                "Il {p} degli oggetti di tipo {t} non ha né «{s}» né «{e}»: il tipo mescola oggetti di natura diversa. La colonna {a} li distingue: l'inizio c'è solo per {a} = {v}. Conviene misurare solo quelli.",
                 p=f"{round(100 * neither / n)}%", t=t, s=s, e=e, a=suggestion["filter_attribute"],
                 v=", ".join(suggestion["filter_values"]))})
         else:
             issues.append({"level": "warning", "text": msg(
-                "Il {p} dei {t} non ha né «{s}» né «{e}»: non attraversano il processo misurato e restano fuori dai tempi.",
+                "Il {p} degli oggetti di tipo {t} non ha né «{s}» né «{e}»: non attraversa il processo misurato e resta fuori dai tempi.",
                 p=f"{round(100 * neither / n)}%", t=t, s=s, e=e)})
     if open_ and both:
         issues.append({"level": "info", "text": msg(
-            "{n} {t} sono iniziati e non ancora finiti: nell'analisi compaiono come pratiche aperte, con la loro età all'ultimo evento del dataset.",
-            n=len(open_), t=t)})
+            "{c} ha l'inizio ma non ancora la fine: nell'analisi compare tra le pratiche aperte, con la sua età all'ultimo evento del dataset."
+            if len(open_) == 1 else
+            "{c} hanno l'inizio ma non ancora la fine: nell'analisi compaiono tra le pratiche aperte, con la loro età all'ultimo evento del dataset.",
+            c=count(len(open_), t))})
     if end_only:
         issues.append({"level": "warning", "text": msg(
-            "{n} {t} hanno «{e}» senza «{s}»: lo storico inizia a metà o l'inizio è collegato a un altro oggetto.",
-            n=end_only, t=t, e=e, s=s)})
+            "{c} ha «{e}» senza «{s}»: lo storico inizia a metà o l'inizio è collegato a un altro oggetto." if end_only == 1 else
+            "{c} hanno «{e}» senza «{s}»: lo storico inizia a metà o l'inizio è collegato a un altro oggetto.",
+            c=count(end_only, t), e=e, s=s)})
     if end_before:
         issues.append({"level": "warning", "text": msg(
-            "{n} {t} hanno «{e}» solo prima di «{s}»: controlla le date o la scelta di inizio e fine.",
-            n=end_before, t=t, e=e, s=s)})
+            "{c} ha «{e}» solo prima di «{s}»: controlla le date o la scelta di inizio e fine." if end_before == 1 else
+            "{c} hanno «{e}» solo prima di «{s}»: controlla le date o la scelta di inizio e fine.",
+            c=count(end_before, t), e=e, s=s)})
     if both:
         issues.insert(0, {"level": "ok", "text": msg(
-            "Obiettivo misurabile su {n} {t} su {m}.", n=len(both), t=t, m=n)})
+            "Obiettivo misurabile per {c} su {m}.", c=count(len(both), t), m=n)})
     return res
 
 

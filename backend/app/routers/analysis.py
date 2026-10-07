@@ -301,6 +301,7 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
             "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
             "config": config, "run": run, "configs": configs,
             "object_types": model.type_summary(), "aliases": _aliases(user.id, config.id),
+            "plurals": _plurals(get_lang(request), model.types, _aliases(user.id, config.id)),
             "default_lead": (saved_objective(config.id) or {}).get("object_type")
                             or overview.default_lead(model, with_business_lead(answers, config.id).get("main_object")),
             "has_objective": saved_objective(config.id) is not None,
@@ -347,6 +348,13 @@ def _config_model(workspace_id: str, config_id: str):
     if run is None or not Path(run.ocel_file_path).exists():
         return None, None
     return run, explorer.load_model(run.ocel_file_path)
+
+
+def _plurals(lang: str, types, aliases: dict) -> dict:
+    """Plurale dei nomi dei tipi di oggetto (originali e rinominati) nella lingua attiva."""
+    from app.services.nouns import plural
+    names = set(types) | set((aliases or {}).get("object_type", {}).values())
+    return {n: plural(n, lang) for n in names}
 
 
 def business_lead(config_id: str) -> str | None:

@@ -71,10 +71,34 @@ def ui_labels(lang: str, labels: dict[str, str]) -> dict[str, str]:
     return {key: t(lang, text) for key, text in labels.items()}
 
 
+def plural(name: str) -> dict:
+    """Nome di un tipo di oggetto da mostrare al plurale nella lingua di chi legge («fatture», «invoices»)."""
+    return {"plural": name}
+
+
+def count(n, name: str) -> dict:
+    """Numero e nome di un tipo di oggetto, accordati: «1 Fattura», «8 Fatture», «8 Invoices»."""
+    return {"count": n, "noun": name}
+
+
+def number(lang: str, n) -> str:
+    """Numero con il separatore decimale della lingua (interi senza decimali)."""
+    if isinstance(n, float) and not n.is_integer():
+        text = f"{n:.1f}"
+        return text.replace(".", ",") if lang == "it" else text
+    return str(int(n)) if isinstance(n, float) else str(n)
+
+
 def render(lang: str, value) -> str:
     """Testo da mostrare per un messaggio strutturato, una lista di messaggi o un testo."""
     if value is None:
         return ""
+    if isinstance(value, dict) and "plural" in value:
+        from app.services.nouns import plural as _plural
+        return _plural(value["plural"], lang)
+    if isinstance(value, dict) and "noun" in value:
+        from app.services.nouns import count as _count
+        return _count(value.get("count"), value["noun"], lang)
     if isinstance(value, dict) and "m" in value:
         return t(lang, value["m"], **(value.get("p") or {}))
     if isinstance(value, dict) and "seq" in value:
