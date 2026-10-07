@@ -135,7 +135,7 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   mostrato prima dell'invio e speso finora; risposta nella lingua attiva (`services/analysis_assistant.py`,
   modello `EXPLAIN_MODEL`). **Nomi personali**: chiedendo all'assistente («chiamalo Invoice») un tipo di
   oggetto o un'attività prende un nome proprio dopo la conferma, solo nell'analisi di quell'utente e per quel
-  dataset (tabella `analysis_alias`); il dataset non cambia; «↺ nome originale» nell'elenco dei tipi.
+  dataset (tabella `analysis_alias`); il dataset non cambia; la freccia ↺ accanto al nome nell'elenco dei tipi riporta il nome originale.
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 

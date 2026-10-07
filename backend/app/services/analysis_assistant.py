@@ -121,7 +121,7 @@ UI_LABELS = {
     "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
     "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
     "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
-    "cross_cutting_tag": "trasversale", "original_name": "nome originale", "assistant": "Assistente",
+    "cross_cutting_tag": "trasversale", "restore_original_name_button": "↺", "assistant": "Assistente",
     "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",
 }
 

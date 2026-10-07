@@ -848,7 +848,6 @@ EN: dict[str, str] = {
     # Process Explorer, assistente e nomi personali
     "Nome non trovato nel dataset.": "Name not found in the dataset.",
     "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.": "Claude is not configured on this server (missing API key): the assistant is not available.",
-    "nome originale": "original name",
     "Assistente": "Assistant",
     "Chiedi all'assistente": "Ask the assistant",
     "Assistente dell'analisi": "Analysis assistant",
@@ -870,8 +869,8 @@ EN: dict[str, str] = {
     "Fatto: «{o}» ha di nuovo il nome originale.": "Done: “{o}” has its original name again.",
     "Nome non cambiato.": "Name not changed.",
     "Non è stato possibile salvare il nome.": "The name could not be saved.",
-    "originale: {o}": "original: {o}",
     # Process Explorer, schermo intero
     "Schermo intero": "Full screen",
     "Riduci a pagina": "Back to page",
+    "Torna al nome originale: {o}": "Back to the original name: {o}",
 }

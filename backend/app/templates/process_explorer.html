@@ -39,10 +39,9 @@
             <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
               <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
               <span class="swatch" style="background:{{ ot.color }}"></span>
-              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ aliases.object_type.get(ot.name, ot.name) }}</span><span class="tn-orig tiny muted" data-type="{{ ot.name }}"></span>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
+              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ aliases.object_type.get(ot.name, ot.name) }}</span><button type="button" class="link-button tn-reset" data-type="{{ ot.name }}" hidden>↺</button>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
               <span class="type-count tiny muted">{{ ot.objects }}</span>
             </label>
-            <button type="button" class="link-button tiny tn-reset" data-type="{{ ot.name }}" hidden>↺ {{ _("nome originale") }}</button>
           </li>
           {% endfor %}
         </ul>
@@ -216,7 +215,7 @@
     asCancelled: {{ _("Nome non cambiato.")|tojson }},
     asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }},
     asRenameError: {{ _("Non è stato possibile salvare il nome.")|tojson }},
-    origName: {{ _("originale: {o}")|tojson }},
+    restoreName: {{ _("Torna al nome originale: {o}")|tojson }},
     expand: {{ _("Schermo intero")|tojson }},
     collapse: {{ _("Riduci a pagina")|tojson }}
   };
@@ -743,10 +742,11 @@
   // ---------- nomi personali nell'elenco dei tipi ----------
   function renderTypeNames() {
     document.querySelectorAll(".tn").forEach(function (sp) { sp.textContent = tn(sp.dataset.type); });
-    document.querySelectorAll(".tn-orig").forEach(function (sp) {
-      var t = sp.dataset.type; sp.textContent = ALIASES.object_type[t] ? " (" + fmt(T.origName, { o: t }) + ")" : "";
+    // per risparmiare spazio solo la freccia ↺; il nome originale e' nel suggerimento e per i lettori di schermo
+    document.querySelectorAll(".tn-reset").forEach(function (b) {
+      b.hidden = !ALIASES.object_type[b.dataset.type];
+      b.title = fmt(T.restoreName, { o: b.dataset.type }); b.setAttribute("aria-label", b.title);
     });
-    document.querySelectorAll(".tn-reset").forEach(function (b) { b.hidden = !ALIASES.object_type[b.dataset.type]; });
   }
   function saveAlias(kind, original, alias) {
     return fetch("/analysis/explorer/alias", {
@@ -756,7 +756,10 @@
       .then(function (res) { ALIASES = res.aliases; renderTypeNames(); if (data) { renderLists(); draw(); } return res; });
   }
   document.querySelectorAll(".tn-reset").forEach(function (b) {
-    b.addEventListener("click", function () { saveAlias("object_type", b.dataset.type, ""); });
+    b.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();   // il pulsante sta nell'etichetta: non deve spuntare il tipo
+      saveAlias("object_type", b.dataset.type, "");
+    });
   });
   renderTypeNames();
 
