@@ -102,6 +102,20 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   indicativo mostrato e confermato prima dell'invio, risposta nella lingua dell'interfaccia
   (`services/explain.py`, modello `EXPLAIN_MODEL`, predefinito claude-sonnet-5-5).
 
+## Modulo 2 — Analisi
+- ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
+  «Nessun dataset disponibile».
+- ✅ **Process Explorer** (7 ottobre 2026): grafo dei flussi object-centric (OC-DFG) di un dataset, dalla
+  pagina Analisi. Un colore per tipo di oggetto, con inizio e fine per tipo; scelta dei tipi da vedere
+  insieme; cursori per numero di attività e quota di percorsi (le attività tolte vengono saltate e i
+  passaggi ricollegati); metrica frequenza o tempo mediano; zoom e adatta; legenda; dettaglio al tocco
+  (eventi e oggetti per tipo, da dove arriva e dove prosegue, tempi mediano/medio/minimo/massimo).
+  Il grafo è calcolato dal server (`services/explorer.py`; oggetti per collegamento verificati
+  identici a `pm4py.discover_ocdfg`), il browser riceve solo l'aggregato. Disegno con Cytoscape.js +
+  dagre (MIT), inclusi nell'app in `static/vendor/`.
+- ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
+  oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
+
 ## Lingua
 - ✅ **Interfaccia in italiano e inglese** (5 ottobre 2026): selettore IT | EN
   in ogni pagina, valido subito e salvato sull'utente; tradotti anche profilo

@@ -502,3 +502,54 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 /* la risposta si legge tutta: scorre l'intera finestra, non un riquadro interno (su tablet non si vedeva che c'era altro) */
 .ask-answer { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; padding: 12px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); }
+
+/* ---------- Process Explorer ---------- */
+.content.content-wide { max-width: none; }
+.explorer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.explorer-head h1 { margin-bottom: 4px; }
+.explorer-dataset select { display: block; margin-top: 4px; }
+.explorer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin: 12px 0 14px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented .seg { border: 0; border-radius: 0; background: var(--card-bg); color: var(--text); padding: 7px 14px; cursor: pointer; font: inherit; }
+.segmented .seg + .seg { border-left: 1px solid var(--border); }
+.segmented .seg.active { background: var(--brand); color: #fff; }
+.slider { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 210px; }
+.slider input[type=range] { width: 100%; accent-color: var(--brand); }
+.explorer-body { display: grid; grid-template-columns: 220px minmax(0, 1fr) 270px; gap: 14px; }
+.explorer-side, .explorer-detail { background: var(--card-bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; font-size: 14px; min-width: 0; }
+.explorer-side h3, .explorer-detail h3 { margin: 0 0 6px; font-size: 15px; overflow-wrap: anywhere; }
+.explorer-detail h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); }
+.type-list { list-style: none; margin: 8px 0; padding: 0; }
+.type-list li label { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+.type-list .type-name { flex: 1; overflow-wrap: anywhere; }
+.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; flex: none; margin-right: 6px; vertical-align: middle; }
+.type-list .swatch { margin-right: 0; }
+.explorer-graph { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-bg); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.graph-canvas { position: relative; flex: 1; min-height: 560px; }
+#graph { position: absolute; inset: 0; }
+.graph-empty, .graph-loading { position: absolute; left: 0; right: 0; top: 45%; text-align: center; padding: 0 20px; }
+.graph-loading { top: 10px; }
+.graph-zoom { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+.graph-zoom button { margin: 0; width: 36px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
+.graph-legend { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.graph-legend:empty { display: none; }
+.legend-row { display: flex; align-items: center; padding: 1px 0; }
+.detail-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+.detail-table th, .detail-table td { text-align: left; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+.detail-table th { font-weight: 600; color: var(--muted); }
+.detail-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.detail-list li { padding: 4px 0; cursor: pointer; overflow-wrap: anywhere; }
+.detail-list li:hover { color: var(--brand); }
+.explorer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 1100px) {
+  .explorer-body { grid-template-columns: 200px minmax(0, 1fr); }
+  .explorer-detail { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .explorer-body { grid-template-columns: 1fr; }
+  .graph-canvas { min-height: 440px; }
+}
+.analysis-tools { display: grid; gap: 12px; margin: 14px 0; }
+.analysis-tool { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; background: var(--card-bg-soft); }
+.analysis-tool h3 { margin: 0 0 4px; }
+.analysis-tool p { margin: 0; }

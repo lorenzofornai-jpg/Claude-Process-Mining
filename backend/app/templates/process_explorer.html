@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Process Explorer · {{ process_name }}{% endblock %}
+{% block main_class %}content-wide{% endblock %}
+{% block content %}
+<div class="card wide explorer-card">
+  <div class="explorer-head">
+    <div>
+      <h1>Process Explorer</h1>
+      <p class="muted tiny">
+        {{ _("Processo: {p}.", p=strong(process_name)) }}
+        {{ _("Dataset {d}, v{v}: {o} oggetti, {e} eventi.", d=strong(config.name), v=config.current_version, o=run.object_count, e=run.event_count) }}
+      </p>
+    </div>
+    {% if configs|length > 1 %}
+    <label class="tiny explorer-dataset">{{ _("Dataset") }}
+      <select id="dataset-select">
+        {% for c in configs %}<option value="{{ c.id }}" {{ 'selected' if c.id == config.id }}>{{ c.name }} (v{{ c.current_version }})</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </div>
+
+  <div class="explorer-toolbar">
+    <div class="segmented" role="group" aria-label="{{ _("Metrica") }}">
+      <button type="button" class="seg active" data-metric="frequency">{{ _("Frequenza") }}</button>
+      <button type="button" class="seg" data-metric="time">{{ _("Tempo") }}</button>
+    </div>
+    <label class="slider">
+      <span id="act-label">{{ _("Attività") }}</span>
+      <input type="range" id="act-slider" min="1" max="1" value="1">
+    </label>
+    <label class="slider">
+      <span id="path-label">{{ _("Percorsi") }}</span>
+      <input type="range" id="path-slider" min="0" max="100" step="5" value="100">
+    </label>
+  </div>
+
+  <div class="explorer-body">
+    <aside class="explorer-side">
+      <h3>{{ _("Tipi di oggetto") }}</h3>
+      <p class="tiny muted">{{ _("Ogni tipo ha il suo colore e il suo flusso: scegli quali vedere insieme.") }}</p>
+      <ul class="type-list">
+        {% for ot in object_types %}
+        <li>
+          <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
+            <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
+            <span class="swatch" style="background:{{ ot.color }}"></span>
+            <span class="type-name">{{ ot.name }}</span>
+            <span class="type-count tiny muted">{{ ot.objects }}</span>
+          </label>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="tiny muted">{{ _("Il numero è quello degli oggetti del tipo.") }}</p>
+    </aside>
+
+    <section class="explorer-graph">
+      <div class="graph-canvas">
+        <div id="graph" aria-label="{{ _("Grafo del processo") }}"></div>
+        <div class="graph-empty muted" id="graph-empty" hidden>{{ _("Scegli almeno un tipo di oggetto per vedere il grafo.") }}</div>
+        <div class="graph-loading tiny muted" id="graph-loading" hidden>{{ _("Calcolo del grafo…") }}</div>
+        <div class="graph-zoom">
+          <button type="button" class="secondary" id="zoom-in" title="{{ _("Ingrandisci") }}">+</button>
+          <button type="button" class="secondary" id="zoom-out" title="{{ _("Riduci") }}">−</button>
+          <button type="button" class="secondary" id="zoom-fit" title="{{ _("Adatta alla finestra") }}">⤢</button>
+        </div>
+      </div>
+      <div class="graph-legend tiny" id="graph-legend"></div>
+    </section>
+
+    <aside class="explorer-detail" id="detail">
+      <h3>{{ _("Dettaglio") }}</h3>
+      <p class="tiny muted">{{ _("Tocca un'attività o un collegamento per vederne i numeri.") }}</p>
+    </aside>
+  </div>
+
+  <p class="tiny muted" style="margin-top:16px">
+    {{ _("Come leggere il grafo: le frecce collegano due attività consecutive nella storia di un oggetto; lo spessore indica quante volte succede. In modalità «Tempo» l'etichetta è il tempo mediano tra le due attività.") }}
+  </p>
+  <p class="tiny muted">
+    <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Torna all'analisi") }}</a>
+  </p>
+</div>
+
+<script src="/static/vendor/cytoscape.min.js?v={{ static_version }}"></script>
+<script src="/static/vendor/dagre.min.js?v={{ static_version }}"></script>
+<script src="/static/vendor/cytoscape-dagre.js?v={{ static_version }}"></script>
+<script>
+(function () {
+  var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
+  var T = {
+    activities: {{ _("Attività: {n} di {m}")|tojson }},
+    paths: {{ _("Percorsi: {p}% ({n} di {m})")|tojson }},
+    start: {{ _("Inizio")|tojson }},
+    end: {{ _("Fine")|tojson }},
+    startOf: {{ _("Inizio del flusso di {t}")|tojson }},
+    endOf: {{ _("Fine del flusso di {t}")|tojson }},
+    startCount: {{ _("{n} oggetti iniziano qui")|tojson }},
+    endCount: {{ _("{n} oggetti finiscono qui")|tojson }},
+    events: {{ _("Eventi")|tojson }},
+    objects: {{ _("Oggetti")|tojson }},
+    type: {{ _("Tipo")|tojson }},
+    transitions: {{ _("Passaggi")|tojson }},
+    incoming: {{ _("Arriva da")|tojson }},
+    outgoing: {{ _("Prosegue verso")|tojson }},
+    median: {{ _("Tempo mediano")|tojson }},
+    mean: {{ _("Tempo medio")|tojson }},
+    min: {{ _("Minimo")|tojson }},
+    max: {{ _("Massimo")|tojson }},
+    noDuration: {{ _("Nessun tempo: è l'inizio o la fine del flusso.")|tojson }},
+    hiddenNote: {{ _("Sono mostrati solo i collegamenti visibili con i filtri attuali.")|tojson }},
+    legendStart: {{ _("inizio")|tojson }},
+    legendEnd: {{ _("fine")|tojson }},
+    legendWidth: {{ _("spessore = frequenza")|tojson }},
+    days: {{ _("{n} g")|tojson }},
+    hours: {{ _("{n} h")|tojson }},
+    minutes: {{ _("{n} min")|tojson }},
+    seconds: {{ _("{n} s")|tojson }},
+    error: {{ _("Non è stato possibile calcolare il grafo.")|tojson }}
+  };
+  function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
+  function num(n) { return Number(n).toLocaleString(LANG); }
+  function dur(sec) {
+    if (sec === null || sec === undefined || isNaN(sec)) return "";
+    var a = Math.abs(sec), o = { maximumFractionDigits: 1 };
+    if (a >= 86400) return fmt(T.days, { n: (sec / 86400).toLocaleString(LANG, o) });
+    if (a >= 3600) return fmt(T.hours, { n: (sec / 3600).toLocaleString(LANG, o) });
+    if (a >= 60) return fmt(T.minutes, { n: Math.round(sec / 60).toLocaleString(LANG) });
+    return fmt(T.seconds, { n: Math.round(sec).toLocaleString(LANG) });
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  var actSlider = document.getElementById("act-slider"), pathSlider = document.getElementById("path-slider");
+  var metric = "frequency", data = null, actAll = false, first = true;
+  var cy = cytoscape({
+    container: document.getElementById("graph"),
+    wheelSensitivity: 0.3, minZoom: 0.1, maxZoom: 3,
+    style: [
+      { selector: "node", style: {
+          "label": "data(label)", "text-wrap": "wrap", "text-valign": "center", "text-halign": "center",
+          "font-size": 12, "color": css("--text"), "font-family": "-apple-system, system-ui, sans-serif" } },
+      { selector: "node.activity", style: {
+          "shape": "round-rectangle", "width": "data(w)", "height": 46, "background-color": css("--card-bg"),
+          "border-width": 2, "border-color": "data(border)", "text-max-width": "data(w)" } },
+      { selector: "node.start, node.end", style: {
+          "shape": "ellipse", "width": 22, "height": 22, "background-color": "data(color)", "border-width": 0,
+          "text-valign": "top", "text-margin-y": -4, "font-size": 10, "color": "data(color)" } },
+      { selector: "node.end", style: { "shape": "round-rectangle", "text-valign": "bottom", "text-margin-y": 4 } },
+      { selector: "edge", style: {
+          "curve-style": "bezier", "width": "data(width)", "line-color": "data(color)", "target-arrow-color": "data(color)",
+          "target-arrow-shape": "triangle", "arrow-scale": 0.9, "opacity": 0.85, "label": "data(label)", "font-size": 10,
+          "color": css("--text"), "text-background-color": css("--card-bg"), "text-background-opacity": 0.85,
+          "text-background-padding": 2, "control-point-step-size": 22, "loop-direction": "-45deg", "loop-sweep": "-60deg" } },
+      { selector: "edge.flow-edge", style: { "line-style": "dashed", "label": "" } },
+      { selector: ".faded", style: { "opacity": 0.12 } },
+      { selector: ":selected", style: { "border-color": css("--brand"), "border-width": 3, "overlay-opacity": 0 } },
+      { selector: "edge:selected", style: { "opacity": 1, "z-index": 10 } }
+    ]
+  });
+
+  function selectedTypes() {
+    return Array.prototype.filter.call(document.querySelectorAll(".type-check"), function (c) { return c.checked; })
+      .map(function (c) { return c.value; });
+  }
+
+  var timer = null;
+  function schedule() { clearTimeout(timer); timer = setTimeout(load, 200); }
+
+  function load() {
+    var types = selectedTypes();
+    if (!types.length) { cy.elements().remove(); document.getElementById("graph-empty").hidden = false; renderLegend([]); updateLabels(); return; }
+    document.getElementById("graph-empty").hidden = true;
+    document.getElementById("graph-loading").hidden = false;
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, types: types.join(","), paths: pathSlider.value });
+    if (!actAll) q.set("activities", actSlider.value);
+    fetch("/analysis/explorer/graph?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (g) { data = g; draw(); })
+      .catch(function () { document.getElementById("graph-empty").textContent = T.error; document.getElementById("graph-empty").hidden = false; })
+      .finally(function () { document.getElementById("graph-loading").hidden = true; });
+  }
+
+  function edgeLabel(e) {
+    if (metric === "time") return e.duration ? dur(e.duration.median) : "";
+    return num(e.count);
+  }
+
+  function draw() {
+    actSlider.max = Math.max(1, data.activities.total);
+    actSlider.value = data.activities.shown;
+    actAll = data.activities.shown >= data.activities.total;
+    updateLabels();
+    var maxCount = Math.max.apply(null, [1].concat(data.edges.map(function (e) { return e.count; })));
+    var textColor = css("--text");
+    var els = data.nodes.map(function (n) {
+      var label = n.kind === "activity" ? n.label + "\n" + num(n.count) : n.label;
+      return { group: "nodes", classes: n.kind, data: { id: n.id, label: label, w: Math.min(240, Math.max(110, n.label.length * 7 + 24)),
+        border: n.color || textColor, color: n.color || textColor, raw: n } };
+    }).concat(data.edges.map(function (e) {
+      var flow = e.source.indexOf("__start__|") === 0 || e.target.indexOf("__end__|") === 0;
+      return { group: "edges", classes: flow ? "flow-edge" : "", data: { id: e.id, source: e.source, target: e.target, color: e.color,
+        width: 1.2 + 7 * Math.sqrt(e.count / maxCount), label: edgeLabel(e), raw: e } };
+    }));
+    cy.elements().remove();
+    cy.add(els);
+    // i collegamenti piu' frequenti pesano di piu': il flusso principale resta dritto, dall'alto verso il basso
+    cy.layout({ name: "dagre", rankDir: "TB", nodeSep: 40, rankSep: 70, edgeSep: 14, animate: false,
+      nodeDimensionsIncludeLabels: true, acyclicer: "greedy", ranker: "network-simplex",
+      edgeWeight: function (ed) { return Math.max(1, Math.round(100 * ed.data("raw").count / maxCount)); } }).run();
+    cy.fit(undefined, 30);
+    renderLegend(data.types);
+    showIntro();
+  }
+
+  function refreshLabels() { cy.edges().forEach(function (ed) { ed.data("label", edgeLabel(ed.data("raw"))); }); }
+
+  function updateLabels() {
+    var a = data ? data.activities : { shown: 0, total: 0 }, p = data ? data.paths : { shown: 0, total: 0 };
+    document.getElementById("act-label").textContent = fmt(T.activities, { n: a.shown, m: a.total });
+    document.getElementById("path-label").textContent = fmt(T.paths, { p: pathSlider.value, n: p.shown, m: p.total });
+  }
+
+  function renderLegend(types) {
+    var box = document.getElementById("graph-legend");
+    box.textContent = "";
+    var colors = {};
+    {{ object_types|map(attribute="name")|list|tojson }}.forEach(function (name, i) { colors[name] = {{ object_types|map(attribute="color")|list|tojson }}[i]; });
+    types.forEach(function (t) {
+      var row = el("div", "legend-row");
+      var sw = el("span", "swatch"); sw.style.background = colors[t];
+      row.appendChild(sw); row.appendChild(el("span", "", t)); box.appendChild(row);
+    });
+    if (types.length) box.appendChild(el("div", "legend-row muted", "● " + T.legendStart + " · ■ " + T.legendEnd + " · " + T.legendWidth));
+  }
+
+  // --- pannello di dettaglio ---
+  var detail = document.getElementById("detail"), intro = detail.innerHTML;
+  function showIntro() { detail.innerHTML = intro; cy.elements().removeClass("faded"); }
+  function kv(table, k, v) { var tr = el("tr"); tr.appendChild(el("th", "", k)); tr.appendChild(el("td", "", v)); table.appendChild(tr); }
+  function nodeName(id) {
+    var n = cy.getElementById(id).data("raw");
+    if (!n) return id;
+    return n.kind === "start" ? T.start + " · " + n.label : n.kind === "end" ? T.end + " · " + n.label : n.label;
+  }
+  function edgeList(title, edges, other) {
+    if (!edges.length) return;
+    detail.appendChild(el("h4", "", title));
+    var ul = el("ul", "detail-list");
+    edges.sort(function (a, b) { return b.data("raw").count - a.data("raw").count; }).forEach(function (ed) {
+      var e = ed.data("raw"), li = el("li");
+      var sw = el("span", "swatch"); sw.style.background = e.color; li.appendChild(sw);
+      li.appendChild(el("span", "", nodeName(other(e)) + " · " + num(e.count)));
+      li.addEventListener("click", function () { cy.elements().unselect(); ed.select(); showEdge(ed); });
+      ul.appendChild(li);
+    });
+    detail.appendChild(ul);
+  }
+  function focus(ele) { cy.elements().addClass("faded"); ele.closedNeighborhood().removeClass("faded"); ele.connectedNodes().removeClass("faded"); }
+
+  function showNode(node) {
+    var n = node.data("raw");
+    detail.textContent = "";
+    focus(node);
+    if (n.kind !== "activity") {
+      detail.appendChild(el("h3", "", fmt(n.kind === "start" ? T.startOf : T.endOf, { t: n.label })));
+      detail.appendChild(el("p", "", fmt(n.kind === "start" ? T.startCount : T.endCount, { n: num(n.count) })));
+    } else {
+      detail.appendChild(el("h3", "", n.label));
+      var t = el("table", "detail-table"); kv(t, T.events, num(n.count)); detail.appendChild(t);
+      var bt = el("table", "detail-table");
+      var head = el("tr"); [T.type, T.events, T.objects].forEach(function (h) { head.appendChild(el("th", "", h)); }); bt.appendChild(head);
+      n.types.forEach(function (x) {
+        var tr = el("tr"), td = el("td"), sw = el("span", "swatch"); sw.style.background = x.color;
+        td.appendChild(sw); td.appendChild(document.createTextNode(x.type)); tr.appendChild(td);
+        tr.appendChild(el("td", "", num(x.events))); tr.appendChild(el("td", "", num(x.objects))); bt.appendChild(tr);
+      });
+      detail.appendChild(bt);
+    }
+    edgeList(T.incoming, node.incomers("edge").toArray(), function (e) { return e.source; });
+    edgeList(T.outgoing, node.outgoers("edge").toArray(), function (e) { return e.target; });
+    detail.appendChild(el("p", "tiny muted", T.hiddenNote));
+  }
+
+  function showEdge(edge) {
+    var e = edge.data("raw");
+    detail.textContent = "";
+    cy.elements().addClass("faded"); edge.removeClass("faded"); edge.connectedNodes().removeClass("faded");
+    detail.appendChild(el("h3", "", nodeName(e.source) + " → " + nodeName(e.target)));
+    var t = el("table", "detail-table");
+    var tr = el("tr"), td = el("td"), sw = el("span", "swatch"); sw.style.background = e.color;
+    tr.appendChild(el("th", "", T.type)); td.appendChild(sw); td.appendChild(document.createTextNode(e.type)); tr.appendChild(td); t.appendChild(tr);
+    kv(t, T.transitions, num(e.count));
+    kv(t, T.objects, num(e.objects));
+    if (e.duration) {
+      kv(t, T.median, dur(e.duration.median)); kv(t, T.mean, dur(e.duration.mean));
+      kv(t, T.min, dur(e.duration.min)); kv(t, T.max, dur(e.duration.max));
+    }
+    detail.appendChild(t);
+    if (!e.duration) detail.appendChild(el("p", "tiny muted", T.noDuration));
+  }
+
+  cy.on("tap", "node", function (ev) { showNode(ev.target); });
+  cy.on("tap", "edge", function (ev) { showEdge(ev.target); });
+  cy.on("tap", function (ev) { if (ev.target === cy) showIntro(); });
+
+  // --- comandi ---
+  document.querySelectorAll(".type-check").forEach(function (c) { c.addEventListener("change", schedule); });
+  actSlider.addEventListener("input", function () { actAll = false; document.getElementById("act-label").textContent = fmt(T.activities, { n: actSlider.value, m: actSlider.max }); schedule(); });
+  pathSlider.addEventListener("input", function () { updateLabels(); schedule(); });
+  document.querySelectorAll(".seg").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".seg").forEach(function (x) { x.classList.toggle("active", x === b); });
+      metric = b.dataset.metric; refreshLabels();
+    });
+  });
+  document.getElementById("zoom-in").addEventListener("click", function () { cy.zoom({ level: cy.zoom() * 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); });
+  document.getElementById("zoom-out").addEventListener("click", function () { cy.zoom({ level: cy.zoom() / 1.25, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); });
+  document.getElementById("zoom-fit").addEventListener("click", function () { cy.fit(undefined, 30); });
+  var ds = document.getElementById("dataset-select");
+  if (ds) ds.addEventListener("change", function () {
+    location.href = "/analysis/explorer?workspace_id=" + encodeURIComponent(WS) + "&config_id=" + encodeURIComponent(ds.value);
+  });
+
+  actSlider.max = 15; actSlider.value = 15;  // primo grafo: al massimo le 15 attività più frequenti
+  load();
+})();
+</script>
+{% endblock %}

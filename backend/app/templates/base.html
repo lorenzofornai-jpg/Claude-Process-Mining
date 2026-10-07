@@ -32,7 +32,7 @@
       {% include "_lang_switch.html" %}
     </div>
   </header>
-  <main class="content">
+  <main class="content {% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 

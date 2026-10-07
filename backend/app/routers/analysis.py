@@ -1,16 +1,15 @@
-"""Modulo 2 - Analisi (fase iniziale).
+"""Modulo 2 - Analisi.
 
-Solo il punto d'accesso per ora: verifica del ruolo Data Analyst e un
-elenco delle strutture (log OCEL 2.0) gia' disponibili per il processo,
-prodotte dal Modulo 1. Il resto del modulo (definizione dashboard,
-process discovery, ecc.) e' da disegnare.
+Pagina d'ingresso (verifica del ruolo Data Analyst, elenco dei dataset OCEL 2.0
+pronti per il processo, prodotti dal Modulo 1) e Process Explorer: il grafo dei
+flussi object-centric di un dataset (services/explorer.py).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
@@ -18,6 +17,7 @@ from app.i18n import get_lang, msg, setup_templates, t
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import ExtractionRun, IngestionConfig, ProcessWorkspace
+from app.services import explorer
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -79,3 +79,64 @@ def analysis_dashboard(request: Request, workspace_id: str):
             "process_name": ws.process_name, "structures": structures,
         },
     )
+
+
+def _latest_run(db, workspace_id: str, config_id: str) -> ExtractionRun | None:
+    return (
+        db.query(ExtractionRun)
+        .filter_by(workspace_id=workspace_id, ingestion_config_id=config_id)
+        .order_by(ExtractionRun.started_at.desc())
+        .first()
+    )
+
+
+def _explorer_dataset(workspace_id: str, config_id: str | None):
+    """(dataset scelto, ultimo caricamento, tutti i dataset disponibili). Senza config_id: il primo disponibile."""
+    db = SessionLocal()
+    try:
+        configs = available_datasets(db, workspace_id)
+        config = next((c for c in configs if c.id == config_id), None) if config_id else (configs[0] if configs else None)
+        run = _latest_run(db, workspace_id, config.id) if config else None
+        return config, run, configs
+    finally:
+        db.close()
+
+
+@router.get("/analysis/explorer", response_class=HTMLResponse)
+def process_explorer(request: Request, workspace_id: str, config_id: str | None = None):
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return denied
+    config, run, configs = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return HTMLResponse(t(get_lang(request), "Dataset non disponibile per l'analisi."), status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+    finally:
+        db.close()
+    return templates.TemplateResponse(
+        "process_explorer.html",
+        {
+            "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
+            "config": config, "run": run, "configs": configs,
+            "object_types": model.type_summary(), "default_types": model.default_types(),
+            "event_count": model.event_count,
+        },
+    )
+
+
+@router.get("/analysis/explorer/graph")
+def process_explorer_graph(request: Request, workspace_id: str, config_id: str, types: str = "",
+                           activities: int | None = None, paths: int = 100):
+    """Grafo aggregato in JSON per i filtri scelti (tipi separati da «,» nel parametro types)."""
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    selected = [x for x in types.split(",") if x]
+    return JSONResponse(explorer.build_graph(model, selected, activities, paths))

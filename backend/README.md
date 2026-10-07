@@ -167,10 +167,11 @@ membro come guardia contro zip bomb).
 - **Data Analyst**: accede solo al Modulo 2 (Analisi, `/analysis/...`) dei
   processi a cui è stato assegnato (`ProcessAssignment.role =
   "data_analyst"`), stessa logica di accesso/403 del Data Engineer ma
-  modulo diverso. Il Modulo 2 è per ora solo il punto d'accesso
-  (`routers/analysis.py`): verifica del ruolo + elenco dei log OCEL 2.0 già
-  prodotti dal Modulo 1 per quel processo — il resto (definizione
-  dashboard, process discovery) è da disegnare.
+  modulo diverso. Il Modulo 2 (`routers/analysis.py`) ha la pagina d'ingresso
+  (verifica del ruolo + elenco dei dataset OCEL 2.0 pronti per il processo) e il
+  **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;
+  calcolo in `services/explorer.py`, JSON da `/analysis/explorer/graph`, pagina
+  `templates/process_explorer.html` con Cytoscape.js + dagre in `static/vendor/`).
 - **Uno stesso utente può avere più ruoli**, anche sullo stesso processo
   (es. Data Engineer *e* Data Analyst sul P2P): non è un attributo fisso
   sull'utente, sono righe distinte in `ProcessAssignment` — `has_process_

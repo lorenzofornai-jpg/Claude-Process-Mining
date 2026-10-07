@@ -4,9 +4,24 @@
   <h1>{{ _("Analisi") }}</h1>
   <p class="muted">
     {{ _("Processo: {p}.", p=strong(process_name)) }}
-    {{ _("Qui in futuro sceglierai un dataset (OCEL 2.0) e definirai dashboard/analisi di process mining. Per ora: solo l'elenco dei dataset già disponibili per l'analisi.") }}
+    {{ _("Scegli uno strumento di analisi e il dataset (OCEL 2.0) su cui lavorare.") }}
   </p>
-  <div class="banner warning">{{ _("Analisi in costruzione: questa è solo la pagina d'ingresso.") }}</div>
+
+  {% set ready = structures|selectattr("last_run")|list %}
+  <div class="analysis-tools">
+    <div class="analysis-tool">
+      <div>
+        <h3>Process Explorer</h3>
+        <p class="tiny muted">{{ _("Il grafo dei flussi del processo, un colore per ogni tipo di oggetto: attività, percorsi, frequenze e tempi.") }}</p>
+      </div>
+      {% if ready %}
+      <a class="primary button-link" href="/analysis/explorer?workspace_id={{ workspace_id }}&config_id={{ ready[0].config.id }}">Process Explorer</a>
+      {% else %}
+      <span class="primary button-link is-disabled has-tip" tabindex="0" role="button" aria-disabled="true" data-tip="{{ _("Nessun dataset disponibile") }}">Process Explorer</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="banner warning">{{ _("Analisi in costruzione: altri strumenti arriveranno nei prossimi passi.") }}</div>
 
   <table class="admin-table">
     <thead>
@@ -25,6 +40,7 @@
         </td>
         <td>
           {% if s.last_run %}
+          <a class="secondary button-link" href="/analysis/explorer?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">Process Explorer</a>
           <a class="secondary button-link" href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">{{ _("Scarica OCEL") }}</a>
           {% endif %}
         </td>
