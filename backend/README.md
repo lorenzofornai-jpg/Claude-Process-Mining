@@ -171,7 +171,7 @@ membro come guardia contro zip bomb).
   (verifica del ruolo + elenco dei dataset OCEL 2.0 pronti per il processo) e il
   **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;
   calcolo in `services/explorer.py`, JSON da `/analysis/explorer/graph`, pagina
-  `templates/process_explorer.html` con Cytoscape.js + dagre in `static/vendor/`).
+  `templates/process_explorer.html`: vista a linee di metropolitana con Cytoscape.js + dagre in `static/vendor/`).
 - **Uno stesso utente può avere più ruoli**, anche sullo stesso processo
   (es. Data Engineer *e* Data Analyst sul P2P): non è un attributo fisso
   sull'utente, sono righe distinte in `ProcessAssignment` — `has_process_

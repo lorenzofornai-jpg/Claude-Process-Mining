@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -128,9 +128,14 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
 
 
 @router.get("/analysis/explorer/graph")
-def process_explorer_graph(request: Request, workspace_id: str, config_id: str, types: str = "",
-                           activities: int | None = None, paths: int = 100):
-    """Grafo aggregato in JSON per i filtri scelti (tipi separati da «,» nel parametro types)."""
+def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
+                           type: list[str] = Query(default=[]), act: list[str] = Query(default=[]),
+                           acts: str = "top", top: int | None = None, paths: int = 100):
+    """Grafo aggregato in JSON per i filtri scelti.
+
+    type=...&type=...: tipi di oggetto. acts=top: le `top` attivita' piu' frequenti;
+    acts=list: esattamente le attivita' act=...&act=... (anche nessuna).
+    """
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
@@ -138,5 +143,5 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str, 
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
     model = explorer.load_model(run.ocel_file_path)
-    selected = [x for x in types.split(",") if x]
-    return JSONResponse(explorer.build_graph(model, selected, activities, paths))
+    activities = list(act) if acts == "list" else None
+    return JSONResponse(explorer.build_graph(model, list(type), activities, top, paths))

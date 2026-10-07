@@ -117,9 +117,15 @@ def _duration_stats(values: list[float]) -> dict | None:
             "min": min(values), "max": max(values)}
 
 
-def build_graph(model: ExplorerModel, types: list[str] | None = None, activities: int | None = None,
-                paths: int = 100) -> dict:
-    """Grafo per i tipi scelti, con le `activities` attivita' piu' frequenti e il `paths`% dei collegamenti."""
+def build_graph(model: ExplorerModel, types: list[str] | None = None, activities: list[str] | None = None,
+                top: int | None = None, paths: int = 100) -> dict:
+    """Grafo per i tipi scelti.
+
+    Attivita' visibili: l'elenco `activities` se dato (scelta manuale), altrimenti le `top` piu' frequenti
+    (tutte se `top` e' None). Si restituiscono tutti i collegamenti tra le attivita' visibili, con `kept`
+    vero per quelli che rientrano nel `paths`% piu' frequente: il browser puo' poi mostrarne o
+    nasconderne altri a mano senza ricalcolare.
+    """
     types = [t for t in (types if types is not None else model.default_types()) if t in model.object_counts]
 
     # attivita' dei tipi scelti, per numero di eventi (un evento con piu' tipi conta una volta)
@@ -128,9 +134,11 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
         if t in types:
             act_events[act] |= ev_ids
     ranking = sorted(act_events, key=lambda a: (-len(act_events[a]), a))
-    total_activities = len(ranking)
-    n_act = total_activities if activities is None else max(1, min(int(activities), total_activities)) if ranking else 0
-    kept = set(ranking[:n_act])
+    if activities is not None:
+        kept = set(activities) & set(ranking)
+    else:
+        n = len(ranking) if top is None else max(1, int(top))
+        kept = set(ranking[:n])
 
     # collegamenti per tipo: (tipo, da, a) -> passaggi, oggetti, durate
     count: dict[tuple, int] = defaultdict(int)
@@ -151,11 +159,10 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
                 if ts1 is not None and ts2 is not None:
                     durs[key].append(ts2 - ts1)
 
-    # filtro dei percorsi
+    # filtro dei percorsi: la quota piu' frequente, piu' per ogni attivita' il collegamento migliore in entrata e in uscita
     all_edges = sorted(count, key=lambda k: (-count[k], k))
-    total_paths = len(all_edges)
     paths = max(0, min(int(paths), 100))
-    keep_edges = set(all_edges[:math.ceil(total_paths * paths / 100)])
+    keep_edges = set(all_edges[:math.ceil(len(all_edges) * paths / 100)])
     best_in: dict[tuple, tuple] = {}
     best_out: dict[tuple, tuple] = {}
     for k in all_edges:  # gia' in ordine di frequenza: il primo visto e' il migliore
@@ -164,39 +171,33 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
         best_in.setdefault((t, tgt), k)
     keep_edges |= set(best_in.values()) | set(best_out.values())
 
-    edges = []
-    used_nodes: set[str] = set()
-    for k in sorted(keep_edges, key=lambda k: (-count[k], k)):
-        t, src, tgt = k
-        used_nodes.update((src, tgt))
-        edges.append({
-            "id": f"e{len(edges)}", "type": t, "color": model.colors[t], "source": src, "target": tgt,
-            "count": count[k], "objects": len(objs[k]), "duration": _duration_stats(durs[k]),
-        })
+    edges = [{
+        "id": f"e{i}", "type": t, "color": model.colors[t], "source": src, "target": tgt, "kept": k in keep_edges,
+        "count": count[k], "objects": len(objs[k]), "duration": _duration_stats(durs[k]),
+    } for i, k in enumerate(all_edges) for t, src, tgt in [k]]
+    used_nodes = {e["source"] for e in edges} | {e["target"] for e in edges}
 
     nodes = []
-    for act in ranking[:n_act]:
-        if act not in used_nodes:
+    for act in ranking:
+        if act not in kept or act not in used_nodes:
             continue
         per_type = [{"type": t, "color": model.colors[t],
                      "events": len(model.events_by_type_act.get((t, act), ())),
                      "objects": len(model.objects_by_type_act.get((t, act), ()))}
                     for t in types if model.events_by_type_act.get((t, act))]
-        nodes.append({"id": act, "kind": "activity", "label": act, "count": len(act_events[act]),
-                      "types": per_type,
-                      "color": per_type[0]["color"] if len(per_type) == 1 else None})
+        nodes.append({"id": act, "kind": "activity", "label": act, "count": len(act_events[act]), "types": per_type})
     for t in types:
         for kind, prefix in (("start", START), ("end", END)):
             node_id = f"{prefix}|{t}"
             if node_id in used_nodes:
-                # oggetti che iniziano/finiscono qui, contando anche i collegamenti nascosti dal filtro
                 n_obj = sum(count[k] for k in all_edges if (k[1] if kind == "start" else k[2]) == node_id)
                 nodes.append({"id": node_id, "kind": kind, "label": t, "type": t,
                               "color": model.colors[t], "count": n_obj})
 
     return {
         "types": types,
-        "activities": {"shown": n_act, "total": total_activities},
-        "paths": {"percent": paths, "shown": len(edges), "total": total_paths},
+        "activity_list": [{"name": a, "events": len(act_events[a]), "selected": a in kept} for a in ranking],
+        "activities": {"shown": len(kept), "total": len(ranking)},
+        "paths": {"percent": paths, "shown": len(keep_edges), "total": len(all_edges)},
         "nodes": nodes, "edges": edges,
     }

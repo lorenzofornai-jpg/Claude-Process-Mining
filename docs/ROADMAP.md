@@ -106,13 +106,16 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».
 - ✅ **Process Explorer** (7 ottobre 2026): grafo dei flussi object-centric (OC-DFG) di un dataset, dalla
-  pagina Analisi. Un colore per tipo di oggetto, con inizio e fine per tipo; scelta dei tipi da vedere
-  insieme; cursori per numero di attività e quota di percorsi (le attività tolte vengono saltate e i
-  passaggi ricollegati); metrica frequenza o tempo mediano; zoom e adatta; legenda; dettaglio al tocco
-  (eventi e oggetti per tipo, da dove arriva e dove prosegue, tempi mediano/medio/minimo/massimo).
-  Il grafo è calcolato dal server (`services/explorer.py`; oggetti per collegamento verificati
-  identici a `pm4py.discover_ocdfg`), il browser riceve solo l'aggregato. Disegno con Cytoscape.js +
-  dagre (MIT), inclusi nell'app in `static/vendor/`.
+  pagina Analisi, disegnato come una mappa della metropolitana: ogni tipo di oggetto è una linea colorata
+  con inizio e fine; ogni attività è una fermata con un punto per tipo e un'etichetta con le volte per tipo;
+  numeri di passaggi sulle linee. Pannello «Controllo del grafo»: tipi di oggetto, ricerca, scheda
+  **Attività** (spunte una per una o cursore «le più frequenti»; le attività tolte vengono saltate e i
+  passaggi ricollegati) e scheda **Collegamenti** (cursore della quota più frequente e spunte una per una).
+  Metrica frequenza o tempo mediano; zoom, adatta e legenda; dettaglio al tocco (eventi e oggetti per tipo,
+  da dove arriva e dove prosegue, tempi mediano/medio/minimo/massimo). Il grafo è calcolato dal server
+  (`services/explorer.py`; oggetti per collegamento verificati identici a `pm4py.discover_ocdfg`), il
+  browser riceve solo l'aggregato. Disegno con Cytoscape.js + dagre (MIT), inclusi in `static/vendor/`.
+  Nota sui nomi: le «attività» sono i tipi di evento dell'OCEL (gli «event name» di altri strumenti).
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 
