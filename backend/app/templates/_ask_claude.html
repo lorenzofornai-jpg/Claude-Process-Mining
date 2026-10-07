@@ -6,7 +6,7 @@
     <p class="tiny muted">{{ _("Claude spiega il messaggio: cosa significa, cosa comporta e cosa fare nell'app.") }}</p>
     <blockquote class="ask-message" id="ask-message"></blockquote>
     <label class="ask-q">{{ _("Cosa non ti è chiaro? (facoltativo)") }}
-      <textarea id="ask-question" rows="2" placeholder="{{ _("es. Devo correggere i dati o basta la revisione?") }}"></textarea>
+      <textarea id="ask-question" rows="2" lang="{{ current_lang() }}" spellcheck="true" placeholder="{{ _("es. Devo correggere i dati o basta la revisione?") }}"></textarea>
     </label>
     <div class="ask-cost tiny" id="ask-cost"></div>
     <div class="ask-answer" id="ask-answer" hidden></div>

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, joined, msg, setup_templates, t, to_text
+from app.i18n import get_lang, joined, msg, setup_templates, t, to_text, ui_labels
 from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
@@ -1295,6 +1295,7 @@ async def explain_message(request: Request):
     payload = explain.build_payload(
         language=lang, page=str(body.get("page") or ""), message=str(body.get("message") or ""),
         question=str(body.get("question") or ""), context=sess.get("context") or {}, table=table,
+        ui_labels=ui_labels(lang, explain.UI_LABELS),
     )
     est = explain.estimate(payload)
     if body.get("estimate"):

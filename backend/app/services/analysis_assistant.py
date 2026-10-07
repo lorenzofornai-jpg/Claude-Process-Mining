@@ -46,6 +46,9 @@ Come funziona il Process Explorer (per spiegare e indicare azioni concrete):
 - Il dataset si prepara nel modulo Ingestion (Data Engineer): lì si cambiano oggetti, eventi e collegamenti.
 
 Cosa fare:
+- Le etichette dell'app tra «» in queste istruzioni sono in italiano. Quando nomini un pulsante, un pannello,
+  una scheda o un passo dell'app usa SEMPRE il testo corrispondente in "ui_labels": è quello che l'utente vede
+  nella sua lingua. Non usare mai le etichette italiane se "language" è en.
 - Rispondi alla domanda usando i DATI qui sotto: provenienza dai dati sorgente (tabelle, colonne chiave, colonne
   data/attività, collegamenti), numeri della vista, contesto del processo. Per spiegare cos'è un oggetto o
   un'attività unisci la provenienza alle tue conoscenze del sistema sorgente (es. tabelle SAP), dicendo cosa è
@@ -53,7 +56,7 @@ Cosa fare:
 - Usa solo i numeri forniti; se un numero non c'è, dillo e suggerisci come vederlo nell'app. Non inventare funzioni.
 - Rinomina: se l'utente chiede di dare un altro nome a un tipo di oggetto o a un'attività, usa lo strumento
   rename_label con il nome originale esatto (quello del dataset) e il nuovo nome, e scrivi in una frase che il
-  nome cambierà solo nella sua analisi dopo che avrà premuto «Conferma» (il dataset non cambia). Per tornare al
+  nome cambierà solo nella sua analisi dopo che avrà premuto il pulsante ui_labels.confirm (il dataset non cambia). Per tornare al
   nome originale usa new_name vuoto. Se il nome originale non è chiaro, chiedi prima quale intende.
 - Quando parli di tipi e attività usa i nomi personali dell'utente (aliases), con l'originale tra parentesi la
   prima volta se aiuta.
@@ -112,8 +115,19 @@ def mapping_summary(rows) -> dict:
     }
 
 
+# Etichette dell'interfaccia che l'assistente puo' citare (testi italiani = chiavi del catalogo)
+UI_LABELS = {
+    "confirm": "Conferma", "graph_control": "Controllo del grafo", "object_types": "Tipi di oggetto",
+    "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
+    "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
+    "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
+    "cross_cutting_tag": "trasversale", "original_name": "nome originale", "assistant": "Assistente",
+    "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",
+}
+
+
 def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, graph: dict,
-                  mapping: dict, aliases: dict, focus: str | None) -> str:
+                  mapping: dict, aliases: dict, focus: str | None, ui_labels: dict | None = None) -> str:
     """Contesto in JSON per Claude: processo, dataset, provenienza, vista corrente."""
     types = [{
         "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
@@ -139,6 +153,7 @@ def build_context(*, language: str, process_name: str, assessment: dict, dataset
     }
     payload = {
         "language": language,
+        "ui_labels": ui_labels or {},
         "process": {"name": process_name, "assessment": assessment},
         "dataset": {**dataset, "object_types": types},
         "source_mapping": mapping,

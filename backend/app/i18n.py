@@ -65,6 +65,12 @@ def t(lang: str, text: str, **params) -> str:
     return out
 
 
+def ui_labels(lang: str, labels: dict[str, str]) -> dict[str, str]:
+    """Etichette dell'interfaccia nella lingua dell'utente, da passare a Claude: {chiave: testo come lo vede}.
+    I testi italiani di `labels` sono gia' nel catalogo (sono quelli dei template)."""
+    return {key: t(lang, text) for key, text in labels.items()}
+
+
 def render(lang: str, value) -> str:
     """Testo da mostrare per un messaggio strutturato, una lista di messaggi o un testo."""
     if value is None:

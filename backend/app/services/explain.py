@@ -38,6 +38,10 @@ Come funziona l'app, per indicare azioni concrete:
 3. Risultato: dataset OCEL 2.0 e "Controlli di qualità". Dai passi in alto si torna alla revisione e si
    rigenera lo stesso dataset; "Utilizza per l'analisi" lo rende disponibile al Data Analyst.
 
+Le etichette dell'app tra «» in queste istruzioni sono in italiano. Quando nomini un pulsante, un pannello,
+una scheda o un passo dell'app usa SEMPRE il testo corrispondente in "ui_labels": è quello che l'utente vede
+nella sua lingua. Non usare mai le etichette italiane se "language" è en.
+
 Rispondi nella lingua indicata da "language" (it = italiano, en = inglese), in modo semplice e concreto,
 massimo 180 parole, in tre parti brevi: cosa significa, cosa comporta per l'analisi, cosa fare nell'app
 (azioni precise tra quelle sopra, oppure "nessuna azione necessaria"). Se c'e' una domanda dell'utente,
@@ -50,10 +54,21 @@ def _price() -> tuple[float, float]:
     return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
 
 
+# Etichette dell'interfaccia che la spiegazione puo' citare (testi italiani = chiavi del catalogo)
+UI_LABELS = {
+    "source_data": "Dati sorgente", "data_profile": "Profilo dei dati", "mapping_review": "Revisione mapping",
+    "proposed_model": "Modello proposto", "accept_all": "Accetta tutto", "reject": "Rifiuta",
+    "add_link": "Aggiungi collegamento", "column_detail": "Dettaglio per colonna", "edit": "Modifica",
+    "this_column_is": "Questa colonna è…", "result": "Risultato", "quality_checks": "Controlli di qualità",
+    "use_for_analysis": "Utilizza per l'analisi",
+}
+
+
 def build_payload(*, language: str, page: str, message: str, question: str, context: dict,
-                  table: TableSchema | None) -> str:
+                  table: TableSchema | None, ui_labels: dict | None = None) -> str:
     payload = {
         "language": language,
+        "ui_labels": ui_labels or {},
         "page": page,
         "message": message[:4000],
         "user_question": (question or "").strip()[:1000] or None,

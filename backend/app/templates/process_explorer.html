@@ -125,7 +125,7 @@
       <div id="as-messages"></div>
     </div>
     <form class="assistant-input" id="as-form">
-      <textarea id="as-text" rows="2" placeholder="{{ _("Scrivi una domanda…") }}" aria-label="{{ _("Scrivi una domanda…") }}"></textarea>
+      <textarea id="as-text" rows="2" lang="{{ current_lang() }}" spellcheck="true" placeholder="{{ _("Scrivi una domanda…") }}" aria-label="{{ _("Scrivi una domanda…") }}"></textarea>
       <div class="as-row">
         <span class="tiny muted" id="as-cost"></span>
         <button type="submit" class="primary" id="as-send">{{ _("Invia") }}</button>

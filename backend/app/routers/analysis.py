@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, msg, setup_templates, t
+from app.i18n import get_lang, msg, setup_templates, t, ui_labels
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import AnalysisAlias, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
@@ -249,6 +249,7 @@ async def explorer_assistant(request: Request):
                  "objects": run.object_count, "events": run.event_count},
         model=model, graph=graph, mapping=mapping, aliases=_aliases(user.id, config.id),
         focus=str(body.get("focus") or "")[:300] or None,
+        ui_labels=ui_labels(lang, analysis_assistant.UI_LABELS),
     )
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     est = analysis_assistant.estimate(context, history)
