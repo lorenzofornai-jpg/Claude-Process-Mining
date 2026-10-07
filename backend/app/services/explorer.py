@@ -59,32 +59,53 @@ class ExplorerModel:
         self.events_by_type_act: dict[tuple[str, str], set[str]] = defaultdict(set)
         self.objects_by_type_act: dict[tuple[str, str], set[str]] = defaultdict(set)
         self.event_count = 0
+        relations: list[list[tuple[str, str, str]]] = []   # per evento: (oggetto, tipo, qualificatore)
         for idx, ev in enumerate(ocel.get("events", [])):
             self.event_count += 1
             ts = _epoch(ev.get("time", ""))
             act = ev.get("type", "")
             seen = set()
+            rels = []
             for rel in ev.get("relationships", []):
                 oid = rel.get("objectId")
                 otype = type_of.get(oid)
                 if otype is None or oid in seen:
                     continue
                 seen.add(oid)
+                rels.append((oid, otype, rel.get("qualifier") or ""))
                 sequences[oid].append((ts, idx, act))
                 self.events_by_type_act[(otype, act)].add(ev.get("id", ""))
                 self.objects_by_type_act[(otype, act)].add(oid)
+            relations.append(rels)
 
         # sequenze per tipo, ordinate per data; a parita' di data vale l'ordine nel file (come pm4py)
-        self.sequences_by_type: dict[str, list[tuple[str, list[tuple[float, str]]]]] = defaultdict(list)
+        self.sequences_by_type: dict[str, list[tuple[str, list[tuple[float, str, int]]]]] = defaultdict(list)
         for oid, seq in sequences.items():
             seq.sort(key=lambda x: (math.inf if math.isnan(x[0]) else x[0], x[1]))
-            self.sequences_by_type[type_of[oid]].append((oid, [(ts, act) for ts, _, act in seq]))
+            self.sequences_by_type[type_of[oid]].append((oid, [(ts, act, idx) for ts, idx, act in seq]))
 
         self.types = sorted(self.object_counts, key=lambda t: (-self.object_counts[t], t))
         self.colors = {t: PALETTE[i % len(PALETTE)] for i, t in enumerate(self.types)}
         self.with_events = {t: len(self.sequences_by_type.get(t, [])) for t in self.types}
         self.related_events = {t: len(set().union(*[e for (tt, _), e in self.events_by_type_act.items() if tt == t]))
                                for t in self.types}
+
+        # Eventi «propri» dei tipi trasversali: quelli di cui il tipo e' l'oggetto di casa (qualificatore
+        # «involves»), oppure che non fanno parte della storia di un altro oggetto con piu' passaggi (es. una
+        # fattura). Per il cliente: cambio di rischio, blocco solleciti...; non la registrazione della fattura,
+        # che appartiene alla storia della fattura e in cui il cliente e' solo citato. Un oggetto ha una storia
+        # se ha almeno due eventi o se gli oggetti del suo tipo ne hanno di solito piu' di uno (una fattura
+        # appena registrata ha un solo evento, ma e' comunque l'inizio della storia di un documento).
+        hubs = {t for t in self.types if self.is_hub(t)}
+        n_events = {oid: len(seq) for oid, seq in sequences.items()}
+        lifecycle_types = {t for t in self.types if t not in hubs and self.avg_events(t) >= 1.5}
+        self.own_events: dict[str, set[int]] = {t: set() for t in hubs}
+        for idx, rels in enumerate(relations):
+            in_history = any(otype not in hubs and (otype in lifecycle_types or n_events.get(oid, 0) >= 2)
+                             for oid, otype, _ in rels)
+            for oid, otype, qual in rels:
+                if otype in hubs and (qual == "involves" or not in_history):
+                    self.own_events[otype].add(idx)
 
     def avg_events(self, t: str) -> float:
         return self.related_events[t] / self.with_events[t] if self.with_events.get(t) else 0.0
@@ -104,6 +125,11 @@ class ExplorerModel:
         return [{"name": t, "color": self.colors[t], "objects": self.object_counts[t],
                  "with_events": self.with_events[t], "events": self.related_events[t],
                  "hub": self.is_hub(t), "avg": round(self.avg_events(t), 1)} for t in self.types]
+
+    def own_activities(self, t: str) -> list[str]:
+        """Attivita' degli eventi propri di un tipo trasversale (vuoto per gli altri tipi)."""
+        own = self.own_events.get(t, set())
+        return sorted({act for _, seq in self.sequences_by_type.get(t, []) for _, act, idx in seq if idx in own})
 
 
 def load_model(path: str | Path) -> ExplorerModel:
@@ -128,13 +154,16 @@ def _duration_stats(values: list[float]) -> dict | None:
 
 
 def build_graph(model: ExplorerModel, types: list[str] | None = None, activities: list[str] | None = None,
-                top: int | None = None, paths: int = 100) -> dict:
+                top: int | None = None, paths: int = 100, hub_mode: str = "own") -> dict:
     """Grafo per i tipi scelti.
 
     Attivita' visibili: l'elenco `activities` se dato (scelta manuale), altrimenti le `top` piu' frequenti
     (tutte se `top` e' None). Si restituiscono tutti i collegamenti tra le attivita' visibili, con `kept`
     vero per quelli che rientrano nel `paths`% piu' frequente: il browser puo' poi mostrarne o
     nasconderne altri a mano senza ricalcolare.
+
+    hub_mode="own": la linea di un tipo trasversale passa solo dai suoi eventi propri (vedi ExplorerModel);
+    "all": da tutti gli eventi a cui il tipo e' collegato.
     """
     types = [t for t in (types if types is not None else model.default_types()) if t in model.object_counts]
 
@@ -155,8 +184,9 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
     objs: dict[tuple, set] = defaultdict(set)
     durs: dict[tuple, list] = defaultdict(list)
     for t in types:
+        own = model.own_events.get(t) if hub_mode == "own" else None
         for oid, seq in model.sequences_by_type.get(t, []):
-            seq = [(ts, a) for ts, a in seq if a in kept]
+            seq = [(ts, a) for ts, a, idx in seq if a in kept and (own is None or idx in own)]
             if not seq:
                 continue
             steps = [(None, START)] + seq + [(None, END)]
@@ -205,7 +235,8 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
                               "color": model.colors[t], "count": n_obj})
 
     return {
-        "types": types,
+        "types": types, "hub_mode": hub_mode,
+        "own_activities": {t: model.own_activities(t) for t in types if t in model.own_events},
         "activity_list": [{"name": a, "events": len(act_events[a]), "selected": a in kept} for a in ranking],
         "activities": {"shown": len(kept), "total": len(ranking)},
         "paths": {"percent": paths, "shown": len(keep_edges), "total": len(all_edges)},

@@ -559,6 +559,9 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 .station-counts { color: var(--muted); font-size: 9px; display: flex; align-items: center; gap: 3px; }
 .station-counts .sq { display: inline-block; width: 7px; height: 7px; border-radius: 1px; }
 .station-counts .sep-bar { margin: 0 2px; opacity: .6; }
+.station-counts .sq-hollow { background: transparent; border: 1.5px solid; box-sizing: border-box; }
+.hub-toggle { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+.hub-help { margin: 4px 0 2px; line-height: 1.4; }
 .graph-empty, .graph-loading { position: absolute; left: 0; right: 0; top: 45%; text-align: center; padding: 0 20px; }
 .graph-loading { top: 10px; }
 .graph-controls { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; }

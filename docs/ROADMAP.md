@@ -120,7 +120,12 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   (l'oggetto non è ancora entrato nel processo); i numeri sulle linee non si sovrappongono (si nascondono
   i meno importanti, restano nel dettaglio); toccando il nome di una linea la si vede da sola. I tipi
   «trasversali» (pochi oggetti in moltissimi eventi di documenti diversi: cliente, fornitore) sono
-  segnalati, non scelti all'apertura e disegnati sottili e in trasparenza.
+  segnalati e non scelti all'apertura. La loro linea passa solo dagli eventi propri (quelli di cui sono
+  l'oggetto di casa o che non appartengono alla storia di un documento con più passaggi: per il cliente
+  pulizia partite e cambio di rischio, non la registrazione della fattura); negli altri eventi compaiono
+  come numero nella fermata. Un interruttore mostra la linea su tutti gli eventi collegati (sottile e in
+  trasparenza). Scelta di modello: il cliente resta un oggetto nell'ingestion (ha eventi propri e collega
+  documenti diversi); la lettura corretta si risolve nell'analisi.
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 

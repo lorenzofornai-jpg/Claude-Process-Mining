@@ -44,6 +44,13 @@
           </li>
           {% endfor %}
         </ul>
+        {% if object_types|selectattr("hub")|list %}
+        <label class="hub-toggle tiny">
+          <input type="checkbox" id="hub-all">
+          <span>{{ _("Tipi trasversali: mostra la linea su tutti gli eventi collegati") }}</span>
+        </label>
+        <p class="tiny muted hub-help">{{ _("Spento: la linea di un tipo trasversale passa solo dai suoi eventi propri (es. cambio di rischio del cliente), non da quelli che appartengono alla storia di un documento, dove compare solo come numero nella fermata.") }}</p>
+        {% endif %}
       </div>
 
       <input type="search" id="list-search" class="list-search" placeholder="{{ _("Cerca") }}" aria-label="{{ _("Cerca") }}">
@@ -151,7 +158,9 @@
     starting: {{ _("Entrano nel processo")|tojson }},
     ending: {{ _("Escono dal processo")|tojson }},
     mainPaths: {{ _("Passaggi principali")|tojson }},
-    hubNote: {{ _("Tipo trasversale: ogni oggetto partecipa in media a {n} eventi, anche di documenti diversi. La linea mostra l'ordine delle attività per ogni {t}, non il percorso di un singolo documento: guardala da sola.")|tojson }},
+    hubNoteAll: {{ _("Tipo trasversale: ogni oggetto partecipa in media a {n} eventi, anche di documenti diversi. Con tutti gli eventi collegati la linea mostra l'ordine delle attività per ogni {t}, non il percorso di un singolo documento.")|tojson }},
+    hubNoteOwn: {{ _("Tipo trasversale: la linea passa solo dagli eventi propri di {t} ({a}). Negli eventi che appartengono alla storia di un documento {t} compare come numero nella fermata.")|tojson }},
+    hubNoOwn: {{ _("Tipo trasversale: {t} non ha eventi propri, compare solo come numero nelle fermate dei documenti. Per vedere la sua linea su tutti gli eventi collegati usa l'interruttore sotto i tipi di oggetto.")|tojson }},
     noActs: {{ _("Nessuna attività trovata.")|tojson }},
     noPaths: {{ _("Nessun collegamento trovato.")|tojson }},
     days: {{ _("{n} g")|tojson }},
@@ -226,7 +235,9 @@
 
   function load() {
     var types = selectedTypes();
-    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, paths: pathSlider.value, acts: actMode });
+    var hubAll = document.getElementById("hub-all");
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, paths: pathSlider.value, acts: actMode,
+                                  hub: hubAll && hubAll.checked ? "all" : "own" });
     types.forEach(function (t) { q.append("type", t); });
     if (actMode === "top") q.set("top", actTop); else actSet.forEach(function (a) { q.append("act", a); });
     document.getElementById("graph-loading").hidden = false;
@@ -383,7 +394,7 @@
       // ogni tipo gira a un'altezza diversa: le linee di tipi diversi corrono affiancate invece di sovrapporsi
       var ti = Math.max(0, data.types.indexOf(e.type));
       // le linee dei tipi trasversali (es. cliente) sono piu' sottili e in trasparenza: non coprono i flussi dei documenti
-      var hub = !!(TYPES[e.type] || {}).hub;
+      var hub = !!(TYPES[e.type] || {}).hub && data.hub_mode === "all";
       els.push({ group: "edges", classes: (s === t ? "loop " : "") + (isStart(e.source) ? "entry " : "") + (hub ? "hub" : ""),
         data: { id: e.id, source: s, target: t, color: e.color, type: e.type, hub: hub,
         turn: isStart(e.source) ? "92%" : 14 + (ti % 6) * 11,
@@ -439,6 +450,13 @@
       line.appendChild(document.createTextNode(compact(byType[t] ? byType[t].events : 0)));
     });
     line.appendChild(document.createTextNode(" " + fmt(T.times, { n: "" }).trim()));
+    // tipi trasversali presenti nell'attivita' ma senza linea qui (evento di un documento): solo quanti oggetti
+    n.types.forEach(function (x) {
+      if (types.indexOf(x.type) >= 0 || !(TYPES[x.type] || {}).hub) return;
+      line.appendChild(el("span", "sep-bar", "·"));
+      var sq = el("span", "sq sq-hollow"); sq.style.borderColor = COLORS[x.type]; line.appendChild(sq);
+      line.appendChild(document.createTextNode(compact(x.objects) + " " + x.type));
+    });
     box.appendChild(line);
     box.addEventListener("click", function () { showActivity(n.id); });
     box.dataset.types = JSON.stringify(types);
@@ -533,7 +551,12 @@
     kv(tb, T.starting, num(sum(function (e) { return isStart(e.source); })));
     kv(tb, T.ending, num(sum(function (e) { return isEnd(e.target); })));
     body.appendChild(tb);
-    if (info.hub) body.appendChild(el("p", "tiny hub-note", fmt(T.hubNote, { n: num(Math.round(info.avg)), t: t })));
+    if (info.hub) {
+      var own = (data.own_activities || {})[t] || [];
+      body.appendChild(el("p", "tiny hub-note", data.hub_mode === "all"
+        ? fmt(T.hubNoteAll, { n: num(Math.round(info.avg)), t: t })
+        : (own.length ? fmt(T.hubNoteOwn, { t: t, a: own.join(", ") }) : fmt(T.hubNoOwn, { t: t }))));
+    }
     edgeList(T.mainPaths, vis.filter(function (e) { return !isStart(e.source) && !isEnd(e.target); }).slice(0, 10),
              function (e) { return null; });
   }
@@ -610,6 +633,7 @@
 
   // ---------- comandi ----------
   document.querySelectorAll(".type-check").forEach(function (c) { c.addEventListener("change", schedule); });
+  if (document.getElementById("hub-all")) document.getElementById("hub-all").addEventListener("change", schedule);
   actSlider.addEventListener("input", function () {
     actMode = "top"; actTop = Number(actSlider.value);
     document.getElementById("act-label").textContent = fmt(T.top, { n: actSlider.value, m: actSlider.max });
