@@ -38,6 +38,18 @@ def _require_analyst_access(request: Request, workspace_id: str):
     return user, None
 
 
+def available_datasets(db, workspace_id: str) -> list[IngestionConfig]:
+    """Dataset pronti per l'analisi: promossi («Utilizza per l'analisi») e con almeno
+    un caricamento di dati per questo processo."""
+    return (
+        db.query(IngestionConfig)
+        .join(ExtractionRun, ExtractionRun.ingestion_config_id == IngestionConfig.id)
+        .filter(ExtractionRun.workspace_id == workspace_id, IngestionConfig.status == "approved")
+        .distinct()
+        .all()
+    )
+
+
 @router.get("/analysis/dashboard", response_class=HTMLResponse)
 def analysis_dashboard(request: Request, workspace_id: str):
     user, denied = _require_analyst_access(request, workspace_id)
@@ -47,13 +59,7 @@ def analysis_dashboard(request: Request, workspace_id: str):
     db = SessionLocal()
     try:
         ws = db.get(ProcessWorkspace, workspace_id)
-        configs = (
-            db.query(IngestionConfig)
-            .join(ExtractionRun, ExtractionRun.ingestion_config_id == IngestionConfig.id)
-            .filter(ExtractionRun.workspace_id == workspace_id, IngestionConfig.status == "approved")
-            .distinct()
-            .all()
-        )
+        configs = available_datasets(db, workspace_id)
         structures = []
         for config in configs:
             last_run = (

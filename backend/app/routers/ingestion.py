@@ -36,6 +36,7 @@ from app.models import (
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
+from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
 from app.services.documents import select_excerpts
 from app.services.profiling import compact_for_mapping, profile_tables
@@ -214,6 +215,11 @@ def ingestion_dashboard(request: Request):
             if roles_by_workspace
             else []
         )
+        # per il Data Analyst: «Apri analisi» e' attivo solo se c'e' almeno un dataset pronto
+        datasets_count = {
+            ws.id: len(available_datasets(db, ws.id)) for ws in workspaces
+            if "data_analyst" in roles_by_workspace.get(ws.id, set())
+        }
     finally:
         db.close()
 
@@ -221,6 +227,7 @@ def ingestion_dashboard(request: Request):
         "ingestion_dashboard.html",
         {
             "request": request, "user": user, "workspaces": workspaces, "roles_by_workspace": roles_by_workspace,
+            "datasets_count": datasets_count,
             "assessments": {
                 ws.id: assessment_status(ws.id) for ws in workspaces
                 if "data_engineer" in roles_by_workspace.get(ws.id, set())

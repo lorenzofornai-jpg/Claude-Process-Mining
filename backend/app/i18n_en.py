@@ -734,4 +734,5 @@ EN: dict[str, str] = {
     'valore netto': 'net value',
     'valuta': 'currency',
     'verifica fattura su entrata merci': 'goods-receipt-based invoice verification',
+    "Nessun dataset disponibile": "No dataset available",
 }

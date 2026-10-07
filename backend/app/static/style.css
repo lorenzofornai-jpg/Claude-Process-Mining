@@ -447,3 +447,16 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 .mapping-steps { margin: 16px 0 8px; padding-left: 20px; display: grid; gap: 10px; }
 .mapping-steps li { color: var(--muted); }
 .mapping-steps li.is-running, .mapping-steps li.is-done { color: var(--text); }
+
+/* Pulsante disattivato con spiegazione: al passaggio del mouse, o al tocco su
+   tablet e telefono (l'elemento riceve il focus), compare il messaggio. */
+.button-link.is-disabled { color: var(--muted); background: var(--card-bg-soft); border-color: var(--border); cursor: not-allowed; }
+.has-tip { position: relative; }
+.has-tip:hover::after, .has-tip:focus::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--text); color: var(--card-bg); font-size: 12px; font-weight: 500;
+  padding: 6px 10px; border-radius: var(--radius-sm); white-space: nowrap; z-index: 20;
+  pointer-events: none;
+}
+.has-tip:focus { outline: none; }

@@ -35,7 +35,14 @@
           <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ ws.id }}">{{ _("Dataset per l'analisi") }}</a>
           {% endif %}
           {% if 'data_analyst' in roles %}
+          {% if datasets_count.get(ws.id) %}
           <a class="secondary button-link" style="grid-column: {{ cols }}" href="/analysis/dashboard?workspace_id={{ ws.id }}">{{ _("Apri analisi") }}</a>
+          {% else %}
+          {# disattivato: il messaggio compare passandoci sopra (e con un tocco su tablet/telefono) #}
+          <span class="secondary button-link is-disabled has-tip" style="grid-column: {{ cols }}" tabindex="0"
+                role="button" aria-disabled="true" data-tip="{{ _("Nessun dataset disponibile") }}"
+                aria-label="{{ _("Apri analisi") }}: {{ _("Nessun dataset disponibile") }}">{{ _("Apri analisi") }}</span>
+          {% endif %}
           {% endif %}
           </div>
         </td>
