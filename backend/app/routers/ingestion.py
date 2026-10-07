@@ -19,6 +19,7 @@ from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
 from app.models import (
+    ObjectiveCoverage,
     Connector as ConnectorModel,
     DataQualityCheckResult,
     EventTypeDef,
@@ -35,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import explain
+from app.services import coverage, explain
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -472,8 +473,73 @@ def profile_page(request: Request, workspace_id: str):
         "profile.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"],
             "profile": sess["profile"], "dataset_label": sess.get("dataset_label"), "step": 2,
+            **_coverage_context(request, workspace_id, sess),
         }
     )
+
+
+def _coverage_context(request: Request, workspace_id: str, sess: dict) -> dict:
+    """Copertura degli obiettivi per la pagina del profilo: livello senza costi, ultima valutazione
+    con Claude per queste stesse tabelle (se c'e') e costo indicativo di una nuova valutazione."""
+    tables = sess.get("tables_schema_objs") or []
+    answers, _ = load_assessment(workspace_id)
+    quick = coverage.quick_coverage(answers, tables)
+    signature = coverage.tables_signature(tables)
+    db = SessionLocal()
+    try:
+        stored = (db.query(ObjectiveCoverage).filter_by(workspace_id=workspace_id, tables_signature=signature)
+                  .order_by(ObjectiveCoverage.created_at.desc()).first())
+        stored = {"result": stored.result, "cost_usd": stored.cost_usd, "language": stored.language,
+                  "created_at": stored.created_at.strftime("%Y-%m-%d %H:%M")} if stored else None
+    finally:
+        db.close()
+    claude_ok = AI_MAPPER == "claude" and explain.available()
+    estimate = None
+    if claude_ok and (answers.get("key_questions") or answers.get("objectives") or answers.get("kpis")):
+        estimate = coverage.estimate(coverage.build_payload(
+            language=get_lang(request), process_name=sess["context"].get("process_name", ""), answers=answers,
+            tables=tables, found=quick["found"]))
+    return {"coverage": quick, "coverage_stored": stored, "coverage_estimate": estimate, "coverage_claude": claude_ok,
+            "coverage_questions": answers.get("key_questions") or answers.get("kpis"),
+            "coverage_has_objectives": bool(answers.get("objectives") or answers.get("key_questions"))}
+
+
+@router.post("/ingestion/coverage")
+async def coverage_evaluate(request: Request):
+    """Valutazione con Claude della copertura degli obiettivi (costo indicativo mostrato prima)."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    user, denied = _require_process_access(request, workspace_id)
+    lang = get_lang(request)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    if AI_MAPPER != "claude" or not explain.available():
+        return JSONResponse({"error": t(lang, "Claude non è configurato su questo server (manca la chiave API): la valutazione non è disponibile.")},
+                            status_code=400)
+    sess = _load_session(user.id, workspace_id)
+    tables = sess.get("tables_schema_objs") or []
+    if not tables:
+        return JSONResponse({"error": t(lang, "Carica prima le tabelle.")}, status_code=400)
+    answers, _ = load_assessment(workspace_id)
+    found = coverage.quick_coverage(answers, tables)["found"]
+    payload = coverage.build_payload(language=lang, process_name=sess["context"].get("process_name", ""),
+                                     answers=answers, tables=tables, found=found)
+    try:
+        out = await run_in_threadpool(coverage.ask, payload)
+    except Exception as exc:
+        print(f"Copertura degli obiettivi non riuscita ({exc!r}).")
+        return JSONResponse({"error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")}, status_code=502)
+    db = SessionLocal()
+    try:
+        row = ObjectiveCoverage(workspace_id=workspace_id, tables_signature=coverage.tables_signature(tables),
+                                language=lang, result=out["result"], cost_usd=out["cost_usd"], created_by=user.name)
+        db.add(row)
+        db.commit()
+        created = row.created_at.strftime("%Y-%m-%d %H:%M")
+    finally:
+        db.close()
+    return JSONResponse({"result": out["result"], "cost_usd": out["cost_usd"], "truncated": out["truncated"],
+                         "created_at": created, "language": lang})
 
 
 @router.post("/ingestion/profile/continue")

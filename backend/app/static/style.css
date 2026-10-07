@@ -738,3 +738,26 @@ button.ov-type:hover { border-color: var(--brand); }
 .objective-actions button { margin: 0; }
 .ov-filter-note { margin: 12px 0 0; background: var(--brand-soft); border-radius: var(--radius-sm); padding: 6px 10px; }
 textarea.autogrow { min-height: 110px; max-height: 60vh; overflow-y: auto; line-height: 1.5; resize: vertical; }
+
+/* ---------- Copertura degli obiettivi ---------- */
+.objcov { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 18px; margin: 20px 0; background: var(--card-bg-soft); }
+.objcov h2 { margin-top: 0; }
+.objcov-sub { font-size: 15px; margin: 16px 0 6px; }
+.objcov-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.objcov-item { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.objcov-item.cov-covered { border-left-color: var(--ok); }
+.objcov-item.cov-partial { border-left-color: var(--warn); }
+.objcov-item.cov-missing { border-left-color: var(--error); }
+.objcov-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cov-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-radius: 999px; padding: 2px 8px; }
+.cov-badge-covered { background: var(--ok-soft); color: var(--ok); }
+.cov-badge-partial { background: var(--warn-soft); color: var(--warn); }
+.cov-badge-missing { background: var(--error-soft); color: var(--error); }
+.cov-miss { color: var(--error); }
+.cov-label { margin-top: 4px; }
+.cov-ul { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.objcov-quote { margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--brand); background: var(--card-bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--muted); white-space: pre-wrap; }
+.objcov-summary { margin: 0 0 10px; }
+.objcov-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.objcov-actions button { margin: 0; }
+.cov-dim { color: var(--muted); }

@@ -363,3 +363,19 @@ class AnalysisObjective(Base):
     end_activity: Mapped[str] = mapped_column(String(200))
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class ObjectiveCoverage(Base):
+    """Valutazione con Claude della copertura degli obiettivi dell'assessment sulle tabelle caricate
+    (services/coverage.py). Vale per il caricamento con la stessa impronta delle tabelle."""
+
+    __tablename__ = "objective_coverage"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("process_workspace.id"))
+    tables_signature: Mapped[str] = mapped_column(String(40))
+    language: Mapped[str] = mapped_column(String(8), default="it")
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

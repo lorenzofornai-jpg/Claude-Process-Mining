@@ -22,6 +22,8 @@
     <div class="stat"><span class="stat-value">{{ profile.tables|selectattr("key")|list|length }}/{{ profile.tables|length }}</span><span class="stat-label">{{ _("tabelle con chiave") }}</span></div>
   </div>
 
+  {% include "_coverage.html" %}
+
   {% if profile.issues %}
   <h2>{{ _("Cosa controllare") }}</h2>
   <div class="issue-list">

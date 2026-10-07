@@ -171,6 +171,7 @@ membro come guardia contro zip bomb).
   (verifica del ruolo; gerarchia processo → dataset → analisi del dataset; lo scarico OCEL resta al
   Data Engineer) il
   **Process Overview** (`/analysis/overview`, `services/overview.py`: oggetto guida, volumi, tempi, varianti),
+  la **copertura degli obiettivi** nel profilo dati (`services/coverage.py`, `POST /ingestion/coverage`),
   l'**obiettivo misurabile** (`services/objectives.py`, `/analysis/objective`, riquadro `_objective.html` anche nella
   pagina Risultato dell'ingestion) e il
   **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;

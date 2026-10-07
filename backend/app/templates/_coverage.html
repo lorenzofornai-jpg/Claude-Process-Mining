@@ -1,0 +1,106 @@
+{# Copertura degli obiettivi dell'assessment sulle tabelle caricate (pagina del profilo dati). #}
+<section class="objcov" id="objcov">
+  <h2>🎯 {{ _("Copertura degli obiettivi") }}</h2>
+  <p class="muted tiny">{{ _("Gli obiettivi che hai indicato nell'assessment, confrontati con le tabelle caricate: cosa si potrà analizzare e quali dati mancano, prima di fare il mapping.") }}</p>
+
+  {% if not coverage_has_objectives %}
+  <div class="banner warning">{{ _("Nell'assessment non hai indicato obiettivi: compilali per sapere se questi dati bastano.") }}
+    <a href="/ingestion/assessment?workspace_id={{ workspace_id }}">{{ _("Vai all'assessment") }}</a></div>
+  {% endif %}
+
+  {% if coverage.objectives %}
+  <h3 class="objcov-sub">{{ _("Controllo rapido, senza costi") }}</h3>
+  <div class="objcov-list">
+    {% for o in coverage.objectives %}
+    <div class="objcov-item cov-{{ o.status }}">
+      <div class="objcov-head">
+        <span class="cov-badge cov-badge-{{ o.status }}">{{ {"covered": _("coperto"), "partial": _("in parte"), "missing": _("non coperto")}[o.status] }}</span>
+        <strong>{{ _(o.objective) }}</strong>
+      </div>
+      {% for h in o.have %}<div class="tiny">✓ {{ h.hint|tr }}: <span class="mono">{{ h.columns|join(", ") }}</span></div>{% endfor %}
+      {% for m in o.missing %}<div class="tiny cov-miss">✗ {{ _("Manca") }}: {{ m.hint|tr }}</div>{% endfor %}
+      {% for m in o.useful_missing %}<div class="tiny muted">+ {{ _("Utile aggiungere") }}: {{ m.hint|tr }}</div>{% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if coverage_questions or coverage_has_objectives %}
+  <h3 class="objcov-sub">{{ _("Le tue domande di business, valutate da Claude") }}</h3>
+  {% if coverage_questions %}<blockquote class="objcov-quote tiny">{{ coverage_questions }}</blockquote>{% endif %}
+  <div id="cov-ai"></div>
+  {% if coverage_claude %}
+  <div class="objcov-actions">
+    <button type="button" class="primary" id="cov-run">{{ _("Rivaluta con Claude") if coverage_stored else _("Valuta con Claude") }}{% if coverage_estimate %} · ~{{ money(coverage_estimate.cost_usd) }} ${% endif %}</button>
+    <span class="tiny muted">{% if coverage_estimate %}{{ _("Costo indicativo (massimo {m}): la valutazione consuma token.", m=money(coverage_estimate.max_usd) ~ " $") }}{% endif %}</span>
+  </div>
+  {% else %}
+  <p class="tiny muted">{{ _("Claude non è configurato su questo server: è disponibile solo il controllo rapido.") }}</p>
+  {% endif %}
+  {% endif %}
+</section>
+<script>
+(function () {
+  var WS = {{ workspace_id|tojson }}, stored = {{ coverage_stored|tojson }};
+  var T = {
+    status: { covered: {{ _("coperto")|tojson }}, partial: {{ _("in parte")|tojson }}, missing: {{ _("non coperto")|tojson }} },
+    measure: {{ _("Come si misura")|tojson }}, available: {{ _("Dati presenti")|tojson }}, missing: {{ _("Dati mancanti")|tojson }},
+    why: {{ _("perché")|tojson }}, where: {{ _("dove trovarli")|tojson }},
+    when: {{ _("Valutazione del {d} · costo {c}")|tojson }},
+    otherLang: {{ _("(scritta in un'altra lingua: rivaluta per averla nella lingua attuale)")|tojson }},
+    running: {{ _("Valutazione in corso…")|tojson }},
+    truncated: {{ _("Risposta interrotta perché troppo lunga: alcune voci potrebbero mancare.")|tojson }},
+    error: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }}
+  };
+  var LANG = {{ current_lang()|tojson }};
+  function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function usd(x) { return Number(x).toLocaleString(LANG, { style: "currency", currency: "USD", minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+  var box = document.getElementById("cov-ai");
+  function render(s, truncated) {
+    if (!box) return;
+    box.textContent = "";
+    if (!s || !s.result) return;
+    var r = s.result;
+    if (r.summary) box.appendChild(el("p", "objcov-summary", r.summary));
+    var list = el("div", "objcov-list");
+    (r.objectives || []).forEach(function (o) {
+      var item = el("div", "objcov-item cov-" + o.status), head = el("div", "objcov-head");
+      head.appendChild(el("span", "cov-badge cov-badge-" + o.status, T.status[o.status] || o.status));
+      head.appendChild(el("strong", "", o.title)); item.appendChild(head);
+      if (o.measure) { var m = el("div", "tiny"); m.appendChild(el("span", "cov-dim", T.measure + ": ")); m.appendChild(document.createTextNode(o.measure)); item.appendChild(m); }
+      if (o.available && o.available.length) {
+        item.appendChild(el("div", "tiny muted cov-label", T.available));
+        var ul = el("ul", "tiny cov-ul"); o.available.forEach(function (a) { ul.appendChild(el("li", "", "✓ " + a)); }); item.appendChild(ul);
+      }
+      if (o.missing && o.missing.length) {
+        item.appendChild(el("div", "tiny muted cov-label", T.missing));
+        var ul2 = el("ul", "tiny cov-ul");
+        o.missing.forEach(function (x) {
+          var li = el("li", "cov-miss"); li.appendChild(el("strong", "", "✗ " + x.data));
+          if (x.why) li.appendChild(document.createTextNode(" — " + T.why + ": " + x.why));
+          if (x.where) { li.appendChild(el("br")); li.appendChild(el("span", "cov-dim", T.where + ": " + x.where)); }
+          ul2.appendChild(li);
+        });
+        item.appendChild(ul2);
+      }
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+    var meta = fmt(T.when, { d: s.created_at, c: usd(s.cost_usd || 0) }) + (s.language && s.language !== LANG ? " " + T.otherLang : "");
+    box.appendChild(el("p", "tiny muted", meta));
+    if (truncated) box.appendChild(el("p", "tiny cov-miss", T.truncated));
+  }
+  render(stored);
+  var btn = document.getElementById("cov-run");
+  if (btn) btn.addEventListener("click", function () {
+    btn.disabled = true; var label = btn.textContent; btn.textContent = T.running;
+    fetch("/ingestion/coverage", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: WS }) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || T.error); return j; }); })
+      .then(function (j) { render(j, j.truncated); })
+      .catch(function (e) { box.appendChild(el("p", "as-error", e.message || T.error)); })
+      .finally(function () { btn.disabled = false; btn.textContent = label; });
+  });
+})();
+</script>

@@ -13,6 +13,7 @@ from app.config import DATA_DIR, STATIC_VERSION
 from app.db import SessionLocal
 from app.models import (
     DataQualityCheckResult,
+    ObjectiveCoverage,
     ExtractionRun,
     IngestionConfig,
     ProcessAssessment,
@@ -248,6 +249,7 @@ def delete_process(request: Request, workspace_id: str):
         db.query(ProcessAssignment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.query(ProcessAssessment).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.query(ProcessDocument).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
+        db.query(ObjectiveCoverage).filter_by(workspace_id=workspace_id).delete(synchronize_session=False)
         db.delete(ws)
         db.commit()
     finally:

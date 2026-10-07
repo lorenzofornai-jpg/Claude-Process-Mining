@@ -105,6 +105,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».
+- ✅ **Copertura degli obiettivi** (7 ottobre 2026): nel profilo dei dati, prima del mapping, gli obiettivi
+  dell'assessment confrontati con le tabelle caricate (`services/coverage.py`, `_coverage.html`).
+  Controllo rapido senza costi: per ogni obiettivo spuntato si cercano i dati che servono (date di chiusura e
+  scadenza, importi, utente, transazione/canale, storico modifiche, motivi, condizioni di pagamento, cliente o
+  fornitore, dispute) con nomi generici e SAP; esito coperto / in parte / non coperto con colonne trovate e cosa
+  manca. Valutazione con Claude su richiesta (costo indicativo prima, risultato salvato per quelle tabelle in
+  `objective_coverage`): le domande di business libere diventano obiettivi distinti, con come si misurano, i dati
+  presenti e quelli mancanti con dove trovarli nel sistema dichiarato. Nato dal caso AR (DSO, touchless, dispute,
+  termini di pagamento rispetto a ordini e contratti).
 - ✅ **Obiettivo misurabile** (7 ottobre 2026): la domanda di business dell'assessment (oggetto principale, evento
   di inizio e di fine) diventa un obiettivo legato al dataset: tipo di oggetto, filtro facoltativo su un attributo,
   attività di inizio e di fine (`services/objectives.py`, tabella `analysis_objective`). Proposto in automatico,
