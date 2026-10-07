@@ -17,7 +17,7 @@ from dataclasses import replace
 from app.connectors.base import TableSchema
 from app.i18n import concat, msg
 from app.services import catalog, sap_dictionary
-from app.services.transformation import qualifier_for
+from app.services.transformation import default_qualifier, qualifier_for
 
 SAP_TEMPLATE_ID = "sap:standard"
 
@@ -187,4 +187,62 @@ def finalize(proposals: list, tables: list[TableSchema]) -> list:
                 continue
             p.source_column = sorted(keys)[0]
         kept.append(p)
-    return kept
+    return kept + _header_item_links(kept, tables)
+
+
+def _header_item_links(proposals: list, tables: list[TableSchema]) -> list:
+    """Posizioni senza eventi (es. BSEG, EKPO, VBAP, righe ordine): se la loro chiave
+    contiene la chiave di un oggetto definito da un'altra tabella che ha eventi (la
+    testata: BKPF, EKKO, VBAK...), gli eventi della testata riguardano anche le sue
+    posizioni. Si propone il collegamento "ponte": per ogni evento della testata si
+    cercano nella tabella delle posizioni le righe con lo stesso valore della colonna
+    in comune piu' selettiva. Vale per qualunque sistema, non solo SAP."""
+    keys: dict[str, list[str]] = {}
+    table_of: dict[str, str] = {}
+    sample: dict[str, object] = {}
+    for p in proposals:
+        if p.ocel_element == "object_type.key" and p.object_type:
+            keys.setdefault(p.object_type, []).append(p.source_column)
+            table_of[p.object_type] = p.source_table
+            sample.setdefault(p.object_type, p)
+    events_of: dict[str, list[str]] = {}
+    for p in proposals:
+        if p.ocel_element == "event_type.timestamp" and p.event_type:
+            events_of.setdefault(p.source_table, [])
+            if p.event_type not in events_of[p.source_table]:
+                events_of[p.source_table].append(p.event_type)
+    linked = {p.related_object_type for p in proposals if p.ocel_element == "e2o_relationship"}
+    columns = {t.name: {c.name.upper(): c for c in t.columns} for t in tables}
+
+    added = []
+    for obj, obj_keys in keys.items():
+        table = table_of[obj]
+        if table in events_of or obj in linked or len(obj_keys) < 2:
+            continue  # ha gia' eventi suoi o collegati
+        own = {k.upper() for k in obj_keys}
+        best = None
+        for header, header_keys in keys.items():
+            h_table = table_of[header]
+            h_own = {k.upper() for k in header_keys}
+            if h_table == table or h_table not in events_of or not (h_own < own):
+                continue
+            if not h_own <= set(columns.get(h_table, {})) or not h_own <= set(columns.get(table, {})):
+                continue
+            if best is None or len(h_own) > len(best[1]):
+                best = (header, h_own, h_table)
+        if best is None:
+            continue
+        header, h_own, h_table = best
+        # la colonna in comune piu' selettiva (es. il numero documento, non la societa')
+        join = max(h_own, key=lambda k: getattr(columns[h_table][k], "distinct_ratio", 0))
+        join_col = columns[table][join].name
+        for event in events_of[h_table]:
+            added.append(replace(
+                sample[obj], source_column=join_col, ocel_element="e2o_relationship", object_type=None,
+                event_type=event, attribute_name=None, related_object_type=obj, qualifier=default_qualifier(obj),
+                confidence=0.86, activity_values=None, based_on_template=None,
+                rationale=msg("Le righe di {t} sono le posizioni di {h} ({ht}): gli eventi «{e}» riguardano anche le "
+                              "sue posizioni, collegate tramite {c}. Senza questo collegamento le posizioni resterebbero "
+                              "senza eventi.", t=table, h=header, ht=h_table, e=event, c=join_col),
+            ))
+    return added

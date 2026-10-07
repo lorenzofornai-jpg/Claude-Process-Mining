@@ -92,6 +92,16 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   domanda è già nell'assessment).
 - ⬜ **Tracciabilità**: ogni evento riporta tabella e riga di origine.
 
+## Revisione e spiegazioni (7 ottobre 2026)
+- ✅ **Testata → posizioni**: posizioni senza eventi (BSEG, EKPO, VBAP, righe ordine…) la cui chiave contiene
+  quella di una testata con eventi ricevono la proposta di collegamento ponte, per qualunque sistema.
+- ✅ **«Aggiungi collegamento»** sulla card di un evento: oggetto e colonna in comune scelti dall'utente.
+- ✅ **Passi in alto cliccabili**: dal risultato si torna alla revisione e si rigenera lo stesso dataset
+  (una bozza mai promossa si rifà; un dataset promosso diventa una nuova versione).
+- ✅ **«Chiedi a Claude»** su messaggi del profilo, righe della revisione e controlli di qualità: costo
+  indicativo mostrato e confermato prima dell'invio, risposta nella lingua dell'interfaccia
+  (`services/explain.py`, modello `EXPLAIN_MODEL`, predefinito claude-sonnet-5-5).
+
 ## Lingua
 - ✅ **Interfaccia in italiano e inglese** (5 ottobre 2026): selettore IT | EN
   in ogni pagina, valido subito e salvato sull'utente; tradotti anche profilo

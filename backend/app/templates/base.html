@@ -10,9 +10,11 @@
     <div class="brand">AI Process Mining</div>
     {% if step %}
     <div class="steps">
-      <span class="step {{ 'active' if step == 2 else '' }}">1. {{ _("Dati sorgente") }}</span>
-      <span class="step {{ 'active' if step == 3 else '' }}">2. {{ _("Revisione mapping") }}</span>
-      <span class="step {{ 'active' if step == 5 else '' }}">3. {{ _("Risultato") }}</span>
+      {% set nav = wizard_nav(user, workspace_id) if wizard_nav is defined else {} %}
+      {% for n, label in [(2, _("Dati sorgente")), (3, _("Revisione mapping")), (5, _("Risultato"))] %}
+      {% if nav.get(n) and n != step %}<a class="step step-link" href="{{ nav[n] }}">{{ loop.index }}. {{ label }}</a>
+      {% else %}<span class="step {{ 'active' if step == n else '' }}">{{ loop.index }}. {{ label }}</span>{% endif %}
+      {% endfor %}
     </div>
     {% endif %}
     <div class="user-box">

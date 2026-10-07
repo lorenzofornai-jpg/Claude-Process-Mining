@@ -49,7 +49,10 @@
         <td>{{ dq.check_name|tr }}</td>
         <td><span class="badge badge-{{ dq.severity }}">{{ _(dq.severity) }}</span></td>
         <td>{{ "✓ " ~ _("superato") if dq.passed else "✗ " ~ _("{n} elementi coinvolti", n=dq.affected_count) }}</td>
-        <td class="rationale">{{ dq.details|tr }}</td>
+        <td class="rationale">{{ dq.details|tr }}
+          {% if not dq.passed %}<div><button type="button" class="ask-btn" data-page="controlli di qualità"
+                  data-message="{{ dq.check_name|tr }} ({{ _(dq.severity) }}): {{ dq.details|tr }}">{{ _("Chiedi a Claude") }}</button></div>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -63,8 +66,11 @@
       <button type="submit" class="primary">{{ _("Utilizza per l'analisi") }}</button>
     </form>
     {% endif %}
+    {% set nav = wizard_nav(user, workspace_id) %}
+    {% if nav.get(3) %}<a class="secondary button-link" href="{{ nav[3] }}">{{ _("Torna alla revisione") }}</a>{% endif %}
     <a class="secondary button-link" href="/ingestion/structures?workspace_id={{ workspace_id }}">{{ _("Vedi tutti i dataset") }}</a>
     <a class="secondary button-link" href="/ingestion/dashboard">{{ _("Torna ai miei processi") }}</a>
   </div>
 </div>
+{% include "_ask_claude.html" %}
 {% endblock %}

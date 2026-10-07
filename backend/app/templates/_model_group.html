@@ -29,6 +29,25 @@
       {% else %}<span class="sev sev-ok">{{ _("accettato") }}</span>{% endif %}
     </span>
     <span class="model-card-actions">
+      {% if g.kind == "evt" and link_options.get(g.name) and g.rejected < g.total %}
+      <details class="add-link" data-options="{{ link_options[g.name]|tojson|forceescape }}">
+        <summary class="secondary button-like">{{ _("Aggiungi collegamento") }}</summary>
+        <div class="add-link-box">
+          <label>{{ _("Oggetto da collegare") }}
+            <select name="link_obj_{{ g.anchor }}" class="add-link-obj">
+              {% for obj in link_options[g.name] %}<option value="{{ obj }}">{{ obj }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>{{ _("Colonna in comune") }}
+            <select name="link_col_{{ g.anchor }}" class="add-link-col">
+              {% for c in link_options[g.name][link_options[g.name]|first] %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+          </label>
+          <p class="tiny muted">{{ _("Per ogni evento si cercano nella tabella dell'oggetto le righe con lo stesso valore della colonna in comune (es. il numero documento) e si collegano gli oggetti di quelle righe.") }}</p>
+          <button type="submit" name="action" value="add_link|{{ g.name }}" class="secondary">{{ _("Aggiungi") }}</button>
+        </div>
+      </details>
+      {% endif %}
       {% if g.accepted < g.total %}<button type="submit" name="action" value="group_accept|{{ group_id }}" class="secondary">{{ _("Ripristina") if g.rejected == g.total else _("Accetta tutto") }}</button>{% endif %}
       {% if g.rejected < g.total %}<button type="submit" name="action" value="group_reject|{{ group_id }}" class="secondary danger">{{ _("Rifiuta") }}</button>{% endif %}
     </span>

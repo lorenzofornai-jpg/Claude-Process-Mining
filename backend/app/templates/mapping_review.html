@@ -10,6 +10,9 @@
     {{ _("Parti dal modello proposto: quali oggetti e quali eventi conterrà il dataset. Se un gruppo ti convince accettalo in blocco, se è sbagliato rifiutalo; scendi nel dettaglio delle colonne solo dove serve (sono già aperte le tabelle con proposte incerte). Quando ogni riga ha una decisione, conferma e genera il dataset.") }}
   </p>
 
+  {% if regenerating %}
+  <div class="banner ok">{{ _("Hai già generato il dataset da questa revisione: puoi cambiare le decisioni e rigenerarlo. Il dataset esistente viene aggiornato, non ne nasce uno nuovo.") }}</div>
+  {% endif %}
   {% if blocked_message %}
   <div class="banner error">{{ blocked_message|tr }}</div>
   {% elif pending_count > 0 %}
@@ -90,7 +93,10 @@
               <div class="tiny muted">{{ _("fonte:") }} {{ template_labels.get(r.based_on_template, r.based_on_template)|tr }}</div>
               {% endif %}
             </td>
-            <td class="rationale">{{ r.rationale|tr }}</td>
+            <td class="rationale">{{ r.rationale|tr }}
+              <button type="button" class="ask-btn ask-btn-small" data-page="revisione del mapping" data-table="{{ r.source_table }}"
+                      data-message="{{ r.source_table }}.{{ r.source_column }} — {{ r.target_label|tr }} ({{ (r.confidence * 100)|round|int }}%). {{ r.rationale|tr }}"
+                      title="{{ _('Chiedi a Claude') }}" aria-label="{{ _('Chiedi a Claude') }}">?</button></td>
             <td class="decision">
               <label class="radio">
                 <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status in ('confirmed', 'overridden') else '' }}>
@@ -151,7 +157,7 @@
       <button type="submit" name="action" value="save" class="secondary">{{ _("Salva e resta qui") }}</button>
       <button type="submit" name="action" value="finalize" class="primary" {{ 'disabled' if pending_count else '' }}
               title="{{ _('Serve una decisione su ogni riga') if pending_count else '' }}">
-        {{ _("Conferma e genera il dataset") }}
+        {{ _("Conferma e rigenera il dataset") if regenerating else _("Conferma e genera il dataset") }}
       </button>
     </div>
     <p class="tiny muted" style="margin-top:8px">
@@ -179,6 +185,15 @@
     form.appendChild(action);
     form.submit();
   });
+  // «Aggiungi collegamento»: le colonne proposte sono quelle in comune con l'oggetto scelto
+  document.addEventListener("change", function (e) {
+    if (!e.target.matches("select.add-link-obj")) return;
+    var box = e.target.closest(".add-link");
+    var cols = JSON.parse(box.dataset.options)[e.target.value] || [];
+    var sel = box.querySelector("select.add-link-col");
+    sel.innerHTML = "";
+    cols.forEach(function (c) { var o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
+  });
   // nel pannello Modifica si vedono solo i campi che servono al tipo scelto
   var FIELDS = {{ fields_by_element|tojson }};
   document.addEventListener("change", function (e) {
@@ -196,4 +211,5 @@
     if (target && target.tagName === "DETAILS") target.open = true;
   });
 </script>
+{% include "_ask_claude.html" %}
 {% endblock %}

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
@@ -35,6 +35,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
+from app.services import explain
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -43,7 +44,7 @@ from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import (
-    FIELDS_BY_ELEMENT, build_ocel, compile_defs, format_activity_values, merge_ocel, normalize_row,
+    FIELDS_BY_ELEMENT, build_ocel, compile_defs, default_qualifier, format_activity_values, merge_ocel, normalize_row,
     parse_activity_values, qualifier_for,
 )
 from app.services.validation import run_data_quality_checks
@@ -52,6 +53,24 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.globals["static_version"] = STATIC_VERSION
 setup_templates(templates)
+
+
+def _wizard_nav(user, workspace_id: str | None) -> dict:
+    """Passi in alto cliccabili: si torna (o si va) a un passo gia' raggiunto in questa sessione."""
+    if not user or not workspace_id:
+        return {}
+    sess = state._SESSIONS.get((user.id, workspace_id)) or {}
+    nav = {}
+    if sess.get("profile"):
+        nav[2] = f"/ingestion/profile?workspace_id={workspace_id}"
+    if sess.get("mapping_rows") is not None and sess.get("mapping_status") == "done":
+        nav[3] = f"/ingestion/review?workspace_id={workspace_id}"
+    if sess.get("result"):
+        nav[5] = f"/ingestion/result?workspace_id={workspace_id}"
+    return nav
+
+
+templates.env.globals["wizard_nav"] = _wizard_nav
 templates.env.filters["activity_values_text"] = format_activity_values
 
 UPLOAD_DIR = DATA_DIR / "uploads"
@@ -409,6 +428,8 @@ async def handle_upload(
     sess["mapping_status"] = None
     sess["mapping_error"] = None
     sess["table_descriptions"] = {}
+    sess["result"] = None
+    sess["draft_config_id"] = None  # nuovi dati: il prossimo dataset e' nuovo
 
     # Struttura gia' esistente con le stesse identiche tabelle/colonne: nessun senso
     # rifare controllo di pertinenza + mapping AI (token sprecati e una struttura
@@ -756,6 +777,8 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "groups_by_table": groups_by_table,
             "missing_tables": _tables_without_proposals(_without_empty_columns(sess.get("tables_schema_objs") or []), rows),
             "model": _model_summary(rows, order),
+            "link_options": _link_options(sess, rows),
+            "regenerating": bool(sess.get("draft_config_id")),
             "pending_count": pending_count,
             "threshold": AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
             "ocel_elements": VALID_OCEL_ELEMENTS,
@@ -769,6 +792,52 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "step": 3,
         },
     )
+
+
+def _link_options(sess: dict, rows: list[dict]) -> dict[str, dict[str, list[str]]]:
+    """Per «Aggiungi collegamento»: {evento: {oggetto: colonne in comune tra la tabella
+    dell'evento e quella dell'oggetto}}. Solo oggetti di un'altra tabella con almeno
+    una colonna in comune (e' la colonna su cui si cercano le righe da collegare)."""
+    # prima le colonne piu' selettive (il numero documento, non la societa' che vale sempre uguale)
+    columns = {t.name: [c.name for c in sorted(t.columns, key=lambda c: -(c.distinct_ratio or 0))]
+               for t in sess.get("tables_schema_objs") or []}
+    live = [r for r in rows if r["status"] != "rejected"]
+    event_table = {r["event_type"]: r["source_table"] for r in live
+                   if r["ocel_element"] == "event_type.timestamp" and r.get("event_type")}
+    object_table = {r["object_type"]: r["source_table"] for r in live
+                    if r["ocel_element"] == "object_type.key" and r.get("object_type")}
+    out: dict[str, dict[str, list[str]]] = {}
+    for event, e_table in event_table.items():
+        e_cols = {c.upper(): c for c in columns.get(e_table, [])}
+        for obj, o_table in object_table.items():
+            if o_table == e_table:
+                continue  # l'oggetto della stessa tabella e' gia' collegato da solo
+            common = [c for c in columns.get(o_table, []) if c.upper() in e_cols]
+            if common:
+                out.setdefault(event, {})[obj] = common
+    return out
+
+
+def _add_link(rows: list[dict], event: str, obj: str, column: str, options: dict) -> None:
+    """Nuovo collegamento evento -> oggetto deciso dall'utente in revisione."""
+    if column not in options.get(event, {}).get(obj, []):
+        return
+    o_table = next(r["source_table"] for r in rows
+                   if r["ocel_element"] == "object_type.key" and r.get("object_type") == obj)
+    for r in rows:
+        if (r["ocel_element"] == "e2o_relationship" and r.get("event_type") == event
+                and r.get("related_object_type") == obj):
+            r["status"] = "confirmed"  # esisteva gia' (magari rifiutato): si riattiva
+            return
+    rows.append({
+        "row_id": max((r["row_id"] for r in rows), default=-1) + 1,
+        "source_table": o_table, "source_column": column, "ocel_element": "e2o_relationship",
+        "object_type": None, "event_type": event, "attribute_name": None, "qualifier": default_qualifier(obj),
+        "related_object_type": obj, "activity_values": None, "confidence": 1.0, "based_on_template": None,
+        "rationale": msg("Collegamento aggiunto nella revisione: gli eventi «{e}» riguardano {o}, cercando in {t} "
+                         "le righe con lo stesso valore di {c}.", e=event, o=obj, t=o_table, c=column),
+        "status": "overridden", "original_ai_proposal": None,
+    })
 
 
 def _document_context(sess: dict) -> dict | None:
@@ -980,6 +1049,13 @@ async def submit_review(
 
     # decisione per gruppo del modello: "group_accept|obj|PurchaseOrder". Si puo' sempre
     # cambiare idea: accettare ripristina anche le righe rifiutate (le modifiche manuali restano).
+    if action.startswith("add_link|"):
+        event = action.split("|", 1)[1]
+        anchor = f"grp-evt-{event.replace(' ', '_')}"
+        _add_link(rows, event, (form.get(f"link_obj_{anchor}") or "").strip(),
+                  (form.get(f"link_col_{anchor}") or "").strip(), _link_options(sess, rows))
+        return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}#{anchor}", status_code=303)
+
     if action.startswith(("group_accept|", "group_reject|")):
         verb, kind, name = action.split("|", 2)
         for r in rows:
@@ -1054,6 +1130,28 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     schema_fp = _schema_fingerprint(sess["tables_schema"])
     edit_config_id = sess.get("edit_config_id")
 
+    # Tornati alla revisione dal risultato e rigenerato: si aggiorna lo stesso dataset invece
+    # di crearne un altro. Una bozza mai promossa si rifa' da capo; se nel frattempo e' stata
+    # promossa diventa una nuova versione (come «Modifica mapping»).
+    draft_id = sess.get("draft_config_id")
+    same_draft = False
+    if draft_id:
+        db = SessionLocal()
+        try:
+            previous = db.get(IngestionConfig, draft_id)
+            if previous is not None and previous.status == "draft" and sess.get("draft_is_new") and not edit_config_id:
+                # bozza nata in questa sessione e mai promossa: non ha storia da conservare
+                old_files = delete_structures(db, [draft_id])
+                db.commit()
+                remove_files(old_files)
+            elif previous is not None:
+                # dataset con una storia (versioni, dati gia' usati per l'analisi): nuova versione se
+                # nel frattempo e' stato promosso, altrimenti si aggiorna la stessa versione in bozza
+                same_draft = previous.status == "draft"
+                edit_config_id = edit_config_id or draft_id
+        finally:
+            db.close()
+
     ocel_path = OUTPUT_DIR / f"{workspace_id}-{uuid.uuid4().hex[:8]}.ocel.json"
     ocel_path.write_text(json.dumps(ocel, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -1063,15 +1161,16 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
 
         if edit_config_id:
             config = db.get(IngestionConfig, edit_config_id)
-            config.current_version += 1
             config.schema_fingerprint = schema_fp
+            if not same_draft:  # rigenerare piu' volte la stessa bozza non crea versioni in piu'
+                config.current_version += 1
+                db.add(IngestionConfigVersion(
+                    ingestion_config_id=config.id, version=config.current_version,
+                    changelog="Struttura rigenerata dal Data Engineer (nuovo mapping su nuovi dati).",
+                    approved_by=user.name,
+                ))
             # richiede una nuova promozione esplicita: non torna attiva per l'analisi da sola
             config.status = "draft"
-            db.add(IngestionConfigVersion(
-                ingestion_config_id=config.id, version=config.current_version,
-                changelog="Struttura rigenerata dal Data Engineer (nuovo mapping su nuovi dati).",
-                approved_by=user.name,
-            ))
             # sostituisce interamente le definizioni precedenti con quelle appena confermate
             db.query(ObjectTypeDef).filter_by(ingestion_config_id=config.id).delete()
             db.query(EventTypeDef).filter_by(ingestion_config_id=config.id).delete()
@@ -1166,6 +1265,8 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     finally:
         db.close()
 
+    sess["draft_config_id"] = ingestion_config_id
+    sess["draft_is_new"] = not edit_config_id
     sess["result"] = {
         "ocel_path": str(ocel_path),
         "stats": stats,
@@ -1176,13 +1277,46 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     }
 
 
+@router.post("/ingestion/explain")
+async def explain_message(request: Request):
+    """«Chiedi a Claude» su un messaggio. Con estimate=true non chiama Claude: restituisce
+    solo il costo indicativo, che l'utente vede e conferma prima dell'invio vero."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    lang = get_lang(request)
+    if AI_MAPPER != "claude" or not explain.available():
+        return JSONResponse({"available": False, "error": t(
+            lang, "Claude non è configurato su questo server (manca la chiave API): la spiegazione non è disponibile.")})
+    sess = _load_session(user.id, workspace_id)
+    table = next((tb for tb in sess.get("tables_schema_objs") or [] if tb.name == body.get("table")), None)
+    payload = explain.build_payload(
+        language=lang, page=str(body.get("page") or ""), message=str(body.get("message") or ""),
+        question=str(body.get("question") or ""), context=sess.get("context") or {}, table=table,
+    )
+    est = explain.estimate(payload)
+    if body.get("estimate"):
+        return JSONResponse({"available": True, **est})
+    try:
+        result = await run_in_threadpool(explain.ask, payload)
+    except Exception as exc:
+        print(f"Chiedi a Claude non riuscito ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+                            status_code=502)
+    return JSONResponse({"available": True, **result})
+
+
 @router.get("/ingestion/result", response_class=HTMLResponse)
 def result_page(request: Request, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
     if denied:
         return denied
     sess = _load_session(user.id, workspace_id)
-    result = sess["result"]
+    result = sess.get("result")
+    if not result:
+        return RedirectResponse(url=f"/ingestion/upload?workspace_id={workspace_id}", status_code=303)
 
     db = SessionLocal()
     try:

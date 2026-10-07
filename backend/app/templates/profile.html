@@ -31,6 +31,8 @@
         <span class="sev sev-{{ i.severity }}">{{ _(i.severity) }}</span>
         {% if i.table %}<span class="mono tiny">{{ i.table }}</span>{% endif %}
         <strong>{{ i.title|tr }}</strong>
+        <button type="button" class="ask-btn" data-page="profilo dei dati" data-table="{{ i.table or '' }}"
+                data-message="{{ i.title|tr }}. {{ _('Impatto:') }} {{ i.impact|tr }} {{ _('Cosa fare:') }} {{ i.action|tr }}">{{ _("Chiedi a Claude") }}</button>
       </div>
       <div class="issue-body">
         <div><span class="muted">{{ _("Impatto:") }}</span> {{ i.impact|tr }}</div>
@@ -100,4 +102,5 @@
     <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}">{{ _("Carica altri file") }}</a>
   </form>
 </div>
+{% include "_ask_claude.html" %}
 {% endblock %}

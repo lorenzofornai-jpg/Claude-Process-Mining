@@ -219,6 +219,7 @@ def _resolve_related_objects(
     mapping: dict,
     object_defs: dict[str, ObjectTypeDefCompiled],
     tables_data: dict[str, list[dict]],
+    join_index: dict | None = None,
 ) -> list[str]:
     target_def = object_defs.get(mapping["related_object_type"])
     if target_def is None:
@@ -230,7 +231,19 @@ def _resolve_related_objects(
 
     join_table = mapping["source_table"]
     join_col = mapping["source_column"]
-    joined_rows = [r for r in tables_data.get(join_table, []) if r.get(join_col) == event_row.get(join_col)]
+    value = event_row.get(join_col)
+    if join_index is None:
+        joined_rows = [r for r in tables_data.get(join_table, []) if r.get(join_col) == value]
+    else:
+        # indice per (tabella, colonna) costruito una volta sola: con migliaia di eventi e righe
+        # la ricerca riga per riga diventerebbe lentissima
+        key = (join_table, join_col)
+        if key not in join_index:
+            idx: dict = {}
+            for r in tables_data.get(join_table, []):
+                idx.setdefault(r.get(join_col), []).append(r)
+            join_index[key] = idx
+        joined_rows = join_index[key].get(value, []) if value not in (None, "") else []
     ids = [_build_object_id(target_def, r) for r in joined_rows]
     return [i for i in ids if i]
 
@@ -256,6 +269,7 @@ def build_ocel(
                     attrs.append({"name": col, "time": "1970-01-01T00:00:00Z", "value": str(val)})
             objects[obj_id] = {"id": obj_id, "type": obj_def.name, "attributes": attrs}
 
+    join_index: dict = {}
     events: list[dict] = []
     skip_log: list[SkipRecord] = []
     event_counter = 0
@@ -307,7 +321,7 @@ def build_ocel(
                     relationships.append({"objectId": home_id, "qualifier": "involves"})
 
             for rule in own_rules:
-                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data):
+                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index):
                     rel = {"objectId": target_id,
                            "qualifier": rule.get("qualifier") or default_qualifier(rule.get("related_object_type"))}
                     if rel not in relationships:  # es. piu' righe ponte verso lo stesso ordine

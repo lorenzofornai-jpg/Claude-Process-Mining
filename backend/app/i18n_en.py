@@ -735,4 +735,35 @@ EN: dict[str, str] = {
     'valuta': 'currency',
     'verifica fattura su entrata merci': 'goods-receipt-based invoice verification',
     "Nessun dataset disponibile": "No dataset available",
+    # ------------------------------------------------------------- collegamenti testata/posizioni
+    "Le righe di {t} sono le posizioni di {h} ({ht}): gli eventi «{e}» riguardano anche le sue posizioni, collegate tramite {c}. Senza questo collegamento le posizioni resterebbero senza eventi.":
+        "The rows of {t} are the items of {h} ({ht}): the “{e}” events also concern its items, linked via {c}. Without this link the items would have no events.",
+    "Collegamento aggiunto nella revisione: gli eventi «{e}» riguardano {o}, cercando in {t} le righe con lo stesso valore di {c}.":
+        "Link added in the review: the “{e}” events concern {o}, looking in {t} for the rows with the same value of {c}.",
+    "Aggiungi collegamento": "Add link",
+    "Oggetto da collegare": "Object to link",
+    "Colonna in comune": "Shared column",
+    "Per ogni evento si cercano nella tabella dell'oggetto le righe con lo stesso valore della colonna in comune (es. il numero documento) e si collegano gli oggetti di quelle righe.":
+        "For each event, the rows of the object's table with the same value of the shared column (e.g. the document number) are looked up and the objects of those rows are linked.",
+    "Aggiungi": "Add",
+    "Hai già generato il dataset da questa revisione: puoi cambiare le decisioni e rigenerarlo. Il dataset esistente viene aggiornato, non ne nasce uno nuovo.":
+        "You already generated the dataset from this review: you can change the decisions and regenerate it. The existing dataset is updated, no new one is created.",
+    "Conferma e rigenera il dataset": "Confirm and regenerate the dataset",
+    # ------------------------------------------------------------- chiedi a Claude
+    "Chiedi a Claude": "Ask Claude",
+    "Claude spiega il messaggio: cosa significa, cosa comporta e cosa fare nell'app.": "Claude explains the message: what it means, what it implies and what to do in the app.",
+    "Cosa non ti è chiaro? (facoltativo)": "What is unclear? (optional)",
+    "es. Devo correggere i dati o basta la revisione?": "e.g. Do I need to fix the data or is the review enough?",
+    "Chiudi": "Close",
+    "Calcolo il costo indicativo…": "Estimating the cost…",
+    "Costo indicativo: circa {c} $ (al massimo {m} $). La richiesta usa Claude e consuma token: parte solo se confermi.":
+        "Estimated cost: about ${c} (at most ${m}). The request uses Claude and consumes tokens: it is sent only if you confirm.",
+    "Chiedi a Claude (≈ {c} $)": "Ask Claude (≈ ${c})",
+    "Fai un'altra domanda (≈ {c} $)": "Ask another question (≈ ${c})",
+    "Claude sta rispondendo…": "Claude is answering…",
+    "Costo effettivo: {c} $": "Actual cost: ${c}",
+    "La richiesta a Claude non è riuscita: riprova tra poco.": "The request to Claude failed: try again shortly.",
+    "Claude non è configurato su questo server (manca la chiave API): la spiegazione non è disponibile.": "Claude is not configured on this server (missing API key): the explanation is not available.",
+    "Accesso negato.": "Access denied.",
+    "Torna alla revisione": "Back to the review",
 }

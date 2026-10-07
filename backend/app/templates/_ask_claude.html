@@ -1,0 +1,90 @@
+{# «Chiedi a Claude»: finestra condivisa dai pulsanti .ask-btn della pagina.
+   Prima di inviare mostra il costo indicativo e chiede conferma. #}
+<dialog id="ask-dialog" class="ask-dialog" data-workspace="{{ workspace_id }}">
+  <form method="dialog" class="ask-form">
+    <h2>{{ _("Chiedi a Claude") }}</h2>
+    <p class="tiny muted">{{ _("Claude spiega il messaggio: cosa significa, cosa comporta e cosa fare nell'app.") }}</p>
+    <blockquote class="ask-message" id="ask-message"></blockquote>
+    <label class="ask-q">{{ _("Cosa non ti è chiaro? (facoltativo)") }}
+      <textarea id="ask-question" rows="2" placeholder="{{ _("es. Devo correggere i dati o basta la revisione?") }}"></textarea>
+    </label>
+    <div class="ask-cost tiny" id="ask-cost"></div>
+    <div class="ask-answer" id="ask-answer" hidden></div>
+    <div class="confirm-actions">
+      <button value="cancel" class="secondary" id="ask-close">{{ _("Chiudi") }}</button>
+      <button type="button" class="primary" id="ask-send" disabled>{{ _("Chiedi a Claude") }}</button>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var T = {
+    estimating: {{ _("Calcolo il costo indicativo…")|tojson }},
+    cost: {{ _("Costo indicativo: circa {c} $ (al massimo {m} $). La richiesta usa Claude e consuma token: parte solo se confermi.")|tojson }},
+    send: {{ _("Chiedi a Claude (≈ {c} $)")|tojson }},
+    again: {{ _("Fai un'altra domanda (≈ {c} $)")|tojson }},
+    waiting: {{ _("Claude sta rispondendo…")|tojson }},
+    spent: {{ _("Costo effettivo: {c} $")|tojson }},
+    failed: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }}
+  };
+  var lang = {{ current_lang()|tojson }};
+  var dlg = document.getElementById("ask-dialog");
+  if (!dlg || !dlg.showModal) return;
+  var el = function (id) { return document.getElementById(id); };
+  var current = null, estimate = null, timer = null;
+  function money(v) {
+    var s = (v < 0.1 ? v.toFixed(3) : v.toFixed(2));
+    return lang === "it" ? s.replace(".", ",") : s;
+  }
+  function fill(tpl, values) { return tpl.replace(/\{(\w+)\}/g, function (_, k) { return values[k]; }); }
+  function request(estimateOnly) {
+    return fetch("/ingestion/explain", {
+      method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        workspace_id: dlg.dataset.workspace, page: current.page, table: current.table,
+        message: current.message, question: el("ask-question").value, estimate: estimateOnly
+      })
+    }).then(function (r) { return r.json(); });
+  }
+  function refreshEstimate(answered) {
+    el("ask-send").disabled = true;
+    el("ask-cost").textContent = T.estimating;
+    request(true).then(function (d) {
+      if (!d.available || d.error) { el("ask-cost").textContent = d.error || T.failed; return; }
+      estimate = d;
+      el("ask-cost").textContent = fill(T.cost, {c: money(d.cost_usd), m: money(d.max_usd)});
+      el("ask-send").textContent = fill(answered ? T.again : T.send, {c: money(d.cost_usd)});
+      el("ask-send").disabled = false;
+    }).catch(function () { el("ask-cost").textContent = T.failed; });
+  }
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".ask-btn");
+    if (!btn) return;
+    e.preventDefault();
+    current = {page: btn.dataset.page, table: btn.dataset.table || "", message: btn.dataset.message};
+    el("ask-message").textContent = current.message;
+    el("ask-question").value = "";
+    el("ask-answer").hidden = true; el("ask-answer").textContent = "";
+    dlg.showModal();
+    refreshEstimate(false);
+  });
+  el("ask-question").addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () { refreshEstimate(!el("ask-answer").hidden); }, 600);
+  });
+  el("ask-send").addEventListener("click", function () {
+    el("ask-send").disabled = true;
+    el("ask-answer").hidden = false;
+    el("ask-answer").textContent = T.waiting;
+    request(false).then(function (d) {
+      if (d.error) { el("ask-answer").textContent = d.error; el("ask-send").disabled = false; return; }
+      el("ask-answer").textContent = d.answer;
+      el("ask-cost").textContent = fill(T.spent, {c: money(d.cost_usd)});
+      el("ask-send").textContent = fill(T.again, {c: money(estimate ? estimate.cost_usd : d.cost_usd)});
+      el("ask-send").disabled = false;
+      el("ask-question").value = "";
+    }).catch(function () { el("ask-answer").textContent = T.failed; el("ask-send").disabled = false; });
+  });
+  dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close("cancel"); });
+})();
+</script>
