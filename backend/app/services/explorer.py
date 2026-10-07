@@ -86,14 +86,24 @@ class ExplorerModel:
         self.related_events = {t: len(set().union(*[e for (tt, _), e in self.events_by_type_act.items() if tt == t]))
                                for t in self.types}
 
+    def avg_events(self, t: str) -> float:
+        return self.related_events[t] / self.with_events[t] if self.with_events.get(t) else 0.0
+
+    def is_hub(self, t: str) -> bool:
+        """Tipo «trasversale» (cliente, fornitore, materiale...): pochi oggetti, ognuno in moltissimi eventi di
+        documenti diversi. La sua linea collega eventi di documenti diversi e attraversa tutto il grafo."""
+        return self.avg_events(t) >= 8 and self.with_events[t] * 4 <= self.related_events[t]
+
     def default_types(self) -> list[str]:
-        """Selezione iniziale: i (massimo) due tipi con piu' eventi collegati, cosi' il primo grafo e' leggibile."""
+        """Selezione iniziale: i (massimo) due tipi con piu' eventi collegati, esclusi i trasversali, cosi' il
+        primo grafo e' leggibile."""
         ranked = sorted((t for t in self.types if self.related_events[t]), key=lambda t: (-self.related_events[t], t))
-        return ranked[:2]
+        return ([t for t in ranked if not self.is_hub(t)] or ranked)[:2]
 
     def type_summary(self) -> list[dict]:
         return [{"name": t, "color": self.colors[t], "objects": self.object_counts[t],
-                 "with_events": self.with_events[t], "events": self.related_events[t]} for t in self.types]
+                 "with_events": self.with_events[t], "events": self.related_events[t],
+                 "hub": self.is_hub(t), "avg": round(self.avg_events(t), 1)} for t in self.types]
 
 
 def load_model(path: str | Path) -> ExplorerModel:

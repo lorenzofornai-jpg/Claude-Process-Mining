@@ -830,4 +830,14 @@ EN: dict[str, str] = {
     "passaggi (in modalità Tempo: tempo mediano)": "transitions (in Time mode: median time)",
     "Nessuna attività trovata.": "No activity found.",
     "Nessun collegamento trovato.": "No connection found.",
+    # Process Explorer, leggibilità
+    "tratteggio: l'oggetto non è ancora entrato nel processo": "dashed: the object has not entered the process yet",
+    "Tocca il nome di una linea per vederla da sola.": "Tap a line's name to see it on its own.",
+    "Linea {t}": "{t} line",
+    "Entrano nel processo": "Enter the process",
+    "Escono dal processo": "Leave the process",
+    "Passaggi principali": "Main transitions",
+    "Tipo trasversale: ogni oggetto partecipa in media a {n} eventi, anche di documenti diversi. La linea mostra l'ordine delle attività per ogni {t}, non il percorso di un singolo documento: guardala da sola.": "Cross-cutting type: each object takes part in {n} events on average, including events of different documents. The line shows the order of activities for each {t}, not the path of a single document: look at it on its own.",
+    "Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.": "Each object of this type takes part in {n} events on average, including events of different documents: its line crosses the whole graph. That is why it is not selected when the page opens.",
+    "trasversale": "cross-cutting",
 }

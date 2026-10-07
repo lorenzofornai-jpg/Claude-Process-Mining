@@ -552,6 +552,7 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
   box-shadow: var(--shadow-sm); color: var(--text); max-width: 230px; }
 .station-label:hover { border-color: var(--brand); }
 .station-label.start-label { border: 0; box-shadow: none; background: transparent; padding: 0 4px; }
+.station-label.start-label:hover .station-name { color: var(--brand); text-decoration: underline; }
 .station-label.start-label .station-name { font-weight: 700; }
 .station-label.faded { opacity: 0.15; }
 .station-name { overflow: hidden; text-overflow: ellipsis; }
@@ -572,6 +573,12 @@ tr.row-rejected td:nth-child(2) { text-decoration: line-through; }
 .sym-start { border: 2.5px solid var(--muted); box-sizing: border-box; }
 .sym-end { background: var(--muted); }
 .sym-dot { background: var(--station); }
+.sym-entry { width: 18px; height: 0; border-radius: 0; border-top: 2.5px dashed var(--muted); }
+.legend-type { cursor: pointer; }
+.legend-type:hover { color: var(--brand); }
+.hub-tag { display: inline-block; font-size: 11px; color: var(--warn); background: var(--warn-soft); border-radius: 999px; padding: 0 7px; margin-left: 2px; cursor: help; }
+.hub-note { background: var(--warn-soft); color: var(--text); border-radius: var(--radius-sm); padding: 8px 10px; }
+.graph-detail h3 .swatch { margin-right: 6px; }
 .sym-badge { width: auto; height: auto; border-radius: 4px; border: 1px solid var(--muted); padding: 0 3px; font-size: 9px; line-height: 12px; }
 .graph-detail { position: absolute; top: 12px; right: 12px; width: 290px; max-height: calc(100% - 90px); overflow-y: auto; background: var(--card-bg);
   border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 12px 14px; font-size: 14px; }

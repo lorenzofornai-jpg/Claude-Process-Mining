@@ -116,6 +116,11 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   (`services/explorer.py`; oggetti per collegamento verificati identici a `pm4py.discover_ocdfg`), il
   browser riceve solo l'aggregato. Disegno con Cytoscape.js + dagre (MIT), inclusi in `static/vendor/`.
   Nota sui nomi: le «attività» sono i tipi di evento dell'OCEL (gli «event name» di altri strumenti).
+  Leggibilità: tutte le linee partono dalla stessa riga in alto, con un tratteggio fino alla prima attività
+  (l'oggetto non è ancora entrato nel processo); i numeri sulle linee non si sovrappongono (si nascondono
+  i meno importanti, restano nel dettaglio); toccando il nome di una linea la si vede da sola. I tipi
+  «trasversali» (pochi oggetti in moltissimi eventi di documenti diversi: cliente, fornitore) sono
+  segnalati, non scelti all'apertura e disegnati sottili e in trasparenza.
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo
   oggetto, varianti, KPI e control tower, «Chiedi a Claude» sul grafo.
 

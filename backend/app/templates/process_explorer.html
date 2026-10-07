@@ -38,7 +38,7 @@
             <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
               <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
               <span class="swatch" style="background:{{ ot.color }}"></span>
-              <span class="type-name">{{ ot.name }}</span>
+              <span class="type-name">{{ ot.name }}{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
               <span class="type-count tiny muted">{{ ot.objects }}</span>
             </label>
           </li>
@@ -114,8 +114,8 @@
 <script>
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
-  var COLORS = {};
-  {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }};
+  var COLORS = {}, TYPES = {};
+  {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};
   {% endfor %}
   var T = {
     nOfM: {{ _("{n} di {m}")|tojson }},
@@ -145,6 +145,13 @@
     legEnd: {{ _("fine del flusso")|tojson }},
     legStation: {{ _("attività: un punto per ogni tipo di oggetto")|tojson }},
     legBadge: {{ _("passaggi (in modalità Tempo: tempo mediano)")|tojson }},
+    legEntry: {{ _("tratteggio: l'oggetto non è ancora entrato nel processo")|tojson }},
+    legTap: {{ _("Tocca il nome di una linea per vederla da sola.")|tojson }},
+    lineOf: {{ _("Linea {t}")|tojson }},
+    starting: {{ _("Entrano nel processo")|tojson }},
+    ending: {{ _("Escono dal processo")|tojson }},
+    mainPaths: {{ _("Passaggi principali")|tojson }},
+    hubNote: {{ _("Tipo trasversale: ogni oggetto partecipa in media a {n} eventi, anche di documenti diversi. La linea mostra l'ordine delle attività per ogni {t}, non il percorso di un singolo documento: guardala da sola.")|tojson }},
     noActs: {{ _("Nessuna attività trovata.")|tojson }},
     noPaths: {{ _("Nessun collegamento trovato.")|tojson }},
     days: {{ _("{n} g")|tojson }},
@@ -199,6 +206,10 @@
           "text-border-width": 1, "text-border-color": "data(color)", "text-border-opacity": 1,
           "loop-direction": "90deg", "loop-sweep": "-50deg", "control-point-step-size": 30 } },
       { selector: "edge.loop", style: { "curve-style": "bezier" } },
+      { selector: "edge.entry", style: { "line-style": "dashed", "line-dash-pattern": [7, 5] } },
+      { selector: "edge.nolabel", style: { "label": "" } },
+      { selector: "edge.hub", style: { "opacity": 0.45 } },
+      { selector: "edge.hub.hl", style: { "opacity": 1 } },
       { selector: ".faded", style: { "opacity": 0.12 } },
       { selector: "node:selected", style: { "border-color": css("--brand"), "border-width": 3 } },
       { selector: "edge:selected", style: { "z-index": 10, "underlay-color": css("--brand"), "underlay-opacity": 0.25, "underlay-padding": 4 } }
@@ -285,7 +296,7 @@
   }
 
   // ---------- disegno a linee di metropolitana ----------
-  var DOT_GAP = 17, layer = document.getElementById("station-layer");
+  var DOT_GAP = 20, layer = document.getElementById("station-layer");
   var stations = {};   // nome attivita' -> {label: elemento HTML, types: [...]}
 
   function edgeLabel(e) {
@@ -296,7 +307,7 @@
   function labelWidth(text) { return Math.min(230, Math.max(70, text.length * 6.3 + 22)); }
 
   function draw() {
-    closeDetail();
+    closeDetail(true);
     cy.elements().remove(); layer.textContent = ""; stations = {};
     var edges = data.edges.filter(edgeVisible);
     var empty = document.getElementById("graph-empty");
@@ -311,55 +322,109 @@
       [e.source, e.target].forEach(function (id) { (typesAt[id] = typesAt[id] || {})[e.type] = true; });
     });
 
-    // 1) disposizione a livelli con dagre: ogni attivita' e' una "stazione" larga quanto i suoi punti + etichetta
+    // 1) disposizione a livelli con dagre, senza gli inizi: le attivita' sono "stazioni" larghe quanto punti + etichetta
     var g = new dagre.graphlib.Graph({ multigraph: true });
-    g.setGraph({ rankdir: "TB", nodesep: 46, ranksep: 84, ranker: "network-simplex", acyclicer: "greedy", marginx: 20, marginy: 20 });
+    g.setGraph({ rankdir: "TB", nodesep: 56, ranksep: 92, ranker: "network-simplex", acyclicer: "greedy", marginx: 0, marginy: 0 });
     g.setDefaultEdgeLabel(function () { return {}; });
     Object.keys(typesAt).forEach(function (id) {
-      var n = byId[id]; if (!n) return;
+      var n = byId[id]; if (!n || n.kind === "start") return;
       var nTypes = data.types.filter(function (t) { return typesAt[id][t]; }).length;
       if (n.kind === "activity") g.setNode(id, { width: nTypes * DOT_GAP + 8 + labelWidth(n.label), height: 40 });
-      else if (n.kind === "start") g.setNode(id, { width: 22 + labelWidth(n.label), height: 34 });
       else g.setNode(id, { width: 20, height: 20 });
     });
     edges.forEach(function (e) {
-      if (e.source !== e.target) g.setEdge(e.source, e.target, { weight: Math.max(1, Math.round(100 * e.count / maxCount)), minlen: 1 }, e.id);
+      if (e.source !== e.target && !isStart(e.source))
+        g.setEdge(e.source, e.target, { weight: Math.max(1, Math.round(100 * e.count / maxCount)), minlen: 1 }, e.id);
     });
     dagre.layout(g);
 
-    // 2) punti, inizi e fini nelle posizioni calcolate
-    var els = [], dotId = function (act, t) { return "d\u0001" + act + "\u0001" + t; };
+    // 2) punti e fini nelle posizioni calcolate
+    var els = [], pos = {}, rects = [], dotId = function (act, t) { return "d\u0001" + act + "\u0001" + t; };
     Object.keys(typesAt).forEach(function (id) {
-      var n = byId[id], p = g.node(id); if (!n || !p) return;
+      var n = byId[id], p = g.node(id); if (!n || !p || n.kind === "start") return;
       var left = p.x - p.width / 2;
       if (n.kind === "activity") {
         var tl = data.types.filter(function (t) { return typesAt[id][t]; });
         tl.forEach(function (t, i) {
-          els.push({ group: "nodes", classes: "dot", data: { id: dotId(id, t), act: id, type: t },
-                     position: { x: left + 7 + i * DOT_GAP, y: p.y } });
+          var did = dotId(id, t); pos[did] = { x: left + 7 + i * DOT_GAP, y: p.y };
+          els.push({ group: "nodes", classes: "dot", data: { id: did, act: id, type: t }, position: pos[did] });
         });
         addStationLabel(n, tl, left + tl.length * DOT_GAP + 6, p.y);
-      } else if (n.kind === "start") {
-        els.push({ group: "nodes", classes: "start", data: { id: id, color: n.color, raw: n }, position: { x: left + 7, y: p.y } });
-        addStartLabel(n, left + 20, p.y);
       } else {
-        els.push({ group: "nodes", classes: "end", data: { id: id, color: n.color, raw: n }, position: { x: p.x, y: p.y } });
+        pos[id] = { x: p.x, y: p.y };
+        els.push({ group: "nodes", classes: "end", data: { id: id, color: n.color, type: n.type, raw: n }, position: pos[id] });
       }
+      rects.push({ x1: left - 4, x2: left + p.width + 4, y1: p.y - 24, y2: p.y + 24 });
     });
+
+    // 3) tutte le linee partono dalla stessa riga in alto, sopra la stazione in cui ogni tipo entra di piu';
+    //    il tratto fino alla prima attivita' e' tratteggiato: l'oggetto non e' ancora entrato nel processo
+    var minY = Math.min.apply(null, Object.keys(pos).map(function (k) { return pos[k].y; }));
+    var topY = minY - 110;
+    var starts = data.types.map(function (t) {
+      var id = "__start__|" + t, n = byId[id];
+      if (!n || !typesAt[id]) return null;
+      var first = edges.filter(function (e) { return e.source === id; }).sort(function (a, b) { return b.count - a.count; })[0];
+      var target = first && pos[dotId(first.target, t)];
+      return { id: id, n: n, x: target ? target.x : 0, w: 26 + labelWidth(n.label) };
+    }).filter(Boolean).sort(function (a, b) { return a.x - b.x; });
+    var lastRight = -Infinity;
+    starts.forEach(function (st) {
+      var x = Math.max(st.x, lastRight + 18);
+      lastRight = x + st.w;
+      els.push({ group: "nodes", classes: "start", data: { id: st.id, color: st.n.color, type: st.n.type, raw: st.n }, position: { x: x, y: topY } });
+      addStartLabel(st.n, x + 13, topY);
+      rects.push({ x1: x - 10, x2: x + st.w, y1: topY - 20, y2: topY + 20 });
+    });
+
     edges.forEach(function (e) {
       var s = isStart(e.source) ? e.source : dotId(e.source, e.type);
       var t = isEnd(e.target) ? e.target : dotId(e.target, e.type);
       // ogni tipo gira a un'altezza diversa: le linee di tipi diversi corrono affiancate invece di sovrapporsi
       var ti = Math.max(0, data.types.indexOf(e.type));
-      els.push({ group: "edges", classes: s === t ? "loop" : "", data: { id: e.id, source: s, target: t, color: e.color,
-        turn: 16 + (ti % 6) * 9, width: 2 + 4.5 * Math.sqrt(e.count / maxCount), label: edgeLabel(e), raw: e } });
+      // le linee dei tipi trasversali (es. cliente) sono piu' sottili e in trasparenza: non coprono i flussi dei documenti
+      var hub = !!(TYPES[e.type] || {}).hub;
+      els.push({ group: "edges", classes: (s === t ? "loop " : "") + (isStart(e.source) ? "entry " : "") + (hub ? "hub" : ""),
+        data: { id: e.id, source: s, target: t, color: e.color, type: e.type, hub: hub,
+        turn: isStart(e.source) ? "92%" : 14 + (ti % 6) * 11,
+        width: (hub ? 1.2 + 1.8 : 1.8 + 3.4) * Math.sqrt(e.count / maxCount) + (hub ? 0.6 : 0), label: edgeLabel(e), raw: e } });
     });
     cy.add(els);
     cy.nodes().ungrabify();
-    graphSize = { w: g.graph().width, h: g.graph().height };
+    graphBox = {
+      x1: Math.min.apply(null, rects.map(function (r) { return r.x1; })), x2: Math.max.apply(null, rects.map(function (r) { return r.x2; })),
+      y1: Math.min.apply(null, rects.map(function (r) { return r.y1; })), y2: Math.max.apply(null, rects.map(function (r) { return r.y2; }))
+    };
     fitAll();
     syncLayer();
+    placeLabels();
     renderLegend();
+  }
+
+  // Numeri sulle linee senza sovrapposizioni: si mettono prima i piu' importanti (le linee in evidenza, poi le piu'
+  // frequenti); un numero che coprirebbe un altro numero, un punto o un'etichetta si nasconde (resta nel dettaglio).
+  function placeLabels(focus) {
+    var boxes = [];
+    cy.nodes().forEach(function (n) { var p = n.position(); boxes.push({ x1: p.x - 9, x2: p.x + 9, y1: p.y - 9, y2: p.y + 9 }); });
+    Object.keys(stations).forEach(function (k) {
+      var b = stations[k], x = parseFloat(b.style.left), y = parseFloat(b.style.top), w = b.offsetWidth, h = b.offsetHeight;
+      if (!b.classList.contains("faded")) boxes.push({ x1: x, x2: x + w, y1: y - h / 2, y2: y + h / 2 });
+    });
+    function hits(r) { return boxes.some(function (o) { return r.x1 < o.x2 && r.x2 > o.x1 && r.y1 < o.y2 && r.y2 > o.y1; }); }
+    var list = cy.edges().toArray().sort(function (a, b) {
+      var fa = focus && focus[a.id()] ? 1 : 0, fb = focus && focus[b.id()] ? 1 : 0;
+      var ha = a.data("hub") ? 1 : 0, hb = b.data("hub") ? 1 : 0;
+      return fb - fa || ha - hb || b.data("raw").count - a.data("raw").count;
+    });
+    cy.edges().removeClass("nolabel");
+    list.forEach(function (ed) {
+      if (!ed.data("label") || (focus && !focus[ed.id()])) { ed.addClass("nolabel"); return; }
+      var bb = ed.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeMainLabels: true,
+                                includeSourceLabels: false, includeTargetLabels: false });
+      if (!bb || !isFinite(bb.x1) || bb.w === 0) return;
+      var r = { x1: bb.x1 - 2, x2: bb.x2 + 2, y1: bb.y1 - 2, y2: bb.y2 + 2 };
+      if (hits(r)) ed.addClass("nolabel"); else boxes.push(r);
+    });
   }
 
   function addStationLabel(n, types, x, y) {
@@ -376,6 +441,7 @@
     line.appendChild(document.createTextNode(" " + fmt(T.times, { n: "" }).trim()));
     box.appendChild(line);
     box.addEventListener("click", function () { showActivity(n.id); });
+    box.dataset.types = JSON.stringify(types);
     layer.appendChild(box);
     stations[n.id] = box;
   }
@@ -385,19 +451,18 @@
     box.style.left = x + "px"; box.style.top = y + "px";
     box.appendChild(el("div", "station-name", n.label));
     box.appendChild(el("div", "station-counts", "# " + fmt(T.objectsN, { n: compact(n.count) })));
-    box.addEventListener("click", function () { showFlowEnd(cy.getElementById(n.id)); });
+    box.addEventListener("click", function () { showType(n.type); });
     layer.appendChild(box);
     stations[n.id] = box;
   }
 
   // adatta alla finestra tutto il disegno, etichette comprese (cy.fit non le conosce), lasciando spazio ai comandi in basso
-  var graphSize = null;
+  var graphBox = null;
   function fitAll() {
-    if (!graphSize) return;
-    var W = cy.width(), H = cy.height() - 50, pad = 16;
-    var z = Math.min((W - 2 * pad) / graphSize.w, (H - 2 * pad) / graphSize.h, 1.4);
-    z = Math.max(cy.minZoom(), z);
-    cy.viewport({ zoom: z, pan: { x: (W - graphSize.w * z) / 2, y: pad + (H - 2 * pad - graphSize.h * z) / 2 } });
+    if (!graphBox) return;
+    var W = cy.width(), H = cy.height() - 50, pad = 16, gw = graphBox.x2 - graphBox.x1, gh = graphBox.y2 - graphBox.y1;
+    var z = Math.max(cy.minZoom(), Math.min((W - 2 * pad) / gw, (H - 2 * pad) / gh, 1.4));
+    cy.viewport({ zoom: z, pan: { x: (W - gw * z) / 2 - graphBox.x1 * z, y: pad + (H - 2 * pad - gh * z) / 2 - graphBox.y1 * z } });
   }
 
   // le etichette HTML seguono zoom e spostamento del grafo
@@ -409,33 +474,68 @@
   }
   cy.on("viewport", syncLayer);
 
-  function refreshLabels() { cy.edges().forEach(function (ed) { ed.data("label", edgeLabel(ed.data("raw"))); }); }
+  function refreshLabels() { cy.edges().forEach(function (ed) { ed.data("label", edgeLabel(ed.data("raw"))); }); placeLabels(currentFocus); }
 
   function renderLegend() {
     var box = document.getElementById("graph-legend"); box.textContent = "";
     (data ? data.types : []).forEach(function (t) {
-      var row = el("div", "legend-row"); row.appendChild(swatch(COLORS[t])); row.appendChild(el("span", "", t)); box.appendChild(row);
+      var row = el("div", "legend-row legend-type"); row.appendChild(swatch(COLORS[t])); row.appendChild(el("span", "", t));
+      row.addEventListener("click", function () { showType(t); });
+      box.appendChild(row);
     });
-    [["sym-start", T.legStart], ["sym-end", T.legEnd], ["sym-dot", T.legStation], ["sym-badge", T.legBadge]].forEach(function (x) {
+    [["sym-start", T.legStart], ["sym-entry", T.legEntry], ["sym-end", T.legEnd], ["sym-dot", T.legStation], ["sym-badge", T.legBadge]].forEach(function (x) {
       var row = el("div", "legend-row muted"); row.appendChild(el("span", "sym " + x[0], x[0] === "sym-badge" ? "12" : ""));
       row.appendChild(el("span", "", x[1])); box.appendChild(row);
     });
+    box.appendChild(el("div", "legend-row muted", T.legTap));
   }
 
   // ---------- dettaglio ----------
   var detail = document.getElementById("detail"), body = document.getElementById("detail-body");
   function openDetail() { body.textContent = ""; detail.hidden = false; }
-  function closeDetail() {
-    detail.hidden = true; cy.elements().removeClass("faded").unselect();
+  var currentFocus = null;   // collegamenti in evidenza (i loro numeri hanno la precedenza)
+  function closeDetail(skipLabels) {
+    detail.hidden = true; cy.elements().removeClass("faded hl").unselect();
     Object.keys(stations).forEach(function (k) { stations[k].classList.remove("faded"); });
+    currentFocus = null;
+    if (skipLabels !== true) placeLabels();
   }
-  document.getElementById("detail-close").addEventListener("click", closeDetail);
+  document.getElementById("detail-close").addEventListener("click", function () { closeDetail(); });
   function kv(table, k, v) { var tr = el("tr"); tr.appendChild(el("th", "", k)); tr.appendChild(el("td", "", v)); table.appendChild(tr); }
   function fadeExcept(ids, edgeIds) {
     cy.elements().addClass("faded");
     Object.keys(stations).forEach(function (k) { stations[k].classList.toggle("faded", !ids[k]); });
     cy.nodes().forEach(function (n) { if (ids[n.data("act") || n.id()]) n.removeClass("faded"); });
-    cy.edges().forEach(function (ed) { if (edgeIds[ed.id()]) ed.removeClass("faded"); });
+    cy.edges().removeClass("hl");
+    cy.edges().forEach(function (ed) { if (edgeIds[ed.id()]) ed.removeClass("faded").addClass("hl"); });
+    currentFocus = edgeIds; placeLabels(edgeIds);
+  }
+
+  // una linea da sola: tutti i passaggi di un tipo di oggetto, il resto in trasparenza
+  function showType(t) {
+    var vis = data.edges.filter(function (e) { return edgeVisible(e) && e.type === t; });
+    var eids = {}; vis.forEach(function (e) { eids[e.id] = true; });
+    cy.elements().addClass("faded");
+    cy.nodes().forEach(function (n) { if (n.data("type") === t) n.removeClass("faded"); });
+    cy.edges().removeClass("hl");
+    cy.edges().forEach(function (ed) { if (eids[ed.id()]) ed.removeClass("faded").addClass("hl"); });
+    Object.keys(stations).forEach(function (k) {
+      var b = stations[k], types = b.dataset.types ? JSON.parse(b.dataset.types) : null;
+      b.classList.toggle("faded", types ? types.indexOf(t) < 0 : k !== "__start__|" + t);
+    });
+    currentFocus = eids; placeLabels(eids);
+    var info = TYPES[t] || {};
+    openDetail();
+    var h = el("h3"); h.appendChild(swatch(COLORS[t])); h.appendChild(document.createTextNode(fmt(T.lineOf, { t: t }))); body.appendChild(h);
+    var tb = el("table", "detail-table");
+    kv(tb, T.objects, num(info.objects || 0));
+    var sum = function (f) { return vis.filter(f).reduce(function (a, e) { return a + e.count; }, 0); };
+    kv(tb, T.starting, num(sum(function (e) { return isStart(e.source); })));
+    kv(tb, T.ending, num(sum(function (e) { return isEnd(e.target); })));
+    body.appendChild(tb);
+    if (info.hub) body.appendChild(el("p", "tiny hub-note", fmt(T.hubNote, { n: num(Math.round(info.avg)), t: t })));
+    edgeList(T.mainPaths, vis.filter(function (e) { return !isStart(e.source) && !isEnd(e.target); }).slice(0, 10),
+             function (e) { return null; });
   }
   function edgeList(title, list, other) {
     if (!list.length) return;
@@ -443,7 +543,8 @@
     var ul = el("ul", "detail-list");
     list.sort(function (a, b) { return b.count - a.count; }).forEach(function (e) {
       var li = el("li"); li.appendChild(swatch(e.color));
-      li.appendChild(el("span", "", nodeName(other(e)) + " · " + num(e.count)));
+      var o = other(e);
+      li.appendChild(el("span", "", (o === null ? nodeName(e.source) + " → " + nodeName(e.target) : nodeName(o)) + " · " + num(e.count)));
       li.addEventListener("click", function () { showEdge(cy.getElementById(e.id)); });
       ul.appendChild(li);
     });
@@ -502,7 +603,8 @@
   }
 
   cy.on("tap", "node.dot", function (ev) { showActivity(ev.target.data("act")); });
-  cy.on("tap", "node.start, node.end", function (ev) { showFlowEnd(ev.target); });
+  cy.on("tap", "node.start", function (ev) { showType(ev.target.data("type")); });
+  cy.on("tap", "node.end", function (ev) { showFlowEnd(ev.target); });
   cy.on("tap", "edge", function (ev) { showEdge(ev.target); });
   cy.on("tap", function (ev) { if (ev.target === cy) closeDetail(); });
 
