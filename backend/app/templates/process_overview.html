@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Process Overview · {{ process_name }}{% endblock %}
+{% block main_class %}content-wide{% endblock %}
+{% block content %}
+<div class="card wide overview-card">
+  <div class="explorer-head">
+    <div>
+      <h1>Process Overview</h1>
+      <p class="muted tiny">
+        {{ _("Processo: {p}.", p=strong(process_name)) }}
+        {{ _("Dataset {d}, v{v}: {o} oggetti, {e} eventi.", d=strong(config.name), v=config.current_version, o=run.object_count, e=run.event_count) }}
+      </p>
+    </div>
+    <div class="explorer-head-tools">
+      <a class="secondary button-link" href="/analysis/explorer?workspace_id={{ workspace_id }}&config_id={{ config.id }}">Process Explorer →</a>
+    </div>
+  </div>
+
+  <section class="ov-section">
+    <h2 class="ov-title">{{ _("Oggetti del dataset") }}</h2>
+    <p class="tiny muted">{{ _("Tocca un tipo di oggetto per sceglierlo come oggetto guida: volumi, tempi e varianti qui sotto sono calcolati su di lui. I tipi trasversali non possono fare da guida.") }}</p>
+    <div class="ov-types" id="ov-types"></div>
+  </section>
+
+  <div class="ov-controls">
+    <label class="ov-lead">{{ _("Oggetto guida") }}
+      <select id="lead-select"></select>
+    </label>
+    <div>
+      <div class="tiny muted ov-control-label">{{ _("Tempo di attraversamento") }}</div>
+      <div class="segmented" role="group" aria-label="{{ _("Tempo di attraversamento") }}">
+        <button type="button" class="seg active" data-scope="object">{{ _("Solo l'oggetto") }}</button>
+        <button type="button" class="seg" data-scope="related">{{ _("Con gli oggetti collegati") }}</button>
+      </div>
+    </div>
+    <p class="tiny muted ov-scope-help" id="scope-help"></p>
+  </div>
+
+  <div id="ov-body" aria-live="polite">
+    <p class="muted" id="ov-loading">{{ _("Calcolo in corso…") }}</p>
+  </div>
+
+  <p class="tiny muted" style="margin-top:18px">
+    <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Torna all'analisi") }}</a>
+  </p>
+</div>
+
+<script>
+(function () {
+  var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
+  var TYPES = {{ object_types|tojson }};
+  var ALIASES = {{ aliases|tojson }};
+  var lead = {{ default_lead|tojson }}, scope = "object", data = null, shown = 5;
+  function tn(n) { return ALIASES.object_type[n] || n; }
+  function an(n) { return ALIASES.activity[n] || n; }
+  var T = {
+    objects: {{ _("Oggetti")|tojson }},
+    events: {{ _("Eventi")|tojson }},
+    perObject: {{ _("in media {n} per oggetto (un evento può riguardare più oggetti)")|tojson }},
+    medianTime: {{ _("Tempo mediano")|tojson }},
+    p90: {{ _("9 oggetti su 10 entro {d}")|tojson }},
+    variants: {{ _("Varianti")|tojson }},
+    lifetime: {{ _("durata mediana {d}")|tojson }},
+    noLifetime: {{ _("senza durata")|tojson }},
+    hub: {{ _("trasversale")|tojson }},
+    hubTip: {{ _("Tipo trasversale: collega documenti diversi, non misura le performance di un processo.")|tojson }},
+    lead: {{ _("guida")|tojson }},
+    relTitle: {{ _("Ogni {t} ha in media")|tojson }},
+    relItem: {{ _("{n} {t}")|tojson }},
+    relShare: {{ _("({p} dei casi)")|tojson }},
+    volTitle: {{ _("{t} iniziati per mese")|tojson }},
+    volBar: {{ _("{m}: {n}")|tojson }},
+    tpTitle: {{ _("Distribuzione del tempo di attraversamento")|tojson }},
+    tpBar: {{ _("{a}–{b}: {n} oggetti")|tojson }},
+    tpOver: {{ _("oltre {a}: {n} oggetti")|tojson }},
+    tpStats: {{ _("Mediana {m} · media {a} · minimo {lo} · massimo {hi}")|tojson }},
+    happyTitle: {{ _("Happy path")|tojson }},
+    happyDesc: {{ _("La variante più frequente: la sequenza di attività seguita dal maggior numero di {t}.")|tojson }},
+    happyPct: {{ _("Oggetti che seguono l'happy path")|tojson }},
+    happyAbs: {{ _("{n} su {m}")|tojson }},
+    happyTime: {{ _("Tempo mediano: happy path e tutti")|tojson }},
+    vs: {{ _("contro {d}")|tojson }},
+    varTitle: {{ _("Varianti")|tojson }},
+    varDesc: {{ _("Ogni variante è una sequenza di attività di {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
+    varSlider: {{ _("Varianti mostrate: {n} di {m} · copertura: {p} dei {t}")|tojson }},
+    varCount: {{ _("{n} oggetti · {p}")|tojson }},
+    varTime: {{ _("mediana {d}")|tojson }},
+    repeated: {{ _("ripetuta più volte di seguito")|tojson }},
+    othersTitle: {{ _("Altre attività frequenti")|tojson }},
+    othersDesc: {{ _("Attività di {t} che non fanno parte dell'happy path.")|tojson }},
+    othersShare: {{ _("{p} dei {t}")|tojson }},
+    othersEvents: {{ _("{n} eventi")|tojson }},
+    noOthers: {{ _("Nessuna: tutte le attività fanno parte dell'happy path.")|tojson }},
+    scopeObject: {{ _("Dal primo all'ultimo evento di ogni {t}.")|tojson }},
+    scopeRelated: {{ _("Dal primo all'ultimo evento di ogni {t} e degli oggetti collegati (esclusi i tipi trasversali): è finito quando è finito l'ultimo oggetto collegato.")|tojson }},
+    error: {{ _("Non è stato possibile calcolare l'overview.")|tojson }},
+    days: {{ _("{n} g")|tojson }}, hours: {{ _("{n} h")|tojson }}, minutes: {{ _("{n} min")|tojson }}, seconds: {{ _("{n} s")|tojson }}
+  };
+  function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
+  function num(n, d) { return Number(n).toLocaleString(LANG, { maximumFractionDigits: d === undefined ? 0 : d }); }
+  function pct(x) { return Number(x).toLocaleString(LANG, { style: "percent", maximumFractionDigits: 1 }); }
+  function dur(sec) {
+    if (sec === null || sec === undefined || isNaN(sec)) return "—";
+    var a = Math.abs(sec), o = { maximumFractionDigits: 1 };
+    if (a >= 86400) return fmt(T.days, { n: (sec / 86400).toLocaleString(LANG, o) });
+    if (a >= 3600) return fmt(T.hours, { n: (sec / 3600).toLocaleString(LANG, o) });
+    if (a >= 60) return fmt(T.minutes, { n: Math.round(sec / 60).toLocaleString(LANG) });
+    return fmt(T.seconds, { n: Math.round(sec).toLocaleString(LANG) });
+  }
+  function days(d) { return dur(d * 86400); }
+  function monthLabel(m) {
+    var p = m.month.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, 1));
+    return d.toLocaleDateString(LANG, { month: "short", year: "2-digit", timeZone: "UTC" });
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function swatch(c) { var s = el("span", "swatch"); s.style.background = c; return s; }
+  var COLOR = {}; TYPES.forEach(function (t) { COLOR[t.name] = t.color; });
+
+  // ---------- comandi ----------
+  var select = document.getElementById("lead-select");
+  function fillSelect(options) {
+    select.textContent = "";
+    options.forEach(function (t) { var o = el("option", "", tn(t)); o.value = t; o.selected = t === lead; select.appendChild(o); });
+  }
+  select.addEventListener("change", function () { lead = select.value; load(); });
+  document.querySelectorAll(".seg[data-scope]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".seg[data-scope]").forEach(function (x) { x.classList.toggle("active", x === b); });
+      scope = b.dataset.scope; load();
+    });
+  });
+
+  function load() {
+    document.getElementById("ov-body").style.opacity = 0.5;
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope });
+    fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
+      .then(function (d) { data = d; lead = d.lead; render(); })
+      .catch(function (e) { var b = document.getElementById("ov-body"); b.textContent = ""; b.appendChild(el("p", "as-error", e.message || T.error)); })
+      .finally(function () { document.getElementById("ov-body").style.opacity = 1; });
+  }
+
+  // ---------- disegno ----------
+  function section(title, desc) {
+    var s = el("section", "ov-section"); s.appendChild(el("h2", "ov-title", title));
+    if (desc) s.appendChild(el("p", "tiny muted", desc));
+    return s;
+  }
+  function kpi(label, value, sub) {
+    var k = el("div", "ov-kpi"); k.appendChild(el("div", "ov-kpi-label", label));
+    k.appendChild(el("div", "ov-kpi-value", value)); if (sub) k.appendChild(el("div", "ov-kpi-sub tiny muted", sub));
+    return k;
+  }
+  function chain(steps) {
+    var c = el("div", "ov-chain");
+    steps.forEach(function (s, i) {
+      if (i) c.appendChild(el("span", "ov-arrow", "→"));
+      var st = el("span", "ov-step", an(s.activity) + (s.repeated ? " ×" : ""));
+      if (s.repeated) st.title = T.repeated;
+      c.appendChild(st);
+    });
+    return c;
+  }
+  function bars(items, labelOf, tipOf) {
+    var max = Math.max.apply(null, [1].concat(items.map(function (x) { return x.count; })));
+    var box = el("div", "ov-bars");
+    items.forEach(function (x) {
+      var col = el("div", "ov-bar-col"); col.title = tipOf(x); col.setAttribute("aria-label", tipOf(x)); col.tabIndex = 0;
+      var v = el("div", "ov-bar-value tiny", x.count ? num(x.count) : "");
+      var bar = el("div", "ov-bar" + (x.overflow ? " ov-bar-over" : "")); bar.style.height = Math.max(x.count ? 3 : 0, 100 * x.count / max) + "%";
+      var area = el("div", "ov-bar-area"); area.appendChild(v); area.appendChild(bar);
+      col.appendChild(area); col.appendChild(el("div", "ov-bar-label tiny muted", labelOf(x)));
+      box.appendChild(col);
+    });
+    return box;
+  }
+
+  function renderTypes() {
+    var box = document.getElementById("ov-types"); box.textContent = "";
+    data.types.forEach(function (t) {
+      var card = el(t.lead_option ? "button" : "div", "ov-type" + (t.name === lead ? " is-lead" : "") + (t.hub ? " is-hub" : ""));
+      if (t.lead_option) { card.type = "button"; card.addEventListener("click", function () { lead = t.name; select.value = lead; load(); }); }
+      if (t.hub) card.title = T.hubTip;
+      var head = el("div", "ov-type-head"); head.appendChild(swatch(t.color)); head.appendChild(el("strong", "", tn(t.name)));
+      if (t.name === lead) head.appendChild(el("span", "chip", T.lead));
+      if (t.hub) head.appendChild(el("span", "hub-tag", T.hub));
+      card.appendChild(head);
+      card.appendChild(el("div", "tiny", num(t.objects) + " " + T.objects.toLowerCase() + " · " + num(t.events) + " " + T.events.toLowerCase()));
+      card.appendChild(el("div", "tiny muted", t.median_lifetime ? fmt(T.lifetime, { d: dur(t.median_lifetime) }) : T.noLifetime));
+      box.appendChild(card);
+    });
+  }
+
+  function render() {
+    fillSelect(data.lead_options);
+    renderTypes();
+    document.getElementById("scope-help").textContent = fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) });
+    var body = document.getElementById("ov-body"); body.textContent = "";
+    var L = tn(lead), st = data.throughput.stats, vol = data.volumes;
+
+    // KPI
+    var k = el("div", "ov-kpis");
+    k.appendChild(kpi(T.objects + " · " + L, num(vol.objects)));
+    k.appendChild(kpi(T.events, num(vol.events), fmt(T.perObject, { n: num(vol.events_per_object, 1) })));
+    k.appendChild(kpi(T.medianTime, st ? dur(st.median) : "—", st ? fmt(T.p90, { d: dur(st.p90) }) : ""));
+    k.appendChild(kpi(T.variants, num(data.variants_total)));
+    body.appendChild(k);
+
+    // relazioni
+    if (data.relations.length) {
+      var rel = el("p", "ov-relations");
+      rel.appendChild(el("strong", "", fmt(T.relTitle, { t: L }) + ": "));
+      data.relations.forEach(function (r, i) {
+        if (i) rel.appendChild(document.createTextNode(" · "));
+        rel.appendChild(swatch(r.color));
+        rel.appendChild(document.createTextNode(fmt(T.relItem, { n: num(r.avg, 1), t: tn(r.type) }) + (r.share < 0.995 ? " " + fmt(T.relShare, { p: pct(r.share) }) : "")));
+      });
+      body.appendChild(rel);
+    }
+
+    // volumi e tempi
+    var grid = el("div", "ov-grid");
+    var s1 = section(fmt(T.volTitle, { t: L }));
+    s1.appendChild(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); }));
+    grid.appendChild(s1);
+    var s2 = section(T.tpTitle);
+    s2.appendChild(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
+      function (b) { return b.overflow ? fmt(T.tpOver, { a: days(b.from), n: num(b.count) }) : fmt(T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); }));
+    if (st) s2.appendChild(el("p", "tiny muted", fmt(T.tpStats, { m: dur(st.median), a: dur(st.mean), lo: dur(st.min), hi: dur(st.max) })));
+    grid.appendChild(s2);
+    body.appendChild(grid);
+
+    // happy path
+    var hp = data.happy_path;
+    if (hp) {
+      var s3 = section(T.happyTitle, fmt(T.happyDesc, { t: L }));
+      var hk = el("div", "ov-kpis");
+      var pk = kpi(T.happyPct, pct(hp.share)); var ring = el("div", "ov-ring"); ring.style.setProperty("--p", (hp.share * 100).toFixed(1)); pk.insertBefore(ring, pk.firstChild); hk.appendChild(pk);
+      hk.appendChild(kpi(T.objects, num(hp.count), fmt(T.happyAbs, { n: num(hp.count), m: num(vol.objects) })));
+      hk.appendChild(kpi(T.happyTime, dur(hp.median), st ? fmt(T.vs, { d: dur(st.median) }) : ""));
+      s3.appendChild(hk);
+      s3.appendChild(chain(hp.steps));
+      body.appendChild(s3);
+    }
+
+    // varianti con cursore
+    var s4 = section(T.varTitle, fmt(T.varDesc, { t: L }));
+    var total = data.variants.length;
+    shown = Math.min(Math.max(1, shown), total);
+    var lab = el("label", "slider ov-var-slider"), lt = el("span"), sl = el("input");
+    sl.type = "range"; sl.min = 1; sl.max = Math.max(1, total); sl.value = shown;
+    lab.appendChild(lt); lab.appendChild(sl); s4.appendChild(lab);
+    var list = el("ol", "ov-variants"); s4.appendChild(list);
+    function drawVariants() {
+      list.textContent = "";
+      data.variants.slice(0, shown).forEach(function (v) {
+        var li = el("li", "ov-variant");
+        var meta = el("div", "ov-variant-meta");
+        meta.appendChild(el("span", "", fmt(T.varCount, { n: num(v.count), p: pct(v.share) })));
+        meta.appendChild(el("span", "muted", fmt(T.varTime, { d: dur(v.median) })));
+        var bar = el("div", "ov-share"); var fill = el("div", "ov-share-fill"); fill.style.width = (v.share * 100) + "%"; bar.appendChild(fill);
+        li.appendChild(chain(v.steps)); li.appendChild(meta); li.appendChild(bar);
+        list.appendChild(li);
+      });
+      var cov = data.variants[shown - 1] ? data.variants[shown - 1].cum_share : 0;
+      lt.textContent = fmt(T.varSlider, { n: shown, m: num(data.variants_total), p: pct(cov), t: L });
+    }
+    sl.addEventListener("input", function () { shown = Number(sl.value); drawVariants(); });
+    drawVariants();
+    body.appendChild(s4);
+
+    // altre attivita'
+    var s5 = section(T.othersTitle, fmt(T.othersDesc, { t: L }));
+    if (!data.other_activities.length) s5.appendChild(el("p", "muted tiny", T.noOthers));
+    var oc = el("div", "ov-others");
+    data.other_activities.forEach(function (a) {
+      var c = el("div", "ov-other");
+      c.appendChild(el("strong", "", an(a.activity)));
+      c.appendChild(el("div", "tiny", fmt(T.othersShare, { p: pct(a.share), t: L })));
+      c.appendChild(el("div", "tiny muted", fmt(T.othersEvents, { n: num(a.events) })));
+      oc.appendChild(c);
+    });
+    s5.appendChild(oc);
+    body.appendChild(s5);
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

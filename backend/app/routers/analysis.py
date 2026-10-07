@@ -19,7 +19,7 @@ from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import AnalysisAlias, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
 from app.routers.assessment import load_assessment
-from app.services import analysis_assistant, explain, explorer
+from app.services import analysis_assistant, explain, explorer, overview
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -268,3 +268,49 @@ async def explorer_assistant(request: Request):
         result["answer"] = result["answer"].rstrip() + "…\n\n" + t(
             lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")
     return JSONResponse({"available": True, **result})
+
+
+# ---------- Process Overview ----------
+
+@router.get("/analysis/overview", response_class=HTMLResponse)
+def process_overview(request: Request, workspace_id: str, config_id: str | None = None):
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return denied
+    config, run, configs = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return HTMLResponse(t(get_lang(request), "Dataset non disponibile per l'analisi."), status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    answers, _ = load_assessment(workspace_id)
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+    finally:
+        db.close()
+    return templates.TemplateResponse(
+        "process_overview.html",
+        {
+            "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
+            "config": config, "run": run, "configs": configs,
+            "object_types": model.type_summary(), "aliases": _aliases(user.id, config.id),
+            "default_lead": overview.default_lead(model, answers.get("main_object")),
+        },
+    )
+
+
+@router.get("/analysis/overview/data")
+def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "object"):
+    """Volumi, tempi e varianti visti dall'oggetto guida `lead`; scope=object|related per i tempi."""
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    if lead not in overview.lead_options(model):
+        lead = overview.default_lead(model)
+    if lead is None:
+        return JSONResponse({"error": t(get_lang(request), "Nessun tipo di oggetto con eventi propri da analizzare.")},
+                            status_code=404)
+    return JSONResponse(overview.build_overview(model, lead, "related" if scope == "related" else "object"))

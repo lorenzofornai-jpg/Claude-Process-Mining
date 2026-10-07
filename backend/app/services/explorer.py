@@ -50,6 +50,7 @@ class ExplorerModel:
 
     def __init__(self, ocel: dict):
         type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
+        self.type_of = type_of
         self.object_counts: dict[str, int] = defaultdict(int)
         for t in type_of.values():
             self.object_counts[t] += 1
@@ -60,6 +61,7 @@ class ExplorerModel:
         self.objects_by_type_act: dict[tuple[str, str], set[str]] = defaultdict(set)
         self.event_count = 0
         relations: list[list[tuple[str, str, str]]] = []   # per evento: (oggetto, tipo, qualificatore)
+        self.event_times: list[float] = []
         for idx, ev in enumerate(ocel.get("events", [])):
             self.event_count += 1
             ts = _epoch(ev.get("time", ""))
@@ -77,12 +79,15 @@ class ExplorerModel:
                 self.events_by_type_act[(otype, act)].add(ev.get("id", ""))
                 self.objects_by_type_act[(otype, act)].add(oid)
             relations.append(rels)
+            self.event_times.append(ts)
 
         # sequenze per tipo, ordinate per data; a parita' di data vale l'ordine nel file (come pm4py)
         self.sequences_by_type: dict[str, list[tuple[str, list[tuple[float, str, int]]]]] = defaultdict(list)
         for oid, seq in sequences.items():
             seq.sort(key=lambda x: (math.inf if math.isnan(x[0]) else x[0], x[1]))
             self.sequences_by_type[type_of[oid]].append((oid, [(ts, act, idx) for ts, idx, act in seq]))
+        # sequenza di ogni oggetto, per id (serve all'overview)
+        self.sequences_by_type_index = {oid: seq for t in self.sequences_by_type.values() for oid, seq in t}
 
         self.types = sorted(self.object_counts, key=lambda t: (-self.object_counts[t], t))
         self.colors = {t: PALETTE[i % len(PALETTE)] for i, t in enumerate(self.types)}
@@ -96,6 +101,8 @@ class ExplorerModel:
         # che appartiene alla storia della fattura e in cui il cliente e' solo citato. Un oggetto ha una storia
         # se ha almeno due eventi o se gli oggetti del suo tipo ne hanno di solito piu' di uno (una fattura
         # appena registrata ha un solo evento, ma e' comunque l'inizio della storia di un documento).
+        # per evento: gli oggetti collegati (serve all'overview per i tempi «con gli oggetti collegati»)
+        self.event_objects: list[list[str]] = [[oid for oid, _, _ in rels] for rels in relations]
         hubs = {t for t in self.types if self.is_hub(t)}
         n_events = {oid: len(seq) for oid, seq in sequences.items()}
         lifecycle_types = {t for t in self.types if t not in hubs and self.avg_events(t) >= 1.5}

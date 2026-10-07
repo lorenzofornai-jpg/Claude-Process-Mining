@@ -18,6 +18,13 @@
     <div class="analysis-tools">
       <div class="analysis-tool">
         <div>
+          <h3>Process Overview</h3>
+          <p class="tiny muted">{{ _("Il processo in sintesi visto da un oggetto guida a scelta: volumi, tempi di attraversamento, varianti e happy path.") }}</p>
+        </div>
+        <a class="primary button-link" href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">{{ _("Apri") }}</a>
+      </div>
+      <div class="analysis-tool">
+        <div>
           <h3>Process Explorer</h3>
           <p class="tiny muted">{{ _("Il grafo dei flussi del processo, un colore per ogni tipo di oggetto: attività, percorsi, frequenze e tempi.") }}</p>
         </div>

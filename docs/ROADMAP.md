@@ -105,6 +105,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».
+- ✅ **Process Overview** (7 ottobre 2026): prima analisi della pagina Analisi, prima del Process Explorer. In alto
+  tutti i tipi di oggetto (oggetti, eventi, durata mediana); l'utente sceglie l'**oggetto guida** (i tipi trasversali
+  sono esclusi), come le «perspectives» di Celonis e il «leading object type» di Adams et al. 2022. Su di lui:
+  volumi (oggetti, eventi, iniziati per mese), relazioni medie con gli altri tipi, **tempo di attraversamento**
+  «solo l'oggetto» o «con gli oggetti collegati» (finito quando finisce l'ultimo oggetto collegato, esclusi i
+  trasversali) con distribuzione, **happy path** (variante più frequente: quota, numero, tempo contro tutti),
+  **varianti** con cursore per mostrarne via via di più (copertura cumulata) e ripetizioni consecutive raggruppate
+  (×), altre attività frequenti. Varianti, conteggi e tempi verificati identici a `pm4py.ocel_flattening`
+  (`services/overview.py`). Prossimo: varianti «arricchite» con gli oggetti collegati.
 - ✅ **Process Explorer** (7 ottobre 2026): grafo dei flussi object-centric (OC-DFG) di un dataset, dalla
   pagina Analisi, disegnato come una mappa della metropolitana: ogni tipo di oggetto è una linea colorata
   con inizio e fine; ogni attività è una fermata con un punto per tipo e un'etichetta con le volte per tipo;
