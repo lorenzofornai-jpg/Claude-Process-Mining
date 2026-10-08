@@ -129,19 +129,93 @@ OBJECTIVE_NEEDS: dict[str, dict] = {
         "needs": _req("due_date", "settlement_date"), "useful": _req("amount", "dunning")},
 }
 
+# Cosa serve, in parole generiche (valgono per qualunque sistema) ...
 MISSING_HINTS = {
     "two_dated_facts": msg("almeno due date di fatti diversi (es. creazione e chiusura) sugli stessi documenti"),
     "three_dated_facts": msg("più passaggi datati dello stesso processo (almeno tre date di fatti)"),
-    "change_history": msg("lo storico delle modifiche (in SAP CDHDR/CDPOS; altrove audit trail o tabelle di log con valore vecchio e nuovo)"),
-    "user": msg("l'utente che esegue le operazioni (in SAP USNAM/ERNAM)"),
+    "change_history": msg("lo storico delle modifiche (audit trail, cronologia dei campi o tabella di log con valore vecchio e nuovo)"),
+    "user": msg("l'utente che esegue le operazioni (es. «creato da», «modificato da»)"),
     "user_on_two_tables": msg("l'utente su almeno due passaggi diversi del processo, per confrontare chi fa cosa"),
     "partner": msg("il cliente o il fornitore sui documenti"),
+    "due_date": msg("la data di scadenza, o la data base con i giorni di pagamento"),
+    "settlement_date": msg("la data di pagamento o di chiusura del documento"),
+    "amount": msg("gli importi"),
+    "channel": msg("la transazione o il canale da cui nasce l'operazione, per distinguere automatico e manuale"),
+    "dunning": msg("blocchi e livelli di sollecito"),
+}
+# ... e con i nomi SAP solo se il sistema sorgente e' SAP
+SAP_HINTS = {
+    "change_history": msg("lo storico delle modifiche (in SAP CDHDR/CDPOS; altrove audit trail o tabelle di log con valore vecchio e nuovo)"),
+    "user": msg("l'utente che esegue le operazioni (in SAP USNAM/ERNAM)"),
     "due_date": msg("la data di scadenza o la data base con i giorni di pagamento (in SAP ZFBDT con ZBD1T)"),
     "settlement_date": msg("la data di pagamento o di chiusura del documento (in SAP AUGDT nelle partite pareggiate)"),
-    "amount": msg("gli importi"),
     "channel": msg("la transazione o il canale (in SAP TCODE), per distinguere automatico e manuale"),
     "dunning": msg("blocchi e livelli di sollecito (in SAP MANSP/MANST)"),
 }
+
+
+def is_sap(answers: dict, tables: list[TableSchema]) -> bool:
+    """Il sistema sorgente e' SAP: dichiarato nell'assessment, oppure (se non dichiarato) la maggior parte
+    delle tabelle caricate sono tabelle SAP standard."""
+    systems = answers.get("systems") or []
+    names = " ".join(str(x.get("name") or "") if isinstance(x, dict) else str(x) for x in systems)
+    if names.strip():
+        return "sap" in names.lower()
+    known = sum(1 for t in tables if sap_dictionary.lookup(t.name, [c.name for c in t.columns]))
+    return bool(tables) and known * 2 >= len(tables)
+
+
+def _hint(need: str, sap: bool):
+    return (SAP_HINTS.get(need) if sap else None) or MISSING_HINTS[need]
+
+
+# ---------- le domande di business scritte nell'assessment ----------
+
+# parole (italiano e inglese) che collegano una domanda a un obiettivo del controllo rapido
+OBJECTIVE_KEYWORDS: dict[str, tuple] = {
+    "Tempi di attraversamento e colli di bottiglia": (
+        "tempo", "tempi", "durata", "giorni", "lead time", "cycle time", "throughput", "collo di bottiglia", "colli di bottiglia",
+        "bottleneck", "attes", "dso", "days sales", "velocit", "rallent", "time between", "time elapsed", "duration"),
+    "Conformità al processo standard (varianti, deviazioni)": (
+        "conformit", "conforme", "standard", "deviazion", "varianti", "variant", "procedura", "happy path", "deviation"),
+    "Rilavorazioni e modifiche (prezzi, quantità, date, blocchi)": (
+        "modific", "rilavor", "rework", "correzion", "correction", "change", "blocc", "block", "touchless", "manual"),
+    "Automazione e attività manuali": (
+        "manual", "automa", "touchless", "intervent", "straight through", "stp", "robot", "autom"),
+    "Compliance e segregazione dei compiti": (
+        "segregazion", "segregation", "sod", "compliance", "autorizz", "approvaz", "approval", "frode", "fraud"),
+    "Performance per fornitore / cliente / reparto": (
+        "per cliente", "per fornitore", "per reparto", "per paese", "per area", "by customer", "by vendor",
+        "by supplier", "confront", "benchmark", "compare"),
+    "Puntualità di pagamenti o incassi": (
+        "puntual", "scadenz", "ritard", "dso", "days sales", "incass", "on time", "late", "overdue", "due date",
+        "ricezione del pagamento", "payment received", "days to pay"),
+}
+
+
+def split_questions(text: str | None) -> list[dict]:
+    """Le domande di business come elenco numerato: una per riga (o per frase se e' un paragrafo unico),
+    senza i titoli («Analizzare 3 use cases:»)."""
+    import re as _re
+    text = (text or "").strip()
+    if not text:
+        return []
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if len(lines) == 1:
+        lines = [x.strip() for x in _re.split(r"(?<=[.!?])\s+", lines[0]) if x.strip()]
+    out = []
+    for line in lines:
+        clean = _re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", line).strip()
+        if len(clean) < 8 or clean.endswith(":"):
+            continue
+        short = _re.split(r"\s*[(:]", clean, maxsplit=1)[0].strip() or clean
+        out.append({"n": len(out) + 1, "text": clean, "short": short[:70] + ("…" if len(short) > 70 else "")})
+    return out
+
+
+def _question_matches(option: str, question: str) -> bool:
+    q = question.lower()
+    return any(k in q for k in OBJECTIVE_KEYWORDS.get(option, ()))
 
 
 def _have(found: dict, need: str) -> list[str]:
@@ -157,8 +231,11 @@ def _have(found: dict, need: str) -> list[str]:
 
 
 def quick_coverage(answers: dict, tables: list[TableSchema]) -> dict:
-    """Livello senza costi: per ogni obiettivo spuntato, stato e colonne trovate/mancanti."""
+    """Livello senza costi: per ogni obiettivo spuntato, stato e colonne trovate/mancanti, con gli esempi del
+    sistema sorgente dichiarato e le domande di business dell'assessment a cui l'obiettivo risponde."""
     found = detect(tables)
+    sap = is_sap(answers, tables)
+    questions = split_questions(answers.get("key_questions") or answers.get("kpis"))
     rows = []
     for option in answers.get("objectives") or []:
         spec = OBJECTIVE_NEEDS.get(option)
@@ -167,17 +244,22 @@ def quick_coverage(answers: dict, tables: list[TableSchema]) -> dict:
         have, missing = [], []
         for need in spec["needs"]:
             cols = _have(found, need)
-            (have if cols else missing).append({"need": need, "hint": MISSING_HINTS[need], "columns": cols[:8]})
-        extra_missing = [{"need": u, "hint": MISSING_HINTS[u]} for u in spec["useful"] if not _have(found, u)]
+            (have if cols else missing).append({"need": need, "hint": _hint(need, sap), "columns": cols[:8]})
+        extra_missing = [{"need": u, "hint": _hint(u, sap)} for u in spec["useful"] if not _have(found, u)]
         # un log che registra solo alcuni campi copre in parte: serve anche lo storico generale
         logs = found["change_history"]
         if "change_history" in spec["needs"] + spec["useful"] and logs and not any(GENERAL_CHANGE.search(x) for x in logs):
             extra_missing.append({"need": "change_history_general", "hint": msg(
                 "uno storico generale delle modifiche: {t} registra solo alcuni campi (in SAP CDHDR/CDPOS registra prezzi, date, condizioni, blocchi)",
+                t=", ".join(logs)) if sap else msg(
+                "uno storico generale delle modifiche: {t} registra solo alcuni campi (serve quello che registra prezzi, date, condizioni, blocchi)",
                 t=", ".join(logs))})
         status = "covered" if not missing and not extra_missing else ("partial" if not missing or have else "missing")
-        rows.append({"objective": option, "status": status, "have": have, "missing": missing, "useful_missing": extra_missing})
-    return {"objectives": rows, "found": {k: v[:8] for k, v in found.items() if v}}
+        rows.append({"objective": option, "status": status, "have": have, "missing": missing, "useful_missing": extra_missing,
+                     "questions": [q for q in questions if _question_matches(option, q["text"])]})
+    answered = {q["n"] for r in rows for q in r["questions"]}
+    return {"objectives": rows, "found": {k: v[:8] for k, v in found.items() if v}, "sap": sap,
+            "questions": questions, "unanswered": [q for q in questions if q["n"] not in answered]}
 
 
 # ---------- livello con Claude ----------

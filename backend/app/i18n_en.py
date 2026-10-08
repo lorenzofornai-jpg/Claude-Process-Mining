@@ -1102,4 +1102,15 @@ EN: dict[str, str] = {
     "{c} hanno «{e}» senza «{s}»: lo storico inizia a metà o l'inizio è collegato a un altro oggetto.": "{c} have “{e}” without “{s}”: the history starts midway or the start is linked to another object.",
     "{c} ha «{e}» solo prima di «{s}»: controlla le date o la scelta di inizio e fine.": "{c} has “{e}” only before “{s}”: check the dates or the choice of start and end.",
     "{c} hanno «{e}» solo prima di «{s}»: controlla le date o la scelta di inizio e fine.": "{c} have “{e}” only before “{s}”: check the dates or the choice of start and end.",
+    # Copertura: esempi secondo il sistema, domande
+    "lo storico delle modifiche (audit trail, cronologia dei campi o tabella di log con valore vecchio e nuovo)": "the change history (audit trail, field history or a log table with old and new value)",
+    "l'utente che esegue le operazioni (es. «creato da», «modificato da»)": "the user who performs the operations (e.g. “created by”, “changed by”)",
+    "la data di scadenza, o la data base con i giorni di pagamento": "the due date, or the baseline date with the payment days",
+    "la data di pagamento o di chiusura del documento": "the payment or closing date of the document",
+    "la transazione o il canale da cui nasce l'operazione, per distinguere automatico e manuale": "the transaction or channel the operation comes from, to tell automatic from manual",
+    "blocchi e livelli di sollecito": "dunning blocks and levels",
+    "uno storico generale delle modifiche: {t} registra solo alcuni campi (serve quello che registra prezzi, date, condizioni, blocchi)": "a general change history: {t} records only some fields (you need one that records prices, dates, terms, blocks)",
+    "Per le tue domande:": "For your questions:",
+    "Domande che il controllo rapido non copre:": "Questions the quick check does not cover:",
+    "La valutazione con Claude qui sotto le considera tutte.": "The Claude evaluation below considers all of them.",
 }

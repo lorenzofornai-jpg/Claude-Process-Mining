@@ -17,12 +17,18 @@
         <span class="cov-badge cov-badge-{{ o.status }}">{{ {"covered": _("coperto"), "partial": _("in parte"), "missing": _("non coperto")}[o.status] }}</span>
         <strong>{{ _(o.objective) }}</strong>
       </div>
+      {% if o.questions %}<div class="tiny cov-q">{{ _("Per le tue domande:") }} {% for q in o.questions %}<span class="bo-chip">{{ q.n }}. {{ q.short }}</span>{% endfor %}</div>{% endif %}
       {% for h in o.have %}<div class="tiny">✓ {{ h.hint|tr }}: <span class="mono">{{ h.columns|join(", ") }}</span></div>{% endfor %}
       {% for m in o.missing %}<div class="tiny cov-miss">✗ {{ _("Manca") }}: {{ m.hint|tr }}</div>{% endfor %}
       {% for m in o.useful_missing %}<div class="tiny muted">+ {{ _("Utile aggiungere") }}: {{ m.hint|tr }}</div>{% endfor %}
     </div>
     {% endfor %}
   </div>
+  {% if coverage.unanswered %}
+  <p class="tiny muted cov-unanswered">{{ _("Domande che il controllo rapido non copre:") }}
+    {% for q in coverage.unanswered %}<span class="bo-chip">{{ q.n }}. {{ q.short }}</span>{% endfor %}
+    {{ _("La valutazione con Claude qui sotto le considera tutte.") }}</p>
+  {% endif %}
   {% endif %}
 
   {% if coverage_questions or coverage_has_objectives %}

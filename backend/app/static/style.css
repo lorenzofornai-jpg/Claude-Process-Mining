@@ -800,3 +800,5 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .edge-label { position: absolute; pointer-events: auto; cursor: pointer; white-space: nowrap; font-size: 9px; line-height: 11px;
   padding: 0 4px; border: 1px solid; border-radius: 4px; background: var(--card-bg); color: var(--text); font-variant-numeric: tabular-nums; }
 .edge-label.faded { opacity: 0.15; }
+.cov-q { margin: 2px 0 6px; }
+.cov-unanswered { margin-top: 10px; }
