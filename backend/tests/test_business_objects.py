@@ -121,3 +121,39 @@ def test_confirmed_name_used_on_another_table_does_not_create_objects():
     rows = [{**x.__dict__} for i, x in enumerate(out) if i not in rejected]
     ocel, _, _ = build_ocel(DATA, rows)
     assert Counter(o["type"] for o in ocel["objects"]) == {"Sales Order": 6, "Return": 3}
+
+
+def test_reference_column_links_event_to_object():
+    """Una colonna con un altro nome che contiene i numeri di un oggetto confermato (il documento che ha chiuso
+    la riga) collega l'evento che nasce con lei; non quello che c'e' sempre (la creazione)."""
+    data = {
+        "docs": [{"doc_no": f"I{i}", "kind": "INV", "posted": f"2026-01-{i + 1:02d}"} for i in range(6)]
+                + [{"doc_no": f"P{i}", "kind": "PAY", "posted": f"2026-02-{i + 1:02d}"} for i in range(5)],
+        "open_items": [{"doc_no": f"I{i}", "created": f"2026-01-{i + 1:02d}",
+                        "closed_on": f"2026-02-{i + 1:02d}" if i < 5 else "", "closed_by_doc": f"P{i}" if i < 5 else ""}
+                       for i in range(6)],
+    }
+
+    def p(table, col, el, **kw):
+        base = dict(source_table=table, source_column=col, ocel_element=el, object_type=None, event_type=None,
+                    attribute_name=None, qualifier=None, related_object_type=None, confidence=0.9,
+                    rationale="", based_on_template=None, activity_values=None)
+        base.update(kw)
+        return MappingProposal(**base)
+    proposals = [p("docs", "doc_no", "object_type.key", object_type="Document"),
+                 p("docs", "posted", "event_type.timestamp", event_type="Post"),
+                 p("open_items", "created", "event_type.timestamp", event_type="Open Item"),
+                 p("open_items", "closed_on", "event_type.timestamp", event_type="Close Item"),
+                 p("open_items", "doc_no", "e2o_relationship", event_type="Close Item", related_object_type="Invoice"),
+                 p("open_items", "doc_no", "e2o_relationship", event_type="Open Item", related_object_type="Invoice")]
+    confirmed = [
+        {"name": "Invoice", "table": "docs", "key": ["doc_no"], "filter": {"column": "kind", "values": ["INV"]}, "role": "lead", "include": True},
+        {"name": "Payment", "table": "docs", "key": ["doc_no"], "filter": {"column": "kind", "values": ["PAY"]}, "role": "needed", "include": True}]
+    out, rejected = bo.apply(proposals, confirmed, data)
+    refs = [(x.event_type, x.source_column, x.related_object_type) for x in out
+            if x.ocel_element == "e2o_relationship" and x.source_column == "closed_by_doc"]
+    assert refs == [("Close Item", "closed_by_doc", "Payment")]
+    ocel, _, _ = build_ocel(data, [{**x.__dict__} for i, x in enumerate(out) if i not in rejected])
+    close = [e for e in ocel["events"] if e["type"] == "Close Item"]
+    assert len(close) == 5 and all({r["objectId"].split(":")[0] for r in e["relationships"]} == {"Invoice", "Payment"} for e in close)
+    assert close[0]["relationships"][1]["objectId"] == "Payment:P0"

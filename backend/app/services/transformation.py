@@ -256,6 +256,21 @@ def _parse_time(raw: str | None, time_raw: str | None = None) -> datetime | None
     return None
 
 
+_MAIN_KEY: dict[tuple, str] = {}
+
+
+def _main_key_column(obj_def: ObjectTypeDefCompiled, tables_data: dict[str, list[dict]]) -> str:
+    """La colonna della chiave che identifica davvero l'oggetto (il numero del documento): quella con piu'
+    valori distinti, non societa' o esercizio."""
+    if len(obj_def.key_columns) == 1:
+        return obj_def.key_columns[0]
+    k = (obj_def.name, obj_def.source_table, tuple(obj_def.key_columns), id(tables_data))
+    if k not in _MAIN_KEY:
+        rows = tables_data.get(obj_def.source_table, [])
+        _MAIN_KEY[k] = max(obj_def.key_columns, key=lambda c: len({r.get(c) for r in rows}))
+    return _MAIN_KEY[k]
+
+
 def _resolve_related_objects(
     event_row: dict,
     mapping: dict,
@@ -263,8 +278,12 @@ def _resolve_related_objects(
     tables_data: dict[str, list[dict]],
     join_index: dict | None = None,
     split_ids: dict[str, dict[str, str]] | None = None,
+    event_table: str | None = None,
 ) -> list[str]:
     """split_ids: per i tipi divisi per valore, {tipo del mapping: {chiave: id dell'oggetto creato}}.
+    Un collegamento con una colonna della tabella dell'evento che non e' la chiave dell'oggetto collegato (es.
+    BSEG.AUGBL, il numero del documento di pareggio) legge in quella colonna il numero dell'oggetto: la colonna
+    principale della chiave prende quel valore, le altre (societa', esercizio...) vengono dalla riga.
     Il collegamento puo' puntare al tipo del mapping (va all'oggetto con quella chiave, qualunque sia
     il suo tipo dopo la divisione) o a uno dei tipi della divisione (solo se l'oggetto e' di quel tipo)."""
     wanted = mapping["related_object_type"]
@@ -288,6 +307,15 @@ def _resolve_related_objects(
                 if obj_id:
                     out.append(obj_id)
         return out
+
+    src_col = mapping.get("source_column")
+    if (event_table and mapping.get("source_table") == event_table and src_col in event_row
+            and src_col not in target_def.key_columns and target_def.key_columns):
+        value = _clean(event_row.get(src_col))
+        if not value:
+            return []
+        main = _main_key_column(target_def, tables_data)
+        return ids_for([{**{c: event_row.get(c) for c in target_def.key_columns}, main: value}])
 
     if all(c in event_row for c in target_def.key_columns):
         return ids_for([event_row])
@@ -394,7 +422,8 @@ def build_ocel(
             if home_id:
                 relationships.append({"objectId": home_id, "qualifier": "involves"})
             for rule in own_rules:
-                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index, split_ids):
+                for target_id in _resolve_related_objects(row, rule, object_defs, tables_data, join_index, split_ids,
+                                                     evt_def.source_table):
                     # solo verso oggetti che esistono (es. un riferimento a un ordine fuori estrazione non crea un
                     # oggetto fantasma; un numero di incasso non diventa una fattura)
                     if target_id not in objects:

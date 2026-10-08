@@ -107,6 +107,8 @@
     othersEvents: {{ _("{n} eventi")|tojson }},
     noOthers: {{ _("Nessuna: tutte le attività fanno parte dell'happy path.")|tojson }},
     scopeObject: {{ _("Dal primo all'ultimo evento di ogni {t}.")|tojson }},
+    relatedSame: {{ _("Qui coincide con «Solo l'oggetto»: nessun oggetto di tipo {t} ha oggetti collegati con eventi propri (i tipi trasversali non contano).")|tojson }},
+    objectVsObjective: {{ _("Comprende anche gli oggetti ancora aperti (fino al loro ultimo evento) e qualunque attività: per questo può essere diverso dal tempo dell'obiettivo.")|tojson }},
     scopeRelated: {{ _("Dal primo all'ultimo evento di ogni {t} e degli oggetti collegati (esclusi i tipi trasversali): è finito quando è finito l'ultimo oggetto collegato.")|tojson }},
     error: {{ _("Non è stato possibile calcolare l'overview.")|tojson }},
     days: {{ _("{n} g")|tojson }}, hours: {{ _("{n} h")|tojson }}, minutes: {{ _("{n} min")|tojson }}, seconds: {{ _("{n} s")|tojson }}
@@ -217,7 +219,10 @@
     document.querySelectorAll(".seg[data-scope]").forEach(function (x) { x.classList.toggle("active", x.dataset.scope === scope); });
     document.getElementById("scope-help").textContent = scope === "objective"
       ? fmt(T.scopeObjective, { s: an(data.objective.start_activity), e: an(data.objective.end_activity), t: tn(lead) })
-      : fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) });
+      : fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) })
+        // perche' due misure possono coincidere o differire: detto, non lasciato da indovinare
+        + (scope === "related" && data.related_adds === 0 ? " " + fmt(T.relatedSame, { t: tn(lead) }) : "")
+        + (scope === "object" && data.objective ? " " + T.objectVsObjective : "");
     var body = document.getElementById("ov-body"); body.textContent = "";
     var L = tn(lead), st = data.throughput.stats, vol = data.volumes;
 

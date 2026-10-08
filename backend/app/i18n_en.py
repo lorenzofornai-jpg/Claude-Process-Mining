@@ -1113,4 +1113,8 @@ EN: dict[str, str] = {
     "Per le tue domande:": "For your questions:",
     "Domande che il controllo rapido non copre:": "Questions the quick check does not cover:",
     "La valutazione con Claude qui sotto le considera tutte.": "The Claude evaluation below considers all of them.",
+    # Collegamento per colonna di riferimento, note sui tempi
+    "{c} contiene i numeri di {o} ({p} dei valori): l'evento «{e}» riguarda anche quell'oggetto.": "{c} contains the numbers of {o} ({p} of the values): the event “{e}” also concerns that object.",
+    "Qui coincide con «Solo l'oggetto»: nessun oggetto di tipo {t} ha oggetti collegati con eventi propri (i tipi trasversali non contano).": "Here it matches “Object only”: no {t} object has linked objects with events of their own (cross-cutting types do not count).",
+    "Comprende anche gli oggetti ancora aperti (fino al loro ultimo evento) e qualunque attività: per questo può essere diverso dal tempo dell'obiettivo.": "It also includes objects still open (up to their last event) and any activity: that is why it can differ from the objective's time.",
 }

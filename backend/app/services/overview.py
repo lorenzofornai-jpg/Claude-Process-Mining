@@ -160,15 +160,19 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
             return (ends[0] - t0) if ends else None
         if scope == "related":
             idxs = set(obj_events[oid])
+            own = len(idxs)
             for r in related_by_obj[oid]:
                 if model.type_of[r] in hubs:
                     continue
                 for _, _, idx in model.sequences_by_type_index.get(r, ()):
                     idxs.add(idx)
+            if len(idxs) > own:
+                related_adds[0] += 1
             ts = _finite([model.event_times[i] for i in idxs])
             return (max(ts) - min(ts)) if ts else None
         return lifetime(seq)
 
+    related_adds = [0]   # quanti oggetti guida hanno eventi in piu' dagli oggetti collegati
     tps: dict[str, float | None] = {oid: throughput(oid, seq) for oid, seq in seqs}
     months: Counter = Counter()
     for oid, seq in seqs:
@@ -232,6 +236,8 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
                      "max_age": max(known) if known else None}
     return {
         "objective": obj, "open": open_info,
+        # con «oggetti collegati»: se nessun oggetto ne guadagna eventi, il tempo e' uguale a «solo l'oggetto»
+        "related_adds": related_adds[0] if scope == "related" else None,
         "lead": lead, "scope": scope, "lead_options": lead_options(model),
         "hub_types": [t for t in model.types if t in hubs],
         "types": types, "relations": relations,

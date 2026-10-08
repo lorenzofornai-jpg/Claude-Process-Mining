@@ -341,7 +341,64 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
                         values[v] = o["name"]
             out.append(_rule(table, column, "object_type.split", why, object_type=target, activity_values=values))
     out.extend(_shared_key_links(out, confirmed, tables_data, rejected, base_of_table))
+    out.extend(_reference_links(out, confirmed, tables_data, rejected, base_of_table))
     return out, rejected
+
+
+def _filled(v) -> bool:
+    return str(v if v is not None else "").strip() not in ("", "nan", "None")
+
+
+def _reference_links(rows: list[MappingProposal], confirmed: list[dict], tables_data: dict[str, list[dict]],
+                     rejected: set[int], base_of_table: dict[str, str]) -> list[MappingProposal]:
+    """Una colonna con un nome diverso dalla chiave che contiene i numeri di un oggetto confermato (es.
+    BSEG.AUGBL, il documento che ha pareggiato la fattura = l'incasso) collega a quell'oggetto l'evento che
+    nasce insieme a lei: quello la cui data c'e' quando c'e' il riferimento e manca quando manca (AUGDT con
+    AUGBL). Servono valori quasi tutti tra le chiavi dell'oggetto (almeno l'80%), cosi' codici o importi che
+    per caso coincidono non creano legami."""
+    live = [r for i, r in enumerate(rows) if i not in rejected]
+    stamps = [(r.source_table, r.event_type, r.source_column) for r in live
+              if r.ocel_element == "event_type.timestamp" and r.event_type and r.source_column]
+    linked = {(r.event_type, r.source_column) for r in live if r.ocel_element == "e2o_relationship"}
+    keys_of = {}
+    for o in confirmed:
+        key = o.get("key") or []
+        if not key:
+            continue
+        data = tables_data.get(o["table"]) or []
+        main = max(key, key=lambda c: len({str(r.get(c) or "") for r in data}))
+        f = o.get("filter")
+        keys_of[o["name"]] = (main, {str(r.get(main) or "").strip() for r in data
+                                     if not f or str(r.get(f["column"]) or "").strip() in f["values"]} - {""})
+    out = []
+    for table, event, ts_col in stamps:
+        data = tables_data.get(table) or []
+        if not data:
+            continue
+        own_keys = {o["key"][0] for o in confirmed if o["table"] == table and o.get("key")}
+        for col in data[0]:
+            if col == ts_col or col in own_keys or (event, col) in linked:
+                continue
+            values = {str(r.get(col) or "").strip() for r in data} - {"", "nan", "None"}
+            if len(values) < 3 or any(re.fullmatch(r"-?\d+[.,]\d+|\d{4}-\d{2}-\d{2}.*", v) for v in list(values)[:20]):
+                continue
+            # la data dell'evento e il riferimento vanno insieme (riga per riga)
+            together = sum(1 for r in data if _filled(r.get(ts_col)) == _filled(r.get(col))) / len(data)
+            if together < 0.99:
+                continue
+            for o in confirmed:
+                main, keys = keys_of.get(o["name"], (None, set()))
+                if not keys or col == main:
+                    continue
+                if len(values & keys) / len(values) < 0.8:
+                    continue
+                out.append(_rule(table, col, "e2o_relationship",
+                                 msg("{c} contiene i numeri di {o} ({p} dei valori): l'evento «{e}» riguarda anche quell'oggetto.",
+                                     c=f"{table}.{col}", o=o["name"], p=f"{round(100 * len(values & keys) / len(values))}%", e=event),
+                                 event_type=event, related_object_type=o["name"], qualifier=f"by {o['name'].lower()}"))
+                linked.add((event, col))
+                break
+    return out
 
 
 def _shared_key_links(rows: list[MappingProposal], confirmed: list[dict], tables_data: dict[str, list[dict]],
