@@ -722,7 +722,8 @@ def compact_for_mapping(profile: dict) -> dict:
                           for r in profile["relationships"] if r.get("slice")],
         "change_logs": {t["name"]: {"field": t["change_log"]["field"], "old": t["change_log"]["old"],
                                     "new": t["change_log"]["new"], "computed_column": change_logs.COLUMN,
-                                    "values": list(t["change_log"]["counts"])}
+                                    "values": list(t["change_log"]["counts"]),
+                                    "timestamp": (t["dates"][0]["column"] if t.get("dates") else None)}
                         for t in profile["tables"] if t.get("change_log")},
         # tabelle che ripetono le righe di un'altra: oggetti ed eventi vengono dall'altra
         "copy_of": {c["table"]: {"of": c["of"], "new_columns": c["new"]} for c in profile.get("copies", [])},

@@ -78,3 +78,30 @@ def test_review_assistant_adds_a_change_column():
     assert d and review_assistant.apply(d["action"], rows)
     assert [r["ocel_element"] for r in rows] == ["event_type.timestamp", "table.computed", "event_type.activity"]
     assert review_assistant.describe({**action, "old": "nope"}, rows, cols) is None
+
+
+def test_link_on_composite_value_and_missing_log_events_are_fixed():
+    """Il mapper collega il valore composto intero (non trova mai l'oggetto) o non fa eventi del log: le colonne
+    calcolate correggono il collegamento e creano gli eventi."""
+    from app.services import derived_columns
+    from app.services.ai_mapping import MappingProposal
+
+    def p(table, col, el, **kw):
+        base = dict(source_table=table, source_column=col, ocel_element=el, object_type=None, event_type=None,
+                    attribute_name=None, qualifier=None, related_object_type=None, confidence=0.8,
+                    rationale="", based_on_template=None, activity_values=None)
+        base.update(kw)
+        return MappingProposal(**base)
+    profile = {"change_logs": {"log": {"field": "FNAME", "old": "OLD", "new": "NEW", "values": ["SET X"], "timestamp": "UDATE"}},
+               "embedded_keys": [{"table": "log", "column": "OBJECTID", "start": 4, "length": 10,
+                                  "parent_table": "docs", "parent_column": "DOCNO"}]}
+    doc = p("docs", "DOCNO", "object_type.key", object_type="Document")
+    out = derived_columns.apply([doc], profile, "en")
+    assert [(x.ocel_element, x.source_column) for x in out[1:]] == [
+        ("table.computed", "CHANGE_KIND"), ("event_type.timestamp", "UDATE"), ("event_type.activity", "CHANGE_KIND"),
+        ("table.computed", "OBJECTID_DOCNO"), ("e2o_relationship", "OBJECTID_DOCNO")]
+    broken = [doc, p("log", "UDATE", "event_type.timestamp", event_type="Change"),
+              p("log", "OBJECTID", "e2o_relationship", event_type="Change", related_object_type="Invoice")]
+    out = derived_columns.apply(broken, profile, "en")
+    links = [(x.source_column, x.related_object_type) for x in out if x.ocel_element == "e2o_relationship"]
+    assert links == [("OBJECTID_DOCNO", "Document")]

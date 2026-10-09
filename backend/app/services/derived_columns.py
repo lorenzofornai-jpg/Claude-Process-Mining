@@ -34,6 +34,10 @@ def change_log_rows(proposals: list[MappingProposal], table: str, log: dict, lan
               f=log["field"], o=log["old"], n=log["new"])
     out = [_rule(table, column, COMPUTED, why, activity_values=spec)]
     events = [p.event_type for p in proposals if p.source_table == table and p.ocel_element == "event_type.timestamp" and p.event_type]
+    if not events and log.get("timestamp"):
+        # il mapper non ha fatto eventi del log (succede: senza attivita' leggibile sembra una tabella tecnica)
+        events = [f"{table} change"]
+        out.append(_rule(table, log["timestamp"], "event_type.timestamp", why, event_type=events[0]))
     for event in dict.fromkeys(events):
         existing = [p for p in proposals if p.source_table == table and p.ocel_element == "event_type.activity" and p.event_type == event]
         if existing:
@@ -61,6 +65,10 @@ def embedded_key_rows(proposals: list[MappingProposal], emb: dict) -> list[Mappi
               a=a, b=a + int(emb["length"]) - 1, k=pcol, p=parent, o=obj)
     out = [_rule(table, column, COMPUTED, why,
                  activity_values={"rule": "slice", "column": emb["column"], "start": str(emb["start"]), "length": str(emb["length"])})]
+    # un collegamento proposto sul valore composto intero non trova mai l'oggetto: passa alla parte giusta
+    for p in proposals:
+        if p.ocel_element == "e2o_relationship" and p.source_table == table and p.source_column == emb["column"]:
+            p.source_column, p.related_object_type, p.rationale, p.confidence = column, obj, why, 0.95
     for event in dict.fromkeys(events):
         if any(p.ocel_element == "e2o_relationship" and p.event_type == event and p.related_object_type == obj for p in proposals):
             continue
