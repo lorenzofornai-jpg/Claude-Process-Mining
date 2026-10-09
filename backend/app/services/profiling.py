@@ -322,7 +322,9 @@ def profile_tables(
             shown = ", ".join(rc["values"][:6]) + ("…" if len(rc["values"]) > 6 else "")
             issues.append(_issue(
                 "info", t["name"],
-                msg("{c}: probabile motivo o causale ({n} valori: {v})", c=rc["column"], n=len(rc["values"]), v=shown),
+                (msg("{c}: probabile motivo o causale (un solo valore: {v})", c=rc["column"], v=shown)
+                 if len(rc["values"]) == 1 else
+                 msg("{c}: probabile motivo o causale ({n} valori: {v})", c=rc["column"], n=len(rc["values"]), v=shown)),
                 "Dice perché è stata fatta un'operazione, non quale: usata come attività mescolerebbe i passi del "
                 "processo con le loro motivazioni.",
                 ("Nel mapping verrà proposta come attributo dell'evento: servirà a filtrare e confrontare i casi per "

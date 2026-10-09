@@ -1188,4 +1188,6 @@ EN: dict[str, str] = {
     # Dataset in bozza
     "bozza": "draft",
     "Non ancora disponibile per l'analisi: controlla il risultato e rendilo disponibile.": "Not yet available for analysis: check the result and make it available.",
+    # Singolare
+    "{c}: probabile motivo o causale (un solo valore: {v})": "{c}: probably a reason code (a single value: {v})",
 }
