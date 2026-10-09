@@ -1180,7 +1180,9 @@ async def review_assistant_ask(request: Request):
     if body.get("estimate"):
         return JSONResponse({"available": True, **est})
     try:
-        result = await run_in_threadpool(review_assistant.ask, context, history)
+        # dati in sola lettura, con le colonne calcolate del mapping (es. CHANGE_KIND)
+        data = with_computed(sess.get("tables_data") or {}, rows)
+        result = await run_in_threadpool(review_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente della revisione non riuscito ({exc!r}).")
         return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},

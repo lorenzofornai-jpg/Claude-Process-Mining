@@ -114,6 +114,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   con quella parte del valore e collegamento degli eventi all'oggetto (`services/derived_columns.py`).
 - ✅ **Assistente della revisione**: può proporre colonne calcolate (`add_computed`) e, quando una cosa non c'è,
   lo spiega con i conteggi dei dati (`data_facts`).
+- ✅ **L'assistente della revisione legge i dati** in sola lettura (`services/data_query.py`): `query_rows` (righe
+  filtrate o conteggi per colonne, colonne calcolate comprese) e `compare_columns` (quanti valori di una colonna, o
+  di una sua parte, si trovano in un'altra). Fino a 4 interrogazioni per domanda; il contesto è in cache, quindi le
+  interrogazioni costano poco. Il costo massimo mostrato le comprende.
 
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio

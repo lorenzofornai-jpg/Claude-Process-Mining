@@ -14,12 +14,14 @@ import json
 
 from app.config import EXPLAIN_MODEL
 from app.i18n import msg, render
+from app.services import data_query
 from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
 
 MAX_OUTPUT_TOKENS = 2500
 TYPICAL_OUTPUT_TOKENS = 500
 MAX_TURNS = 12
 MAX_ROWS = 400
+MAX_DATA_ROUNDS = 4   # interrogazioni dei dati prima della risposta
 
 SYSTEM_PROMPT = """\
 Sei l'assistente della revisione del mapping in un'app di process mining object-centric (OCEL 2.0). L'utente è
@@ -50,6 +52,11 @@ Cosa fare:
   un oggetto). Usa solo row_id, nomi di gruppo, tabelle e colonne
   presenti nei DATI. Ogni modifica viene mostrata all'utente, che la conferma con il pulsante ui_labels.apply:
   dillo in una frase, senza ripetere l'elenco delle modifiche.
+- Hai accesso ai dati caricati in sola lettura con query_rows (righe con filtri, conteggi per colonne) e
+  compare_columns (quanti valori di una colonna si trovano in un'altra, anche solo una parte del valore). Usali
+  quando la risposta dipende dai valori (es. quali documenti hanno un blocco, se un collegamento trova gli oggetti,
+  che valori ha una colonna con molte modalità): verifica e rispondi con i numeri, senza dire che non vedi i dati.
+  Fai poche interrogazioni mirate.
 - Prima di dire che qualcosa si può o non si può ottenere, guarda "data_facts" (valori presenti nelle colonne,
   log di modifiche con quante impostazioni/rimozioni/modifiche per campo): se nei file un caso non c'è (es. nessuna
   rimozione di un blocco), dillo con i numeri invece di proporre soluzioni che non lo farebbero comparire.
@@ -232,30 +239,63 @@ def _messages(history: list[dict]) -> list[dict]:
 def estimate(context: str, history: list[dict]) -> dict:
     price_in, price_out = _price()
     chars = len(SYSTEM_PROMPT) + len(context) + len(json.dumps(TOOLS)) + sum(len(m["content"]) for m in _messages(history))
+    chars += len(json.dumps(data_query.TOOLS))
     tokens_in = int(chars / _CHARS_PER_TOKEN) + 80
-    return {"cost_usd": round((tokens_in * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000, 4),
-            "max_usd": round((tokens_in * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000, 4), "model": EXPLAIN_MODEL}
+    # le interrogazioni dei dati rileggono il contesto dalla cache (un decimo del prezzo) piu' i risultati
+    extra = MAX_DATA_ROUNDS * (tokens_in * 0.1 * price_in + 2500 * price_in + 300 * price_out)
+    return {"cost_usd": round((tokens_in * 1.25 * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000, 4),
+            "max_usd": round((tokens_in * 1.25 * price_in + MAX_OUTPUT_TOKENS * price_out + extra) / 1_000_000, 4),
+            "model": EXPLAIN_MODEL}
 
 
-def ask(context: str, history: list[dict]) -> dict:
-    """Chiama Claude. Ritorna {"answer", "actions", "cost_usd", "truncated"}."""
+def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None = None) -> dict:
+    """Chiama Claude; se chiede di leggere i dati (data_query) esegue le interrogazioni e continua, fino a
+    MAX_DATA_ROUNDS volte. Ritorna {"answer", "actions", "cost_usd", "truncated", "queries"}."""
     import anthropic
 
     messages = _messages(history)
     if not messages:
         raise ValueError("nessuna domanda")
     client = anthropic.Anthropic()
-    request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT + "\nDATI:\n" + context,
-                   tools=TOOLS, messages=messages)
-    try:
-        response = client.messages.create(**request, output_config={"effort": "low"})
-    except (TypeError, anthropic.BadRequestError):
-        response = client.messages.create(**request)
+    # il contesto e' lo stesso a ogni giro: in cache costa un decimo
+    system = [{"type": "text", "text": SYSTEM_PROMPT + "\nDATI:\n" + context, "cache_control": {"type": "ephemeral"}}]
+    tools = TOOLS + (data_query.TOOLS if tables is not None else [])
     price_in, price_out = _price()
-    cost = ((response.usage.input_tokens or 0) * price_in + (response.usage.output_tokens or 0) * price_out) / 1_000_000
-    answer = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-    actions = [{"type": b.name, **(b.input or {})} for b in response.content if getattr(b, "type", "") == "tool_use"]
-    return {"answer": answer, "actions": actions, "cost_usd": round(cost, 4), "truncated": response.stop_reason == "max_tokens"}
+    cost, answer, actions, queries, truncated = 0.0, [], [], 0, False
+    for round_no in range(MAX_DATA_ROUNDS + 1):
+        request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=system, messages=messages,
+                       tools=tools if round_no < MAX_DATA_ROUNDS else TOOLS)
+        try:
+            response = client.messages.create(**request, output_config={"effort": "low"})
+        except (TypeError, anthropic.BadRequestError):
+            response = client.messages.create(**request)
+        u = response.usage
+        cost += ((u.input_tokens or 0) * price_in + (getattr(u, "cache_creation_input_tokens", 0) or 0) * price_in * 1.25
+                 + (getattr(u, "cache_read_input_tokens", 0) or 0) * price_in * 0.1
+                 + (u.output_tokens or 0) * price_out) / 1_000_000
+        text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+        if text:
+            answer.append(text)
+        uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
+        actions += [{"type": b.name, **(b.input or {})} for b in uses if b.name not in data_query.NAMES]
+        truncated = response.stop_reason == "max_tokens"
+        data_uses = [b for b in uses if b.name in data_query.NAMES]
+        if not data_uses or tables is None:
+            break
+        # ogni tool_use vuole il suo risultato: i dati per le interrogazioni, una conferma per le proposte
+        results = []
+        for b in uses:
+            if b.name in data_query.NAMES:
+                queries += 1
+                out = data_query.run(b.name, b.input or {}, tables)
+                results.append({"type": "tool_result", "tool_use_id": b.id,
+                                "content": json.dumps(out, ensure_ascii=False, default=str)[:12000]})
+            else:
+                results.append({"type": "tool_result", "tool_use_id": b.id,
+                                "content": "Proposta mostrata all'utente, che la confermerà."})
+        messages = messages + [{"role": "assistant", "content": response.content}, {"role": "user", "content": results}]
+    return {"answer": "\n\n".join(answer), "actions": actions, "cost_usd": round(cost, 4), "truncated": truncated,
+            "queries": queries}
 
 
 # ---------- azioni: controllo e applicazione ----------
