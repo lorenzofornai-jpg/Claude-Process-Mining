@@ -39,7 +39,7 @@
             <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
               <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
               <span class="swatch" style="background:{{ ot.color }}"></span>
-              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ ot.name }}</span>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
+              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ ot.name }}</span>{% if not ot.with_events %}<span class="no-events tiny muted">{{ _("nessun evento collegato: non si può mostrare") }}</span>{% endif %}{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
               <span class="type-count tiny muted">{{ ot.objects }}</span>
             </label>
           </li>

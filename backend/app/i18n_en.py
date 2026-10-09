@@ -1180,4 +1180,6 @@ EN: dict[str, str] = {
     "{f}: i valori nuovi ({v}) sono valori di {g}": "{f}: the new values ({v}) are values of {g}",
     "{f}: i valori vecchi ({v}) sono valori di {g}": "{f}: the old values ({v}) are values of {g}",
     "{f}: solo impostazioni ({n}), nessuna rimozione": "{f}: only settings ({n}), no removals",
+    # Explorer: tipi senza eventi
+    "nessun evento collegato: non si può mostrare": "no linked events: cannot be shown",
 }

@@ -55,8 +55,12 @@ def embedded_key_rows(proposals: list[MappingProposal], emb: dict) -> list[Mappi
     column = f"{emb['column']}_{pcol}"
     if any(p.ocel_element == COMPUTED and p.source_table == table and p.source_column == column for p in proposals):
         return []
-    obj = next((p.object_type for p in proposals if p.ocel_element == "object_type.key" and p.source_table == parent
-                and p.source_column == pcol and p.object_type), None)
+    # tutti i tipi di oggetto con quella chiave (es. documenti contabili divisi in fatture e incassi su tabelle
+    # diverse): il motore collega ogni evento solo agli oggetti che esistono, quindi al tipo giusto
+    keyed = [p for p in proposals if p.ocel_element == "object_type.key" and p.source_column == pcol and p.object_type]
+    objs = list(dict.fromkeys([p.object_type for p in keyed if p.source_table == parent]
+                              + [p.object_type for p in keyed if p.source_table != parent]))
+    obj = objs[0] if objs else None
     events = [p.event_type for p in proposals if p.source_table == table and p.ocel_element == "event_type.timestamp" and p.event_type]
     if not obj or not events:
         return []
@@ -70,10 +74,12 @@ def embedded_key_rows(proposals: list[MappingProposal], emb: dict) -> list[Mappi
         if p.ocel_element == "e2o_relationship" and p.source_table == table and p.source_column == emb["column"]:
             p.source_column, p.related_object_type, p.rationale, p.confidence = column, obj, why, 0.95
     for event in dict.fromkeys(events):
-        if any(p.ocel_element == "e2o_relationship" and p.event_type == event and p.related_object_type == obj for p in proposals):
-            continue
-        out.append(_rule(table, column, "e2o_relationship", why, event_type=event, related_object_type=obj,
-                         qualifier=f"for {obj.lower()}"))
+        for o in objs:
+            if any(p.ocel_element == "e2o_relationship" and p.event_type == event and p.related_object_type == o
+                   for p in proposals + out):
+                continue
+            out.append(_rule(table, column, "e2o_relationship", why, event_type=event, related_object_type=o,
+                             qualifier=f"for {o.lower()}"))
     return out
 
 
