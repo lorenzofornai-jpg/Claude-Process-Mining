@@ -36,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import business_objects, coverage, explain, review_assistant
+from app.services import business_objects, coverage, derived_columns, explain, review_assistant
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -45,6 +45,7 @@ from app.services.profiling import compact_for_mapping, profile_tables
 from app.services.relevance import check_relevance
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 from app.services.transformation import (
+    COMPUTED, computed_specs, with_computed,
     FIELDS_BY_ELEMENT, build_ocel, compile_defs, default_qualifier, format_activity_values, merge_ocel, normalize_row,
     parse_activity_values, qualifier_for,
 )
@@ -189,11 +190,16 @@ def _check_schema_compatibility(new_fingerprint: dict[str, list[str]], confirmed
     ma che non sono presenti nel nuovo caricamento; lista vuota = compatibile.
     Colonne extra nel nuovo caricamento non sono un problema: contano solo
     quelle effettivamente usate dal mapping."""
+    # le colonne calcolate non stanno nei file: servono le colonne da cui si calcolano
+    computed = {(t, c) for t, cols in computed_specs(confirmed).items() for c in cols}
     needed = {
         (r["source_table"], r["source_column"])
         for r in confirmed
-        if r.get("source_table") and r.get("source_column")
+        if r.get("source_table") and r.get("source_column") and (r["source_table"], r["source_column"]) not in computed
     }
+    for t, cols in computed_specs(confirmed).items():
+        for spec in cols.values():
+            needed |= {(t, spec[k]) for k in ("field", "old", "new", "column") if spec.get(k)}
     missing_tables = {table for table, _ in needed if table not in new_fingerprint}
     problems = [msg("tabella mancante: «{t}»", t=table) for table in sorted(missing_tables)]
     for table, column in sorted(needed):
@@ -260,6 +266,7 @@ EDITABLE_FIELDS = ["ocel_element", "object_type", "event_type", "attribute_name"
 VALID_OCEL_ELEMENTS = [
     "object_type.key", "object_type.attribute", "object_type.split",
     "event_type.timestamp", "event_type.time", "event_type.activity", "event_type.attribute", "e2o_relationship",
+    "table.computed",
 ]
 
 # come si presenta ogni tipo di riga nel pannello "Modifica" della revisione
@@ -272,6 +279,7 @@ ELEMENT_LABELS = {
     "event_type.activity": "la colonna che dice quale attività è avvenuta",
     "event_type.attribute": "un attributo di un evento (es. utente, importo)",
     "e2o_relationship": "un collegamento da un evento a un oggetto",
+    "table.computed": "una colonna calcolata (es. il tipo di modifica da campo, valore vecchio e nuovo)",
 }
 
 
@@ -305,6 +313,15 @@ def _target_label(r: dict):
                  for k, n in items[:6]]
         more = f" (+{len(items) - 6})" if len(items) > 6 else ""
         return msg("Divide {o} per valore: {v}{m}", o=v("object_type"), v=joined(shown), m=more)
+    if el == COMPUTED and (r.get("activity_values") or {}).get("rule") == "slice":
+        spec = r["activity_values"]
+        a = int(spec.get("start") or 0) + 1
+        return msg("Colonna calcolata {c}: posizioni {a}–{b} di {s}", c=v("source_column"), a=a,
+                   b=a + int(spec.get("length") or 0) - 1, s=spec.get("column"))
+    if el == COMPUTED:
+        spec = r.get("activity_values") or {}
+        return msg("Colonna calcolata {c}: Imposta / Rimuovi / Modifica + campo {f} (da {o} → {n})", c=v("source_column"),
+                   f=spec.get("field") or "—", o=spec.get("old") or "—", n=spec.get("new") or "—")
     if el == "event_type.attribute":
         return msg("Attributo evento → «{e}».{a}", e=v("event_type"), a=v("attribute_name"))
     if el == "e2o_relationship":
@@ -852,6 +869,10 @@ def _run_ai_mapping(
             mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
             proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"], table_descriptions)
 
+        # colonne calcolate dal profilo dei dati: log di modifiche (attivita' da campo e valori) e chiavi dentro
+        # valori composti (collegamenti), qualunque mapper abbia lavorato
+        proposals = derived_columns.apply(proposals, sess["context"].get("data_profile") or {},
+                                          sess["context"].get("language") or "it")
         rejected: set[int] = set()
         if sess.get("business_objects"):
             # il mapping si allinea agli oggetti di business confermati (nomi, divisioni, oggetti esclusi)
@@ -913,6 +934,12 @@ def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[s
             )
         else:
             proposals = mapper.propose_mapping(tables, sess["context"], table_descriptions)
+        names = {t.name for t in tables}
+        prof = sess["context"].get("data_profile") or {}
+        proposals = derived_columns.apply(proposals, {
+            "change_logs": {k: v for k, v in (prof.get("change_logs") or {}).items() if k in names},
+            "embedded_keys": [e for e in prof.get("embedded_keys") or [] if e["table"] in names]},
+            sess["context"].get("language") or "it")
         next_id = max((r["row_id"] for r in rows), default=-1) + 1
         for i, p in enumerate(proposals):
             d = asdict(p)
@@ -972,6 +999,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
         return RedirectResponse(url=f"/ingestion/mapping-status?workspace_id={workspace_id}", status_code=303)
     planned = {(t.name, c.name): c.planned_reason for t in sess.get("tables_schema_objs") or [] for c in t.columns
                if getattr(c, "planned_reason", None)}
+    data_view = with_computed(sess.get("tables_data", {}), rows)
     for r in rows:
         r["planned_reason"] = (planned.get((r["source_table"], r["source_column"]))
                                if r["ocel_element"] == "event_type.timestamp" else None)
@@ -979,8 +1007,8 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             r["qualifier"] = qualifier_for(r.get("related_object_type"), r.get("rationale"))
         if r["ocel_element"] in ("event_type.activity", "object_type.split"):
             # valori presenti nei dati caricati: la tabella di traduzione (es. dal dizionario SAP)
-            # puo' prevedere anche codici che in questa estrazione non compaiono
-            data = sess.get("tables_data", {}).get(r["source_table"], [])
+            # puo' prevedere anche codici che in questa estrazione non compaiono (con le colonne calcolate)
+            data = data_view.get(r["source_table"], [])
             r["present_values"] = sorted({str(x.get(r["source_column"]) or "").strip() for x in data} - {"", "nan"})
         r["target_label"] = _target_label(r)
 
@@ -1144,7 +1172,9 @@ async def review_assistant_ask(request: Request):
         rows=rows, model=_model_summary(rows, order), business_objects=sess.get("business_objects"),
         profile_issues=[f"{i['table'] or ''}: {render(lang, i['title'])}" for i in (sess.get("profile") or {}).get("issues", [])],
         tables=sess.get("tables_schema_objs") or [], link_options=_link_options(sess, rows),
-        ui_labels=ui_labels(lang, review_assistant.UI_LABELS))
+        ui_labels=ui_labels(lang, review_assistant.UI_LABELS),
+        facts=review_assistant.data_facts(sess.get("tables_schema_objs") or [], sess.get("tables_data") or {},
+                                          sess.get("profile")))
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     est = review_assistant.estimate(context, history)
     if body.get("estimate"):
@@ -1156,8 +1186,9 @@ async def review_assistant_ask(request: Request):
         return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
                             status_code=502)
     actions = []
+    columns = {tb.name: [c.name for c in tb.columns] for tb in sess.get("tables_schema_objs") or []}
     for a in result.get("actions", []):
-        d = review_assistant.describe(a, rows)
+        d = review_assistant.describe(a, rows, columns)
         if d:
             actions.append({"action": d["action"], "lines": [render(lang, x) for x in d["lines"]], "why": d["why"]})
     answer = result.get("answer") or ""
@@ -1179,7 +1210,8 @@ async def review_assistant_apply(request: Request):
     rows = sess.get("mapping_rows")
     if rows is None:
         return JSONResponse({"error": t(lang, "La revisione non è più disponibile: riaprila dall'elenco dei dataset.")}, status_code=409)
-    d = review_assistant.describe(body.get("action") or {}, rows)
+    columns = {tb.name: [c.name for c in tb.columns] for tb in sess.get("tables_schema_objs") or []}
+    d = review_assistant.describe(body.get("action") or {}, rows, columns)
     ok = bool(d) and review_assistant.apply(
         d["action"], rows, add_link=lambda rs, e, o, c: _link_any_column(sess, rs, e, o, c))
     if not ok:

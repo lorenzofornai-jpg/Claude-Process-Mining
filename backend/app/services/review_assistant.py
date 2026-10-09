@@ -44,9 +44,15 @@ Cosa fare:
 - Se l'utente chiede di cambiare qualcosa, o se una modifica è chiaramente utile e l'utente è d'accordo, usa gli
   strumenti: set_decisions (accettare, rifiutare o rimettere da decidere gruppi o righe), rename (nome di un tipo di
   oggetto o di evento in tutte le righe), set_values (traduzione valore -> nome per una riga activity o split),
-  add_link (collegare un evento a un oggetto tramite una colonna). Usa solo row_id, nomi di gruppo, tabelle e colonne
+  add_link (collegare un evento a un oggetto tramite una colonna), add_computed (colonna calcolata: "change" per un
+  log di modifiche, attività = Imposta/Rimuovi/Modifica + campo da campo, valore vecchio e nuovo; "slice" per
+  estrarre una parte di un valore composto, es. il numero del documento dentro un OBJECTID, e collegare gli eventi a
+  un oggetto). Usa solo row_id, nomi di gruppo, tabelle e colonne
   presenti nei DATI. Ogni modifica viene mostrata all'utente, che la conferma con il pulsante ui_labels.apply:
   dillo in una frase, senza ripetere l'elenco delle modifiche.
+- Prima di dire che qualcosa si può o non si può ottenere, guarda "data_facts" (valori presenti nelle colonne,
+  log di modifiche con quante impostazioni/rimozioni/modifiche per campo): se nei file un caso non c'è (es. nessuna
+  rimozione di un blocco), dillo con i numeri invece di proporre soluzioni che non lo farebbero comparire.
 - I nomi di oggetti, eventi e attività devono essere nomi di business corretti nella lingua del processo: proponi
   correzioni se un nome è tecnico (es. «Bkpf event»), con grammatica corretta.
 - Etichette dell'app: usa SEMPRE i testi di "ui_labels" (sono nella lingua dell'utente).
@@ -113,6 +119,27 @@ TOOLS = [
     },
 ]
 
+TOOLS.append({
+    "name": "add_computed",
+    "description": "Propone una colonna calcolata. rule=change: per un log di modifiche (field, old, new), la colonna "
+                   "vale SET/REMOVE/CHANGE + campo e diventa la colonna attività di event_type, con un nome per valore. "
+                   "rule=slice: la parte (start da 0, length) di una colonna con un valore composto, usata per collegare "
+                   "event_type a link_object_type.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "rule": {"type": "string", "enum": ["change", "slice"]}, "table": {"type": "string"},
+            "field": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"},
+            "column": {"type": "string"}, "start": {"type": "integer"}, "length": {"type": "integer"},
+            "event_type": {"type": "string"}, "link_object_type": {"type": "string"},
+            "names": {"type": "object", "additionalProperties": {"type": "string"},
+                      "description": "Per rule=change: nome dell'attività per ogni valore (es. \"SET MANSP\": \"Set Dunning Block\")."},
+            "why": {"type": "string"},
+        },
+        "required": ["rule", "table", "event_type", "why"],
+    },
+})
+
 UI_LABELS = {
     "apply": "Applica", "model": "Modello proposto", "accept_all": "Accetta tutto", "reject": "Rifiuta",
     "edit": "Modifica", "add_link": "Aggiungi collegamento", "generate": "Conferma e genera il dataset",
@@ -138,10 +165,37 @@ def _row(r: dict, lang: str) -> dict:
     return out
 
 
+def data_facts(tables: list, tables_data: dict[str, list[dict]], profile: dict | None) -> dict:
+    """Cosa c'e' davvero nei file: per ogni tabella i valori delle colonne con poche modalita' (con quante righe),
+    i log di modifiche (per campo: impostazioni, rimozioni, modifiche) e le chiavi dentro valori composti."""
+    from collections import Counter
+    out = {}
+    for t in tables:
+        data = tables_data.get(t.name) or []
+        cols = {}
+        for c in t.columns:
+            counts = Counter(str(r.get(c.name) if r.get(c.name) is not None else "").strip() for r in data)
+            if 1 <= len(counts) <= 25:
+                cols[c.name] = {k or "(vuoto)": n for k, n in counts.most_common(12)}
+        out[t.name] = {"rows": len(data), "low_cardinality_values": cols}
+    for t in (profile or {}).get("tables", []):
+        if t.get("change_log") and t["name"] in out:
+            cl = t["change_log"]
+            out[t["name"]]["change_log"] = {"field": cl["field"], "old": cl["old"], "new": cl["new"],
+                                            "by_field": cl["by_field"], "suspicious_values": cl["foreign"]}
+    for r in (profile or {}).get("relationships", []):
+        if r.get("slice") and r["child_table"] in out:
+            out[r["child_table"]].setdefault("embedded_keys", []).append(
+                {"column": r["slice"]["column"], "start": r["slice"]["start"], "length": r["slice"]["length"],
+                 "is_key_of": f"{r['parent_table']}.{r['parent_column']}", "share": r["coverage_pct"]})
+    return out
+
+
 def build_context(*, language: str, process_name: str, assessment: dict, rows: list[dict], model: dict,
                   business_objects: list | None, profile_issues: list, tables: list, link_options: dict,
-                  ui_labels: dict) -> str:
+                  ui_labels: dict, facts: dict | None = None) -> str:
     payload = {
+        "data_facts": facts or {},
         "language": language, "ui_labels": ui_labels,
         "process": {"name": process_name, "assessment": assessment},
         "business_objects": [{"name": o["name"], "table": o["table"], "key": o.get("key"), "role": o.get("role"),
@@ -215,7 +269,7 @@ def _group_of(r: dict):
     return None
 
 
-def describe(action: dict, rows: list[dict]) -> dict | None:
+def describe(action: dict, rows: list[dict], columns: dict[str, list[str]] | None = None) -> dict | None:
     """Controlla un'azione proposta e la descrive per la scheda di conferma: None se non e' applicabile
     (riga o gruppo inesistente, tipo non previsto). Ritorna {"action", "lines": [msg...], "why"}."""
     by_id = {r["row_id"]: r for r in rows}
@@ -257,6 +311,32 @@ def describe(action: dict, rows: list[dict]) -> dict | None:
         action = {**action, "row_id": r["row_id"], "values": values}
         shown = ", ".join(f"{k} → {v or '∅'}" for k, v in list(values.items())[:8])
         lines.append(msg("nomi per valore di {t}.{c}: {v}", t=r["source_table"], c=r.get("source_column"), v=shown))
+    elif kind == "add_computed":
+        cols = (columns or {}).get(action.get("table"))
+        rule = action.get("rule")
+        events = {r.get("event_type") for r in rows if r["ocel_element"] == "event_type.timestamp"
+                  and r["source_table"] == action.get("table")}
+        if cols is None or action.get("event_type") not in events:
+            return None
+        if rule == "change":
+            if not (action.get("old") in cols and action.get("new") in cols and (not action.get("field") or action["field"] in cols)):
+                return None
+            lines.append(msg("colonna calcolata in {t}: Imposta / Rimuovi / Modifica + {f} (da {o} → {n}), attività di «{e}»",
+                             t=action["table"], f=action.get("field") or "—", o=action["old"], n=action["new"], e=action["event_type"]))
+            names = action.get("names") or {}
+            if names:
+                lines.append(msg("nomi: {v}", v=", ".join(f"{k} → {v}" for k, v in list(names.items())[:8])))
+        elif rule == "slice":
+            start, length = action.get("start"), action.get("length")
+            objs = {r.get("object_type") for r in rows if r["ocel_element"] == "object_type.key"} | {
+                v for r in rows if r["ocel_element"] == "object_type.split" for v in (r.get("activity_values") or {}).values() if v}
+            if action.get("column") not in cols or not isinstance(start, int) or not isinstance(length, int) or length < 1 \
+                    or action.get("link_object_type") not in objs:
+                return None
+            lines.append(msg("colonna calcolata in {t}: posizioni {a}–{b} di {c}, per collegare «{e}» a {o}", t=action["table"],
+                             a=start + 1, b=start + length, c=action["column"], e=action["event_type"], o=action["link_object_type"]))
+        else:
+            return None
     elif kind == "add_link":
         lines.append(msg("collega «{e}» a {o} tramite {c}", e=action.get("event_type"), o=action.get("object_type"),
                          c=action.get("column")))
@@ -301,6 +381,37 @@ def apply(action: dict, rows: list[dict], add_link=None) -> bool:
         r["activity_values"] = {**(r.get("activity_values") or {}), **action["values"]}
         if r["status"] != "rejected":
             r["status"] = "overridden"
+        return True
+    if kind == "add_computed":
+        table, event = action["table"], action["event_type"]
+        next_id = max((r["row_id"] for r in rows), default=-1) + 1
+        why = msg("Colonna calcolata aggiunta con l'assistente.")
+        base = {"source_table": table, "object_type": None, "event_type": None, "attribute_name": None, "qualifier": None,
+                "related_object_type": None, "confidence": 1.0, "based_on_template": None, "rationale": why,
+                "status": "overridden", "original_ai_proposal": None}
+        if action["rule"] == "change":
+            column = "CHANGE_KIND"
+            spec = {"rule": "change", "field": action.get("field") or "", "old": action["old"], "new": action["new"]}
+        else:
+            column = f"{action['column']}_PART"
+            spec = {"rule": "slice", "column": action["column"], "start": str(action["start"]), "length": str(action["length"])}
+        rows[:] = [r for r in rows if not (r["ocel_element"] == "table.computed" and r["source_table"] == table
+                                          and r["source_column"] == column)]
+        rows.append({**base, "row_id": next_id, "source_column": column, "ocel_element": "table.computed", "activity_values": spec})
+        if action["rule"] == "change":
+            names = {str(k): str(v) for k, v in (action.get("names") or {}).items()} or None
+            act = next((r for r in rows if r["ocel_element"] == "event_type.activity" and r["source_table"] == table
+                        and r.get("event_type") == event), None)
+            if act:
+                act.update(source_column=column, activity_values=names, status="overridden", rationale=why)
+            else:
+                rows.append({**base, "row_id": next_id + 1, "source_column": column, "ocel_element": "event_type.activity",
+                             "event_type": event, "activity_values": names})
+        else:
+            obj = action["link_object_type"]
+            rows.append({**base, "row_id": next_id + 1, "source_column": column, "ocel_element": "e2o_relationship",
+                         "event_type": event, "related_object_type": obj, "qualifier": f"for {obj.lower()}",
+                         "activity_values": None})
         return True
     if kind == "add_link" and add_link:
         before = len(rows)

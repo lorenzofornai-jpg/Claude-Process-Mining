@@ -25,6 +25,7 @@ from datetime import datetime
 import pandas as pd
 
 from app.i18n import concat, msg, render
+from app.services import change_logs
 from app.services.timeparts import looks_like_time, parse_time_of_day
 
 PLACEHOLDER_DATE_RE = re.compile(
@@ -275,11 +276,36 @@ def profile_tables(
                                      "Verifica che l'estrazione copra tutto il periodo dichiarato nell'assessment."))
 
     relationships = _find_relationships(frames, {t["name"]: t["key"] for t in tables})
+    # chiavi dentro un valore composto (es. SAP CDHDR.OBJECTID = societa' + numero documento + esercizio)
+    for emb in _embedded_keys(frames, {t["name"]: t["key"] for t in tables}, relationships,
+                              {t["name"] for t in tables if t["dates"]}):
+        relationships.append(emb)
+        sl = emb["slice"]
+        issues.append(_issue("info", emb["child_table"],
+                             msg("{c}: le posizioni {a}–{b} contengono {k} di {p}", c=sl["column"], a=sl["start"] + 1,
+                                 b=sl["start"] + sl["length"], k=emb["parent_column"], p=emb["parent_table"]),
+                             msg("Il riferimento al documento è dentro un valore composto ({e}): senza estrarlo gli eventi "
+                                 "della tabella resterebbero scollegati.", e=sl["example"]),
+                             msg("Nel mapping verrà proposta una colonna calcolata con quella parte del valore, per "
+                                 "collegare gli eventi a {p} (valore trovato in {p} per il {s}% delle righe).", p=emb["parent_table"],
+                                 s=emb["coverage_pct"])))
 
     for t in tables:
         df = frames[t["name"]]
         dates = {d["column"] for d in t["dates"]}
         t["activity_columns"] = _activity_candidates(df, dates, t["key"], relationships, t["name"])
+        # log di modifiche (campo, valore vecchio, nuovo): l'attivita' si calcola da tre colonne, non da una
+        t["change_log"] = change_logs.detect(df, _domains(frames, t["name"])) if dates else None
+        if t["change_log"]:
+            cl = t["change_log"]
+            t["activity_columns"] = [a for a in t["activity_columns"] if a["column"] not in (cl["field"], cl["old"], cl["new"])]
+            issues.extend(change_logs.issues(t["name"], cl))
+        # operazioni senza la loro opposta (SET_... senza REMOVE_...): anche con un solo valore nella colonna
+        for c in df.columns:
+            if STRONG_ACTIVITY_RE.search(c) and not USER_HINT_RE.search(re.sub(r"(name|nome)", "", c, flags=re.I)):
+                vals = df[c].dropna().astype(str).str.strip()
+                vals = [v for v in vals.unique() if v][:MAX_ACTIVITY_VALUES]
+                issues.extend(change_logs.missing_opposites(t["name"], c, vals))
         for a in t["activity_columns"]:
             shown = ", ".join(a["values"][:6]) + ("…" if len(a["values"]) > 6 else "")
             issues.append(_issue(
@@ -362,12 +388,14 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
     n = len(df)
     if not dates or n < 4:
         return []
-    repeated_link = any(
-        r["child_table"] == table and df[r["child_column"].split("+")].duplicated().any()
-        for r in relationships if all(c in df.columns for c in r["child_column"].split("+"))
-    )
-    if key and not repeated_link:
+    repeated = [r["child_column"].split("+") for r in relationships
+                if r["child_table"] == table and all(c in df.columns for c in r["child_column"].split("+"))
+                and df[r["child_column"].split("+")].duplicated().any()]
+    if key and not repeated:
         return []  # una riga per oggetto: uno stato qui e' un attributo, non una sequenza di attivita'
+    # piu' righe per lo stesso oggetto collegato fanno un log solo se il collegamento e' parte della chiave
+    # (BELNR + CHANGE_NO): un documento con la sua chiave che rimanda a un cliente non e' un log
+    log_like = not key or any(set(cols) <= set(key) for cols in repeated)
     links = {col for r in relationships if r["child_table"] == table for col in r["child_column"].split("+")}
     found = []
     for i, c in enumerate(df.columns):
@@ -379,6 +407,10 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
             continue
         if REASON_HINT_RE.search(c) and not strong:
             continue  # il motivo dice perche', non che cosa: vedi _reason_columns
+        if key and not log_like and not strong:
+            # tabella di oggetti con la sua chiave (non un log): tipo documento, transazione, stato sono attributi
+            # dell'oggetto (il tipo e' candidato a dividerlo), non attivita'
+            continue
         name_hint = bool(ACTIVITY_HINT_RE.search(c))
         if not name_hint and (c in links or ID_HINT_RE.search(c)):
             continue  # riferimento a un oggetto (numero ordine, id caso...), non un'operazione
@@ -394,7 +426,7 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
         if s.str.match(DECIMAL_RE).mean() > 0.5:
             continue
         labels = s.str.contains(r"[A-Za-zÀ-ÿ]").mean() > 0.9 and s.str.len().mean() >= 4
-        if not (name_hint or labels):
+        if not (name_hint or (labels and log_like)):
             continue
         counts = s.value_counts()
         found.append(((0 if strong else 1 if name_hint else 2, i),
@@ -410,6 +442,58 @@ def _activity_candidates(df: pd.DataFrame, dates: set[str], key: list[str] | Non
     # con una colonna dal nome indicativo, le altre (solo etichette testuali) sono quasi sempre dimensioni
     if any(o["name_hint"] for o in out):
         out = [o for o in out if o["name_hint"]]
+    return out
+
+
+def _embedded_keys(frames: dict[str, pd.DataFrame], keys: dict, relationships: list[dict], event_tables: set) -> list[dict]:
+    """Tabelle di eventi non collegate a una tabella: una loro colonna contiene, sempre nella stessa posizione, la
+    chiave (una colonna) di quella tabella? Es. CDHDR.OBJECTID «100018000000022026» = 1000 + 1800000002 + 2026."""
+    linked = {(r["child_table"], r["parent_table"]) for r in relationships}
+    out = []
+    for cname in event_tables:
+        cdf = frames[cname]
+        for c in cdf.columns:
+            s = cdf[c].dropna().astype(str).str.strip()
+            s = s[s != ""]
+            if len(s) < 3 or s.str.len().mean() < 8 or s.str.len().nunique() > 3:
+                continue
+            sample = list(s.head(300))
+            best = None
+            for pname, pkey in keys.items():
+                if pname == cname or not pkey or len(pkey) != 1 or (cname, pname) in linked:
+                    continue
+                pvals = set(frames[pname][pkey[0]].dropna().astype(str).str.strip())
+                lengths = {len(v) for v in pvals if v}
+                if len(lengths) != 1:
+                    continue
+                L = lengths.pop()
+                if L < 4 or L >= max(len(v) for v in sample):
+                    continue
+                for start in range(0, max(len(v) for v in sample) - L + 1):
+                    share = sum(1 for v in sample if v[start:start + L] in pvals) / len(sample)
+                    if share >= 0.8 and (best is None or share > best[0]):
+                        best = (share, pname, pkey[0], start, L)
+            if best:
+                share, pname, pcol, start, L = best
+                out.append({"child_table": cname, "child_column": f"{c}[{start + 1}:{start + L}]", "parent_table": pname,
+                            "parent_column": pcol, "coverage_pct": round(100 * share, 1),
+                            "orphan_rows": int(round(len(s) * (1 - share))), "matched_by": "parte del valore",
+                            "slice": {"column": c, "start": start, "length": L, "example": sample[0]}})
+                linked.add((cname, pname))
+    return out
+
+
+def _domains(frames: dict[str, pd.DataFrame], skip: str) -> dict[str, set]:
+    """{NOME COLONNA: valori} nelle altre tabelle (poche modalita'): il riferimento per i valori di un log."""
+    out: dict[str, set] = {}
+    for name, df in frames.items():
+        if name == skip:
+            continue
+        for c in df.columns:
+            s = df[c].dropna().astype(str).str.strip()
+            vals = set(s[s != ""].unique())
+            if 0 < len(vals) <= 200:
+                out.setdefault(c.upper(), set()).update(vals)
     return out
 
 
@@ -575,8 +659,10 @@ def _find_relationships(frames: dict[str, pd.DataFrame], keys: dict[str, list[st
                 containment = len(distinct & pvals) / len(distinct)
                 if containment == 0 or (not same_name and containment < MIN_LINK_CONTAINMENT):
                     continue
-                if keys.get(cname) == ccols:
-                    continue  # chiave contro chiave: tabelle 1:1, non un riferimento
+                if keys.get(cname) == ccols and (len(cdf) > len(pdf) or (len(cdf) == len(pdf) and cname < pname)):
+                    # chiave contro chiave: vale una sola direzione, dalla tabella piu' piccola (es. un log con una
+                    # riga per documento) verso quella piu' grande
+                    continue
                 orphan_rows = int((~s.isin(pvals)).sum())
                 rels.append({
                     "child_table": cname, "child_column": "+".join(ccols),
@@ -629,6 +715,15 @@ def compact_for_mapping(profile: dict) -> dict:
             t["name"]: {r["column"]: r["values"] for r in t.get("reason_columns", [])}
             for t in profile["tables"] if t.get("reason_columns")
         },
+        # log di modifiche: l'attivita' e' la colonna calcolata (tipo di modifica + campo), non il solo campo
+        # chiavi dentro un valore composto: colonna calcolata con quella parte del valore per collegare gli eventi
+        "embedded_keys": [{"table": r["child_table"], "column": r["slice"]["column"], "start": r["slice"]["start"],
+                           "length": r["slice"]["length"], "parent_table": r["parent_table"], "parent_column": r["parent_column"]}
+                          for r in profile["relationships"] if r.get("slice")],
+        "change_logs": {t["name"]: {"field": t["change_log"]["field"], "old": t["change_log"]["old"],
+                                    "new": t["change_log"]["new"], "computed_column": change_logs.COLUMN,
+                                    "values": list(t["change_log"]["counts"])}
+                        for t in profile["tables"] if t.get("change_log")},
         # tabelle che ripetono le righe di un'altra: oggetti ed eventi vengono dall'altra
         "copy_of": {c["table"]: {"of": c["of"], "new_columns": c["new"]} for c in profile.get("copies", [])},
     }

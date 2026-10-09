@@ -102,6 +102,19 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   indicativo mostrato e confermato prima dell'invio, risposta nella lingua dell'interfaccia
   (`services/explain.py`, modello `EXPLAIN_MODEL`, predefinito claude-sonnet-5-5).
 
+## Log di modifiche e colonne calcolate (9 ottobre 2026)
+- ✅ **Log di modifiche riconosciuti in fase 1** (campo, valore vecchio, valore nuovo: SAP CDHDR/CDPOS, audit
+  trail, cronologia dei campi di un CRM) in `services/change_logs.py`. Il mapping propone in automatico la colonna
+  calcolata `CHANGE_KIND` (Imposta / Rimuovi / Modifica + campo) come colonna attività, con un nome per ogni
+  combinazione presente («Set Dunning Block», «Remove Dunning Block»…).
+- ✅ **Controlli sui log**: campo solo impostato e mai tolto, valori di un campo che sono valori di un altro
+  (estrazione con righe o colonne mescolate), operazioni senza la loro opposta in una colonna attività (SET_X senza
+  REMOVE_X).
+- ✅ **Chiave dentro un valore composto** (es. CDHDR.OBJECTID = società + documento + esercizio): colonna calcolata
+  con quella parte del valore e collegamento degli eventi all'oggetto (`services/derived_columns.py`).
+- ✅ **Assistente della revisione**: può proporre colonne calcolate (`add_computed`) e, quando una cosa non c'è,
+  lo spiega con i conteggi dei dati (`data_facts`).
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

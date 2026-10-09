@@ -404,6 +404,17 @@ richiederla di nuovo al server. `POST /logout` cancella anche esplicitamente
 il cookie (`response.delete_cookie`) in aggiunta a quanto già fa da solo
 `SessionMiddleware` sulla sessione svuotata, come difesa in profondità.
 
+## Colonne calcolate nel mapping
+
+Una riga di mapping `table.computed` aggiunge alla tabella una colonna che non c'è nella sorgente; la regola sta
+in `activity_values` e il motore (`transformation.with_computed`) la calcola prima di costruire l'OCEL:
+
+- `{"rule": "change", "field": F, "old": O, "new": N}` → «SET F», «REMOVE F», «CHANGE F» (log di modifiche);
+- `{"rule": "slice", "column": C, "start": "4", "length": "10"}` → una parte del valore di C (chiave composta).
+
+Il profilo le suggerisce (`change_logs`, `embedded_keys`), `derived_columns.apply` le aggiunge alle proposte di
+qualunque mapper e l'assistente della revisione può proporle con lo strumento `add_computed`.
+
 ## Semplificazioni deliberate di questo prototipo
 
 Sono scelte fatte per avere qualcosa di testabile subito, non limiti

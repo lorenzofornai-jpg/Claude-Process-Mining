@@ -125,6 +125,8 @@ FIELDS_BY_ELEMENT = {
     # una tabella con documenti di natura diversa (fatture e incassi, ordini e resi) diventa piu' tipi
     # di oggetto in base al valore di una colonna (es. tipo documento); stessa sintassi «valore = nome»
     "object_type.split": ["object_type", "activity_values"],
+    # colonna calcolata (es. tipo di modifica da campo, valore vecchio e nuovo): definizione in activity_values
+    "table.computed": ["activity_values"],
 }
 
 
@@ -338,10 +340,70 @@ def _resolve_related_objects(
     return ids_for(joined_rows)
 
 
+# ---------- colonne calcolate ----------
+# Una riga «table.computed» aggiunge alla tabella una colonna ricavata da altre, usabile dal resto del mapping come
+# una colonna vera (es. colonna attivita'). La definizione sta in activity_values:
+# - {"rule": "change", "field": FNAME, "old": VALUE_OLD, "new": VALUE_NEW}: log di modifiche (CDHDR/CDPOS, audit
+#   trail, cronologia campi). Valore = "SET <campo>" (vecchio vuoto, nuovo pieno), "REMOVE <campo>" (nuovo vuoto),
+#   "CHANGE <campo>" (entrambi pieni); senza campo, solo SET/REMOVE/CHANGE.
+# - {"rule": "slice", "column": OBJECTID, "start": "4", "length": "10"}: una parte di un valore composto (es. il
+#   numero del documento dentro SAP CDHDR.OBJECTID), per collegare gli eventi all'oggetto.
+COMPUTED = "table.computed"
+CHANGE_KINDS = ("SET", "REMOVE", "CHANGE")
+
+
+def change_kind(row: dict, field: str | None, old: str, new: str) -> str:
+    o, n = _clean(row.get(old)), _clean(row.get(new))
+    kind = "SET" if not o and n else "REMOVE" if o and not n else "CHANGE" if o and n else ""
+    if not kind:
+        return ""
+    f = _clean(row.get(field)) if field else ""
+    return f"{kind} {f}".strip()
+
+
+def _valid(spec: dict) -> bool:
+    if spec.get("rule") == "change":
+        return bool(spec.get("old") and spec.get("new"))
+    if spec.get("rule") == "slice":
+        return bool(spec.get("column")) and str(spec.get("start", "")).isdigit() and str(spec.get("length", "")).isdigit()
+    return False
+
+
+def compute_value(row: dict, spec: dict) -> str:
+    if spec.get("rule") == "slice":
+        start, length = int(spec["start"]), int(spec["length"])
+        return _clean(row.get(spec["column"]))[start:start + length]
+    return change_kind(row, spec.get("field"), spec["old"], spec["new"])
+
+
+def computed_specs(rows: list[dict]) -> dict[str, dict[str, dict]]:
+    """{tabella: {colonna calcolata: definizione}} dalle righe di mapping (non rifiutate)."""
+    out: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        if r.get("ocel_element") == COMPUTED and r.get("source_column") and r.get("status", "confirmed") != "rejected":
+            spec = r.get("activity_values") or {}
+            if _valid(spec):
+                out.setdefault(r["source_table"], {})[r["source_column"]] = spec
+    return out
+
+
+def with_computed(tables_data: dict[str, list[dict]], rows: list[dict]) -> dict[str, list[dict]]:
+    """I dati con le colonne calcolate aggiunte (copia: i dati caricati non cambiano)."""
+    specs = computed_specs(rows)
+    if not specs:
+        return tables_data
+    out = dict(tables_data)
+    for table, cols in specs.items():
+        data = tables_data.get(table) or []
+        out[table] = [{**row, **{c: compute_value(row, sp) for c, sp in cols.items()}} for row in data]
+    return out
+
+
 def build_ocel(
     tables_data: dict[str, list[dict]],
     confirmed: list[dict],
 ) -> tuple[dict, list[SkipRecord], dict]:
+    tables_data = with_computed(tables_data, confirmed)
     object_defs, event_defs = compile_defs(confirmed)
 
     relationship_rules = [m for m in confirmed if m["ocel_element"] == "e2o_relationship"]
