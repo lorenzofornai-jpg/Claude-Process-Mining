@@ -193,8 +193,21 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
                 y, m = y + 1, 1
 
     # ---------- varianti ----------
+    # con «oggetti collegati» la sequenza comprende anche gli eventi degli oggetti collegati (esclusi i trasversali),
+    # in ordine di tempo: es. la registrazione dell'incasso che chiude la fattura
+    vseqs = seqs
+    if scope == "related":
+        vseqs = []
+        for oid, seq in seqs:
+            merged = {idx: (ts, a, idx) for ts, a, idx in seq}
+            for r in related_by_obj[oid]:
+                if model.type_of[r] in hubs:
+                    continue
+                for ts, a, idx in model.sequences_by_type_index.get(r, ()):
+                    merged.setdefault(idx, (ts, a, idx))
+            vseqs.append((oid, sorted(merged.values(), key=lambda x: (math.inf if math.isnan(x[0]) else x[0], x[2]))))
     groups: dict[tuple, list[str]] = defaultdict(list)
-    for oid, seq in seqs:
+    for oid, seq in vseqs:
         groups[_steps([a for _, a, _ in seq])].append(oid)
     n_obj = len(seqs)
     variants = []
@@ -211,7 +224,7 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
     happy_acts = {s["activity"] for s in happy["steps"]} if happy else set()
     act_objs: dict[str, set] = defaultdict(set)
     act_events: Counter = Counter()
-    for oid, seq in seqs:
+    for oid, seq in vseqs:
         for _, a, _ in seq:
             act_objs[a].add(oid)
             act_events[a] += 1

@@ -104,6 +104,8 @@
     vs: {{ _("contro {d}")|tojson }},
     varTitle: {{ _("Varianti")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
+    varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
+    othersDescRelated: {{ _("Attività di {tp} e dei loro oggetti collegati che non fanno parte dell'happy path.")|tojson }},
     varSlider: {{ _("Varianti mostrate: {n} di {m} · copertura: {p} dei casi")|tojson }},
     varCount: {{ _("{n} oggetti · {p}")|tojson }},
     varCount1: {{ _("1 oggetto · {p}")|tojson }},
@@ -285,7 +287,7 @@
     }
 
     // varianti con cursore
-    var s4 = section(T.varTitle, fmt(T.varDesc, { t: L }));
+    var s4 = section(T.varTitle, fmt(scope === "related" ? T.varDescRelated : T.varDesc, { t: L }));
     var total = data.variants.length;
     shown = Math.min(Math.max(1, shown), total);
     var lab = el("label", "slider ov-var-slider"), lt = el("span"), sl = el("input");
@@ -311,7 +313,7 @@
     body.appendChild(s4);
 
     // altre attivita'
-    var s5 = section(T.othersTitle, fmt(T.othersDesc, { tp: tp(lead) }));
+    var s5 = section(T.othersTitle, fmt(scope === "related" ? T.othersDescRelated : T.othersDesc, { tp: tp(lead) }));
     if (!data.other_activities.length) s5.appendChild(el("p", "muted tiny", T.noOthers));
     var oc = el("div", "ov-others");
     data.other_activities.forEach(function (a) {

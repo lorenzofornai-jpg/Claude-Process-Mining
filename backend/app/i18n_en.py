@@ -1182,4 +1182,7 @@ EN: dict[str, str] = {
     "{f}: solo impostazioni ({n}), nessuna rimozione": "{f}: only settings ({n}), no removals",
     # Explorer: tipi senza eventi
     "nessun evento collegato: non si può mostrare": "no linked events: cannot be shown",
+    # Overview: varianti con oggetti collegati
+    "Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).": "Each variant is the sequence of activities of one {t} object and its related objects (cross-cutting types excluded), in time order. Consecutive repetitions of the same activity are grouped (×).",
+    "Attività di {tp} e dei loro oggetti collegati che non fanno parte dell'happy path.": "Activities of {tp} and their related objects that are not part of the happy path.",
 }
