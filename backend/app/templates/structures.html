@@ -6,7 +6,7 @@
     {{ _("Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo stesso mapping, modificare il mapping (nuova versione, in bozza finché non la rendi disponibile con «Utilizza per l'analisi») o eliminarlo. «Aggiungi al catalogo» rende il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.") }}
   </p>
 
-  <table class="admin-table process-table">
+  <table class="admin-table process-table ds-table">
     <thead>
       <tr><th>{{ _("Dataset") }}</th><th>{{ _("Ultimo aggiornamento") }}</th><th>{{ _("Azioni") }}</th></tr>
     </thead>
@@ -18,7 +18,6 @@
           <div class="tiny muted">{{ _("versione {v}", v=s.config.current_version) }}</div>
           {% if s.config.status == "draft" %}<div class="tiny"><span class="badge badge-warning">{{ _("bozza") }}</span> {{ _("Non ancora disponibile per l'analisi: controlla il risultato e rendilo disponibile.") }}</div>{% endif %}
           {% if s.config.in_catalog %}<div class="tiny"><span class="badge badge-overridden">{{ _("in catalogo") }}</span></div>{% endif %}
-          <div class="tiny"><a href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">{{ _("Ricarica i file e rifai il mapping") }}</a></div>
         </td>
         <td class="tiny nowrap">
           {% if s.last_run %}
@@ -28,20 +27,21 @@
           {% else %}—{% endif %}
         </td>
         <td>
-          <div class="row-actions" style="grid-template-columns: repeat({{ 5 if s.config.status == 'draft' else 4 }}, minmax(0, 1fr))">
+          <div class="row-actions ds-actions">
             {% if s.config.status == "draft" %}
-            <form method="post" action="/ingestion/structures/{{ s.config.id }}/promote">
+            <form method="post" action="/ingestion/structures/{{ s.config.id }}/promote" class="ds-full">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="primary">{{ _("Utilizza per l'analisi") }}</button>
             </form>
             {% endif %}
-            <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">{{ _("Aggiorna dati") }}</a>
-            <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/review?workspace_id={{ workspace_id }}">{{ _("Rivedi mapping") }}</a>
-            <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog">
+            <a class="secondary button-link ds-main" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">{{ _("Aggiorna dati") }}</a>
+            <a class="secondary button-link ds-main" href="/ingestion/structures/{{ s.config.id }}/review?workspace_id={{ workspace_id }}">{{ _("Rivedi mapping") }}</a>
+            <a class="secondary button-link ds-main ds-redo" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">{{ _("Ricarica i file e rifai il mapping") }}</a>
+            <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog" class="ds-side">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary">{{ _("Rimuovi dal catalogo") if s.config.in_catalog else _("Aggiungi al catalogo") }}</button>
             </form>
-            <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete"
+            <form method="post" action="/ingestion/structures/{{ s.config.id }}/delete" class="ds-side"
                   data-confirm-title="{{ _("Eliminare il dataset?") }}"
                   data-confirm="{{ _("«{name}» verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati e sarà tolto dal catalogo. L'operazione non si può annullare.", name=s.config.name) if s.config.in_catalog else _("«{name}» verrà eliminato definitivamente insieme a tutti i suoi aggiornamenti dati. L'operazione non si può annullare.", name=s.config.name) }}"
                   data-confirm-ok="{{ _("Elimina dataset") }}">

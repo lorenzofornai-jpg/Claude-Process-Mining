@@ -390,6 +390,22 @@ tr.row-overridden { background: var(--brand-soft); }
 /* stessa altezza per tutti i pulsanti della riga, anche se uno va a capo */
 .row-actions > * { min-height: 40px; }
 .secondary.danger { color: var(--error); }
+/* Dataset per l'analisi: tre azioni sul dataset in prima riga, catalogo ed eliminazione in seconda */
+.row-actions.ds-actions { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ds-actions .ds-main { grid-column: span 2; }
+.ds-actions .ds-side { grid-column: span 3; }
+.ds-actions .ds-full { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .row-actions.ds-actions { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .ds-actions .ds-main, .ds-actions .ds-side { grid-column: auto !important; }
+  .ds-actions .ds-redo, .ds-actions .ds-full { grid-column: 1 / -1 !important; }
+  /* telefono: ogni dataset su piu' righe invece di una tabella da scorrere di lato */
+  table.ds-table { min-width: 0; }
+  table.ds-table thead { display: none; }
+  table.ds-table td { display: block; width: auto; border-bottom: none; }
+  table.ds-table tr { display: block; border-bottom: 1px solid var(--border); padding: 6px 0; }
+  table.ds-table td.nowrap { white-space: normal; }
+}
 .secondary.danger:hover { background: var(--error-soft); }
 .badge { white-space: nowrap; }
 
