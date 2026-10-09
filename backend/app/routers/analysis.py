@@ -18,7 +18,7 @@ from app.auth import current_user, has_process_access
 from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
-from app.models import AnalysisAlias, AnalysisObjective, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
+from app.models import AnalysisObjective, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
 from app.routers.assessment import load_assessment
 from app.services import analysis_assistant, explain, explorer, objectives, overview
 
@@ -154,67 +154,21 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
                                              "all" if hub == "all" else "own"))
 
 
-# ---------- nomi personali e assistente dell'analisi ----------
-
+# ---------- assistente dell'analisi ----------
+# I nomi di oggetti e attivita' arrivano corretti dall'ingestion (passo «Oggetti di business» e revisione del
+# mapping): nell'analisi non si rinominano. I vecchi nomi personali (tabella analysis_alias) non si usano piu'.
 ALIAS_KINDS = ("object_type", "activity")
 
 
 def _aliases(user_id: str, config_id: str) -> dict:
-    """{"object_type": {originale: nome}, "activity": {...}} scelti da questo utente per questo dataset."""
-    out = {k: {} for k in ALIAS_KINDS}
-    db = SessionLocal()
-    try:
-        for a in db.query(AnalysisAlias).filter_by(user_id=user_id, ingestion_config_id=config_id).all():
-            if a.kind in out:
-                out[a.kind][a.original] = a.alias
-    finally:
-        db.close()
-    return out
+    return {k: {} for k in ALIAS_KINDS}
 
 
-def _known_names(model, kind: str) -> set[str]:
-    if kind == "object_type":
-        return set(model.types)
-    return {act for (_, act) in model.events_by_type_act}
-
-
-@router.post("/analysis/explorer/alias")
-async def set_alias(request: Request):
-    """Salva (o toglie, con alias vuoto) il nome personale di un tipo di oggetto o di un'attivita'."""
-    body = await request.json()
-    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
-    config, run, _ = _explorer_dataset(workspace_id, config_id)
-    if config is None or run is None:
-        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    kind, original = str(body.get("kind") or ""), str(body.get("original") or "")
-    alias = " ".join(str(body.get("alias") or "").split())[:80]
-    model = explorer.load_model(run.ocel_file_path)
-    if kind not in ALIAS_KINDS or original not in _known_names(model, kind):
-        return JSONResponse({"error": t(get_lang(request), "Nome non trovato nel dataset.")}, status_code=400)
-    db = SessionLocal()
-    try:
-        row = db.query(AnalysisAlias).filter_by(user_id=user.id, ingestion_config_id=config.id,
-                                                kind=kind, original=original).first()
-        if not alias or alias == original:
-            if row:
-                db.delete(row)
-        elif row:
-            row.alias = alias
-        else:
-            db.add(AnalysisAlias(user_id=user.id, ingestion_config_id=config.id, kind=kind,
-                                 original=original, alias=alias))
-        db.commit()
-    finally:
-        db.close()
-    return JSONResponse({"aliases": _aliases(user.id, config.id)})
-
-
+@router.post("/analysis/assistant")
 @router.post("/analysis/explorer/assistant")
-async def explorer_assistant(request: Request):
-    """Domanda all'assistente. Con estimate=true non chiama Claude: solo il costo indicativo."""
+async def analysis_assistant_ask(request: Request):
+    """Domanda all'assistente (page: explorer | overview). Con estimate=true non chiama Claude: solo il costo
+    indicativo."""
     body = await request.json()
     workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
     user, denied = _require_analyst_access(request, workspace_id)
@@ -230,12 +184,22 @@ async def explorer_assistant(request: Request):
     model = explorer.load_model(run.ocel_file_path)
 
     view = body.get("view") or {}
-    acts = view.get("act") if view.get("acts") == "list" else None
-    top = view.get("top")
-    graph = explorer.build_graph(model, [str(x) for x in view.get("types") or []],
-                                 [str(x) for x in acts] if acts is not None else None,
-                                 int(top) if top not in (None, "") else None, int(view.get("paths") or 100),
-                                 "all" if view.get("hub") == "all" else "own")
+    page = "overview" if body.get("page") == "overview" else "explorer"
+    focus = str(body.get("focus") or "")[:300] or None
+    if page == "overview":
+        options = overview.lead_options(model)
+        lead = view.get("lead") if view.get("lead") in options else (options[0] if options else None)
+        scope = view.get("scope") if view.get("scope") in ("objective", "object", "related") else "object"
+        page_view = analysis_assistant.overview_view(
+            overview.build_overview(model, lead, scope, saved_objective(config.id)) if lead else None, focus)
+    else:
+        acts = view.get("act") if view.get("acts") == "list" else None
+        top = view.get("top")
+        graph = explorer.build_graph(model, [str(x) for x in view.get("types") or []],
+                                     [str(x) for x in acts] if acts is not None else None,
+                                     int(top) if top not in (None, "") else None, int(view.get("paths") or 100),
+                                     "all" if view.get("hub") == "all" else "own")
+        page_view = analysis_assistant.explorer_view(graph, focus)
     db = SessionLocal()
     try:
         ws = db.get(ProcessWorkspace, workspace_id)
@@ -254,8 +218,7 @@ async def explorer_assistant(request: Request):
         language=lang, process_name=ws.process_name, assessment=answers,
         dataset={"name": config.name, "version": config.current_version,
                  "objects": run.object_count, "events": run.event_count},
-        model=model, graph=graph, mapping=mapping, aliases=_aliases(user.id, config.id),
-        focus=str(body.get("focus") or "")[:300] or None,
+        model=model, mapping=mapping, page=page, view=page_view,
         ui_labels=ui_labels(lang, analysis_assistant.UI_LABELS),
         objective=saved_objective(config.id),
     )
@@ -269,9 +232,6 @@ async def explorer_assistant(request: Request):
         print(f"Assistente dell'analisi non riuscito ({exc!r}).")
         return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
                             status_code=502)
-    known = {k: _known_names(model, k) for k in ALIAS_KINDS}
-    result["actions"] = [a for a in result.get("actions", [])
-                         if a.get("kind") in ALIAS_KINDS and a.get("original") in known[a["kind"]]]
     if result.get("truncated"):
         result["answer"] = result["answer"].rstrip() + "…\n\n" + t(
             lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")

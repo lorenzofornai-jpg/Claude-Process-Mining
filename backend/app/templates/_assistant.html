@@ -1,0 +1,32 @@
+{# Pannello dell'assistente dell'analisi (Process Explorer, Process Overview); la logica e' in static/assistant.js.
+   Variabile: assistant_intro (testo introduttivo della pagina). #}
+<aside class="assistant" id="assistant" hidden aria-label="{{ _("Assistente dell'analisi") }}">
+  <div class="assistant-head">
+    <strong>✦ {{ _("Assistente dell'analisi") }}</strong>
+    <span class="assistant-head-tools">
+      <button type="button" class="link-button tiny" id="as-new">{{ _("Nuova conversazione") }}</button>
+      <button type="button" class="detail-close" id="as-close" aria-label="{{ _("Chiudi") }}">×</button>
+    </span>
+  </div>
+  <div class="assistant-body" id="as-body">
+    <p class="tiny muted as-intro">{{ assistant_intro }}</p>
+    <div class="as-suggest" id="as-suggest"></div>
+    <div id="as-messages"></div>
+  </div>
+  <form class="assistant-input" id="as-form">
+    <textarea id="as-text" rows="2" lang="{{ current_lang() }}" spellcheck="true" placeholder="{{ _("Scrivi una domanda…") }}" aria-label="{{ _("Scrivi una domanda…") }}"></textarea>
+    <div class="as-row">
+      <span class="tiny muted" id="as-cost"></span>
+      <button type="submit" class="primary" id="as-send">{{ _("Invia") }}</button>
+    </div>
+  </form>
+</aside>
+<script src="/static/assistant.js?v={{ static_version }}"></script>
+<script>
+var AS_T = {
+  asCost: {{ _("Costo indicativo per domanda: ~{c} (max {m})")|tojson }},
+  asSpent: {{ _("speso finora: {s}")|tojson }},
+  asThinking: {{ _("Sto pensando…")|tojson }},
+  asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }}
+};
+</script>

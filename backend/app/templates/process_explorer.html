@@ -23,7 +23,7 @@
         <button type="button" class="seg active" data-metric="frequency">{{ _("Frequenza") }}</button>
         <button type="button" class="seg" data-metric="time">{{ _("Tempo") }}</button>
       </div>
-      <button type="button" class="secondary as-open" id="as-open">✦ {{ _("Assistente") }}</button>
+      <button type="button" class="secondary as-open as-open-btn" id="as-open">✦ {{ _("Assistente") }}</button>
     </div>
   </div>
 
@@ -39,7 +39,7 @@
             <label title="{{ _("{n} oggetti, {w} con almeno un evento, {e} eventi collegati", n=ot.objects, w=ot.with_events, e=ot.events) }}">
               <input type="checkbox" class="type-check" value="{{ ot.name }}" {{ 'checked' if ot.name in default_types }} {{ 'disabled' if not ot.with_events }}>
               <span class="swatch" style="background:{{ ot.color }}"></span>
-              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ aliases.object_type.get(ot.name, ot.name) }}</span><button type="button" class="link-button tn-reset" data-type="{{ ot.name }}" hidden>↺</button>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
+              <span class="type-name"><span class="tn" data-type="{{ ot.name }}">{{ ot.name }}</span>{% if ot.hub %} <span class="hub-tag" title="{{ _("Ogni oggetto di questo tipo partecipa in media a {n} eventi, anche di documenti diversi: la sua linea attraversa tutto il grafo. Per questo non è scelto all'apertura.", n=ot.avg|round|int) }}">{{ _("trasversale") }}</span>{% endif %}</span>
               <span class="type-count tiny muted">{{ ot.objects }}</span>
             </label>
           </li>
@@ -98,7 +98,7 @@
 
         <div class="graph-legend tiny" id="graph-legend" hidden></div>
         <div class="graph-controls">
-          <button type="button" class="secondary as-open-full" id="as-open-full" title="{{ _("Assistente") }}">✦</button>
+          <button type="button" class="secondary as-open-full as-open-btn" id="as-open-full" title="{{ _("Assistente") }}">✦</button>
           <button type="button" class="secondary" id="expand-btn" aria-pressed="false">⛶ <span id="expand-label">{{ _("Schermo intero") }}</span></button>
           <button type="button" class="secondary" id="legend-btn">☰ {{ _("Legenda") }}</button>
           <span class="zoom-group">
@@ -112,27 +112,8 @@
     </section>
   </div>
 
-  <aside class="assistant" id="assistant" hidden aria-label="{{ _("Assistente dell'analisi") }}">
-    <div class="assistant-head">
-      <strong>✦ {{ _("Assistente dell'analisi") }}</strong>
-      <span class="assistant-head-tools">
-        <button type="button" class="link-button tiny" id="as-new">{{ _("Nuova conversazione") }}</button>
-        <button type="button" class="detail-close" id="as-close" aria-label="{{ _("Chiudi") }}">×</button>
-      </span>
-    </div>
-    <div class="assistant-body" id="as-body">
-      <p class="tiny muted as-intro">{{ _("Chiedimi cosa significa un oggetto, un'attività o un numero del grafo. Puoi anche dare un nome tuo a un tipo di oggetto o a un'attività (es. «chiama Accounting Document Invoice»): cambia solo nella tua analisi, non nel dataset.") }}</p>
-      <div class="as-suggest" id="as-suggest"></div>
-      <div id="as-messages"></div>
-    </div>
-    <form class="assistant-input" id="as-form">
-      <textarea id="as-text" rows="2" lang="{{ current_lang() }}" spellcheck="true" placeholder="{{ _("Scrivi una domanda…") }}" aria-label="{{ _("Scrivi una domanda…") }}"></textarea>
-      <div class="as-row">
-        <span class="tiny muted" id="as-cost"></span>
-        <button type="submit" class="primary" id="as-send">{{ _("Invia") }}</button>
-      </div>
-    </form>
-  </aside>
+  {% set assistant_intro = _("Chiedimi cosa significa un oggetto, un'attività o un numero del grafo, o come leggere un passaggio.") %}
+  {% include "_assistant.html" %}
 
   <p class="tiny muted" style="margin-top:14px">
     {{ _("Come leggere il grafo: ogni tipo di oggetto è una linea colorata, come in una mappa della metropolitana. Le fermate sono le attività: un punto per ogni tipo di oggetto che ci passa. Il numero sulla linea dice quante volte un oggetto passa da un'attività alla successiva; in modalità «Tempo» è il tempo mediano del passaggio.") }}
@@ -151,9 +132,9 @@
   {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};
   {% endfor %}
   // nomi personali dell'utente (solo nella sua analisi): tn = tipo di oggetto, an = attivita'
-  var ALIASES = {{ aliases|tojson }};
-  function tn(name) { return ALIASES.object_type[name] || name; }
-  function an(name) { return ALIASES.activity[name] || name; }
+  // i nomi arrivano corretti dall'ingestion (passo «Oggetti di business»): nessuna ridenominazione nell'analisi
+  function tn(name) { return name; }
+  function an(name) { return name; }
   var T = {
     nOfM: {{ _("{n} di {m}")|tojson }},
     top: {{ _("Le più frequenti: {n} di {m}")|tojson }},
@@ -201,24 +182,11 @@
     minutes: {{ _("{n} min")|tojson }},
     seconds: {{ _("{n} s")|tojson }},
     error: {{ _("Non è stato possibile calcolare il grafo.")|tojson }},
-    asCost: {{ _("Costo indicativo per domanda: ~{c} (max {m})")|tojson }},
-    asSpent: {{ _("speso finora: {s}")|tojson }},
-    asThinking: {{ _("Sto pensando…")|tojson }},
     asSugWhat: {{ _("Cos'è «{t}»?")|tojson }},
     asSugRead: {{ _("Come si legge questo grafo?")|tojson }},
     asSugSlow: {{ _("Quali sono i passaggi più lenti?")|tojson }},
     asSugHub: {{ _("Perché {t} è trasversale?")|tojson }},
     asAbout: {{ _("Spiegami: {x}")|tojson }},
-    asRenameQ: {{ _("Rinominare «{o}» in «{n}» nella tua analisi?")|tojson }},
-    asResetQ: {{ _("Tornare al nome originale «{o}»?")|tojson }},
-    asRenamed: {{ _("Fatto: ora «{o}» si chiama «{n}» nella tua analisi.")|tojson }},
-    asReset: {{ _("Fatto: «{o}» ha di nuovo il nome originale.")|tojson }},
-    asConfirm: {{ _("Conferma")|tojson }},
-    asCancel: {{ _("Annulla")|tojson }},
-    asCancelled: {{ _("Nome non cambiato.")|tojson }},
-    asError: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }},
-    asRenameError: {{ _("Non è stato possibile salvare il nome.")|tojson }},
-    restoreName: {{ _("Torna al nome originale: {o}")|tojson }},
     hubHelpOwn: {{ _("Spento: la linea di {t} passa solo dai suoi eventi propri ({a}); negli altri eventi {t} compare come numero nella fermata.")|tojson }},
     hubHelpNone: {{ _("Spento: {t} non ha eventi propri, quindi non ha una linea e compare solo come numero nelle fermate.")|tojson }},
     expand: {{ _("Schermo intero")|tojson }},
@@ -829,7 +797,7 @@
   }
   expandBtn.addEventListener("click", function () { setExpanded(!graphSection.classList.contains("expanded")); });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && graphSection.classList.contains("expanded") && asPanel.hidden) setExpanded(false);
+    if (e.key === "Escape" && graphSection.classList.contains("expanded") && document.getElementById("assistant").hidden) setExpanded(false);
   });
   document.getElementById("legend-btn").addEventListener("click", function () {
     var lg = document.getElementById("graph-legend"); lg.hidden = !lg.hidden;
@@ -850,130 +818,29 @@
                                              : fmt(T.hubHelpNone, { t: tn(t) })));
     });
   }
-  function renderTypeNames() {
-    renderHubHelp();
-    document.querySelectorAll(".tn").forEach(function (sp) { sp.textContent = tn(sp.dataset.type); });
-    // per risparmiare spazio solo la freccia ↺; il nome originale e' nel suggerimento e per i lettori di schermo
-    document.querySelectorAll(".tn-reset").forEach(function (b) {
-      b.hidden = !ALIASES.object_type[b.dataset.type];
-      b.title = fmt(T.restoreName, { o: b.dataset.type }); b.setAttribute("aria-label", b.title);
-    });
-  }
-  function saveAlias(kind, original, alias) {
-    return fetch("/analysis/explorer/alias", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace_id: WS, config_id: CONFIG, kind: kind, original: original, alias: alias })
-    }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (res) { ALIASES = res.aliases; renderTypeNames(); if (data) { renderLists(); draw(); } return res; });
-  }
-  document.querySelectorAll(".tn-reset").forEach(function (b) {
-    b.addEventListener("click", function (e) {
-      e.preventDefault(); e.stopPropagation();   // il pulsante sta nell'etichetta: non deve spuntare il tipo
-      saveAlias("object_type", b.dataset.type, "");
-    });
-  });
+  function renderTypeNames() { renderHubHelp(); }
   renderTypeNames();
 
-  // ---------- assistente dell'analisi ----------
-  var asPanel = document.getElementById("assistant"), asMsgs = document.getElementById("as-messages");
-  var asText = document.getElementById("as-text"), asCost = document.getElementById("as-cost");
-  var asSend = document.getElementById("as-send");
-  var history = [], spent = 0, asBusy = false, asFocus = null;
-  function usd(x) { return Number(x).toLocaleString(LANG, { style: "currency", currency: "USD", minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+  // ---------- assistente dell'analisi (static/assistant.js) ----------
   function viewState() {
     var hubAll = document.getElementById("hub-all");
     return { types: selectedTypes(), acts: actMode, act: actSet || [], top: actTop, paths: Number(pathSlider.value),
              hub: hubAll && hubAll.checked ? "all" : "own" };
   }
-  function asPost(messages, estimateOnly) {
-    return fetch("/analysis/explorer/assistant", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace_id: WS, config_id: CONFIG, messages: messages, view: viewState(),
-                             focus: asFocus, estimate: !!estimateOnly })
-    }).then(function (r) { return r.json().then(function (j) { j._status = r.status; return j; }); });
-  }
-  function updateEstimate() {
-    asPost(history.concat([{ role: "user", content: asText.value || "?" }]), true).then(function (j) {
-      if (j.available === false) { asCost.textContent = j.error; asSend.disabled = true; asText.disabled = true; return; }
-      if (j.cost_usd === undefined) return;
-      asCost.textContent = fmt(T.asCost, { c: usd(j.cost_usd), m: usd(j.max_usd) }) + (spent ? " · " + fmt(T.asSpent, { s: usd(spent) }) : "");
-    }).catch(function () {});
-  }
-  function renderSuggestions() {
-    var box = document.getElementById("as-suggest"); box.textContent = "";
-    if (history.length) return;
-    var types = selectedTypes(), hub = Object.keys(TYPES).filter(function (t) { return TYPES[t].hub; })[0];
-    var sug = [];
-    if (types.length) sug.push(fmt(T.asSugWhat, { t: tn(types[0]) }));
-    sug.push(T.asSugRead, T.asSugSlow);
-    if (hub) sug.push(fmt(T.asSugHub, { t: tn(hub) }));
-    sug.forEach(function (q) {
-      var b = el("button", "as-chip", q); b.type = "button";
-      b.addEventListener("click", function () { asText.value = q; ask(); });
-      box.appendChild(b);
-    });
-  }
-  function bubble(role, text, cost) {
-    var b = el("div", "as-msg as-" + role, text);
-    if (cost) b.appendChild(el("div", "as-msg-cost", usd(cost)));
-    asMsgs.appendChild(b);
-    asMsgs.parentNode.scrollTop = asMsgs.parentNode.scrollHeight;
-    return b;
-  }
-  function actionCard(a) {
-    var kind = a.kind, o = a.original, n = (a.new_name || "").trim();
-    var shown = kind === "object_type" ? o : o;
-    var card = el("div", "as-action");
-    card.appendChild(el("div", "", n ? fmt(T.asRenameQ, { o: shown, n: n }) : fmt(T.asResetQ, { o: shown })));
-    var row = el("div", "as-action-row"), ok = el("button", "primary", T.asConfirm), no = el("button", "secondary", T.asCancel);
-    ok.type = no.type = "button";
-    ok.addEventListener("click", function () {
-      ok.disabled = no.disabled = true;
-      saveAlias(kind, o, n).then(function () {
-        card.textContent = "✓ " + (n ? fmt(T.asRenamed, { o: o, n: n }) : fmt(T.asReset, { o: o }));
-        history.push({ role: "user", content: n ? fmt(T.asRenamed, { o: o, n: n }) : fmt(T.asReset, { o: o }) });
-      }).catch(function () { ok.disabled = no.disabled = false; card.appendChild(el("div", "as-error", T.asRenameError)); });
-    });
-    no.addEventListener("click", function () { card.textContent = T.asCancelled; });
-    row.appendChild(ok); row.appendChild(no); card.appendChild(row);
-    asMsgs.appendChild(card);
-  }
-  function ask() {
-    var q = asText.value.trim();
-    if (!q || asBusy) return;
-    asBusy = true; asSend.disabled = true;
-    history.push({ role: "user", content: q });
-    asText.value = ""; renderSuggestions();
-    bubble("user", q);
-    var wait = bubble("assistant", T.asThinking); wait.classList.add("as-wait");
-    asPost(history, false).then(function (j) {
-      wait.remove();
-      if (j.available === false || j.error) { bubble("error", j.error || T.asError); history.pop(); return; }
-      spent += j.cost_usd || 0;
-      var text = j.answer || "";
-      history.push({ role: "assistant", content: text || "(rename_label)" });
-      if (text) bubble("assistant", text, j.cost_usd);
-      (j.actions || []).forEach(actionCard);
-    }).catch(function () { wait.remove(); bubble("error", T.asError); history.pop(); })
-      .finally(function () { asBusy = false; asSend.disabled = false; updateEstimate(); });
-  }
-  function openAssistant(prefill, focus) {
-    asPanel.hidden = false; asFocus = focus || null;
-    if (prefill) asText.value = prefill;
-    renderSuggestions(); updateEstimate();
-    asText.focus();
-  }
-  document.getElementById("as-open").addEventListener("click", function () { openAssistant(); });
-  document.getElementById("as-open-full").addEventListener("click", function () { openAssistant(); });
-  document.getElementById("as-close").addEventListener("click", function () { asPanel.hidden = true; });
-  document.getElementById("as-new").addEventListener("click", function () {
-    history = []; asMsgs.textContent = ""; asFocus = null; renderSuggestions(); updateEstimate();
+  var assistant = initAssistant({
+    ws: WS, config: CONFIG, page: "explorer", lang: LANG, T: AS_T, getView: viewState,
+    suggestions: function () {
+      var types = selectedTypes(), hub = Object.keys(TYPES).filter(function (t) { return TYPES[t].hub; })[0];
+      var sug = [];
+      if (types.length) sug.push(fmt(T.asSugWhat, { t: tn(types[0]) }));
+      sug.push(T.asSugRead, T.asSugSlow);
+      if (hub) sug.push(fmt(T.asSugHub, { t: tn(hub) }));
+      return sug;
+    }
   });
-  document.getElementById("as-form").addEventListener("submit", function (e) { e.preventDefault(); ask(); });
-  asText.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
   document.getElementById("detail-ask").addEventListener("click", function () {
     var h = body.querySelector("h3"), title = h ? h.textContent : "";
-    openAssistant(fmt(T.asAbout, { x: title }), title);
+    assistant.open(fmt(T.asAbout, { x: title }), title);
   });
 
   load();

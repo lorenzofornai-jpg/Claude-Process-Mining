@@ -1,17 +1,16 @@
-"""Assistente dell'analisi: risponde alle domande del Data Analyst sul Process Explorer.
+"""Assistente dell'analisi: risponde alle domande del Data Analyst sul Process Explorer e sulla Process Overview.
 
-Esempi: «cos'è un Accounting Document?», «perché Customer è trasversale?», «quali
-passaggi sono più lenti?». Conosce il dataset (tipi di oggetto, attività, da quali
-tabelle e colonne sorgente vengono), il contesto del processo (assessment) e la vista
-che l'utente sta guardando (tipi scelti, collegamenti visibili con numeri e tempi).
+Esempi: «cos'è un Accounting Document?», «perché Customer è trasversale?», «quali passaggi sono piu'
+lenti?», «perche' il tempo di attraversamento e' 31 giorni?», «cosa sono le pratiche aperte?». Conosce il
+dataset (tipi di oggetto, attivita', da quali tabelle e colonne sorgente vengono, perche' quegli oggetti di
+business), il contesto del processo (assessment, obiettivo misurabile) e quello che l'utente sta guardando
+(nel Process Explorer i tipi e i collegamenti visibili; nella Process Overview oggetto guida, tempi, varianti).
 
-Può anche proporre un nome personale per un tipo di oggetto o un'attività (es.
-«chiamalo Invoice»): lo propone con lo strumento rename_label e l'utente conferma
-nella pagina. Il nome vale solo nella sua analisi (tabella AnalysisAlias), il dataset
-non cambia.
+Non rinomina nulla: i nomi arrivano corretti dall'ingestion. Se un nome e' poco chiaro lo spiega e dice dove
+correggerlo (oggetti di business, revisione del mapping).
 
-La conversazione vive nel browser: a ogni domanda arrivano gli ultimi messaggi.
-Prima dell'invio l'utente vede un costo indicativo.
+La conversazione vive nel browser: a ogni domanda arrivano gli ultimi messaggi. Prima dell'invio l'utente
+vede un costo indicativo.
 """
 from __future__ import annotations
 
@@ -27,58 +26,44 @@ MAX_EDGES = 40          # collegamenti della vista passati come contesto
 
 SYSTEM_PROMPT = """\
 Sei l'assistente di analisi di un'app di process mining object-centric (OCEL 2.0). L'utente è un Data Analyst,
-non necessariamente esperto di process mining né del sistema sorgente, e sta guardando il Process Explorer.
+non necessariamente esperto di process mining né del sistema sorgente. "page" dice quale pagina sta guardando.
 
-Come funziona il Process Explorer (per spiegare e indicare azioni concrete):
-- È una mappa a linee di metropolitana: ogni tipo di oggetto (documento, riga, cliente...) è una linea colorata
-  che parte in alto (il tratteggio iniziale indica che l'oggetto non è ancora entrato nel processo) e finisce
-  in un cerchio pieno. Le fermate sono le attività (i tipi di evento dell'OCEL): un punto per ogni tipo che ci passa.
-- Il numero su una linea è quante volte un oggetto passa da un'attività alla successiva; in modalità «Tempo»
-  è il tempo mediano del passaggio. Il dettaglio di un collegamento dà anche media, minimo, massimo.
-- Pannello «Controllo del grafo»: tipi di oggetto da spuntare; scheda Attività (spunte o cursore «le più
-  frequenti»; le attività tolte vengono saltate e i passaggi ricollegati); scheda Collegamenti (cursore della
-  quota più frequente o spunte); ricerca; toccando il nome di una linea la si vede da sola.
-- Tipi «trasversali» (es. cliente, fornitore): pochi oggetti in moltissimi eventi di documenti diversi. Di base
-  la loro linea passa solo dagli eventi propri (di cui sono l'oggetto di casa o che non appartengono alla storia
-  di un documento); negli altri eventi compaiono come numero nella fermata. Un interruttore mostra la linea su
-  tutti gli eventi collegati.
-- Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi di oggetto.
-- Il dataset si prepara nel modulo Ingestion (Data Engineer): lì si cambiano oggetti, eventi e collegamenti.
+Process Overview (page = overview): volumi, tempi e varianti visti da un «Oggetto guida» (un tipo di oggetto
+scelto dall'utente, es. la fattura). Il «Tempo di attraversamento» si misura in tre modi: «Da inizio a fine»
+(l'obiettivo misurabile: dalla prima attività di inizio alla prima di fine successiva; chi non ha ancora la fine è
+tra gli «Aperti», con la sua età all'ultimo evento del dataset), «Solo l'oggetto» (dal primo all'ultimo evento
+dell'oggetto, aperti compresi), «Con gli oggetti collegati» (fino all'ultimo evento anche degli oggetti collegati,
+esclusi i tipi trasversali). Le varianti sono le sequenze di attività dell'oggetto guida (ripetizioni consecutive
+raggruppate); l'happy path è la più frequente; «Altre attività frequenti» sono quelle fuori dall'happy path.
+L'obiettivo misurabile si imposta nel riquadro «Obiettivo misurabile».
+
+Process Explorer (page = explorer): mappa a linee di metropolitana. Ogni tipo di oggetto è una linea colorata che
+parte in alto (tratteggio iniziale: l'oggetto non è ancora entrato nel processo) e finisce in un cerchio pieno;
+le fermate sono le attività, un punto per ogni tipo che ci passa. Il numero su una linea è quante volte un oggetto
+passa da un'attività alla successiva; in modalità «Tempo» è il tempo mediano. Pannello «Controllo del grafo»:
+tipi di oggetto, scheda Attività (spunte o cursore «le più frequenti»), scheda Collegamenti, ricerca; toccando il
+nome di una linea la si vede da sola. Tipi «trasversali» (es. cliente): pochi oggetti in moltissimi eventi di
+documenti diversi; di base la linea passa solo dagli eventi propri, un interruttore la mostra su tutti.
+Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi.
+
+Il dataset si prepara nel modulo Ingestion (Data Engineer): passo «Oggetti di business» (quali oggetti e con che
+nome), «Revisione mapping» (eventi, attività, collegamenti). Lì si correggono nomi, oggetti e collegamenti:
+nell'analisi i nomi non si cambiano.
 
 Cosa fare:
-- Le etichette dell'app tra «» in queste istruzioni sono in italiano. Quando nomini un pulsante, un pannello,
-  una scheda o un passo dell'app usa SEMPRE il testo corrispondente in "ui_labels": è quello che l'utente vede
-  nella sua lingua. Non usare mai le etichette italiane se "language" è en.
-- Rispondi alla domanda usando i DATI qui sotto: provenienza dai dati sorgente (tabelle, colonne chiave, colonne
-  data/attività, collegamenti), numeri della vista, contesto del processo. Per spiegare cos'è un oggetto o
-  un'attività unisci la provenienza alle tue conoscenze del sistema sorgente (es. tabelle SAP), dicendo cosa è
-  certo dai dati e cosa è interpretazione.
+- Le etichette dell'app tra «» qui sopra sono in italiano. Quando nomini un pulsante, un pannello o un passo dell'app
+  usa SEMPRE il testo corrispondente in "ui_labels": è quello che l'utente vede nella sua lingua.
+- Rispondi usando i DATI: provenienza dai dati sorgente (tabelle, colonne, collegamenti, oggetti di business e
+  perché sono stati scelti), numeri della pagina, contesto del processo e obiettivo misurabile. Per spiegare cos'è
+  un oggetto o un'attività unisci la provenienza alle tue conoscenze del sistema sorgente (es. tabelle SAP),
+  dicendo cosa è certo dai dati e cosa è interpretazione.
 - Usa solo i numeri forniti; se un numero non c'è, dillo e suggerisci come vederlo nell'app. Non inventare funzioni.
-- Rinomina: se l'utente chiede di dare un altro nome a un tipo di oggetto o a un'attività, usa lo strumento
-  rename_label con il nome originale esatto (quello del dataset) e il nuovo nome, e scrivi in una frase che il
-  nome cambierà solo nella sua analisi dopo che avrà premuto il pulsante ui_labels.confirm (il dataset non cambia). Per tornare al
-  nome originale usa new_name vuoto. Se il nome originale non è chiaro, chiedi prima quale intende.
-- Quando parli di tipi e attività usa i nomi personali dell'utente (aliases), con l'originale tra parentesi la
-  prima volta se aiuta.
+- Se l'utente vuole un altro nome per un oggetto o un'attività, spiega che i nomi si decidono nell'ingestion
+  (ui_labels.business_objects_step o ui_labels.mapping_review) e che nell'analisi non si cambiano.
 - Rispondi nella lingua indicata da "language" (it = italiano, en = inglese), in modo semplice e concreto,
-  al massimo 200 parole. Testo semplice: niente titoli markdown, al massimo elenchi con "-".
+  al massimo 200 parole, in un italiano (o inglese) corretto. Testo semplice: niente titoli markdown, al massimo
+  elenchi con "-".
 """
-
-RENAME_TOOL = {
-    "name": "rename_label",
-    "description": "Propone un nome personale per un tipo di oggetto o un'attività, solo nell'analisi di questo "
-                   "utente (il dataset non cambia). L'utente lo conferma nella pagina.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "kind": {"type": "string", "enum": ["object_type", "activity"]},
-            "original": {"type": "string", "description": "Nome esatto nel dataset."},
-            "new_name": {"type": "string", "description": "Nuovo nome; vuoto per tornare all'originale."},
-        },
-        "required": ["kind", "original", "new_name"],
-    },
-}
-
 
 def _price() -> tuple[float, float]:
     return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
@@ -132,22 +117,19 @@ UI_LABELS = {
     "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
     "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
     "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
-    "cross_cutting_tag": "trasversale", "restore_original_name_button": "↺", "assistant": "Assistente",
+    "cross_cutting_tag": "trasversale", "assistant": "Assistente",
     "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",
+    "business_objects_step": "Oggetti di business", "lead_object": "Oggetto guida",
+    "throughput_time": "Tempo di attraversamento", "start_to_end": "Da inizio a fine", "object_only": "Solo l'oggetto",
+    "with_related": "Con gli oggetti collegati", "open_cases": "Aperti", "measurable_objective": "Obiettivo misurabile",
+    "variants": "Varianti", "happy_path": "Happy path", "other_activities": "Altre attività frequenti",
 }
 
 
-def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, graph: dict,
-                  mapping: dict, aliases: dict, focus: str | None, ui_labels: dict | None = None,
-                  objective: dict | None = None) -> str:
-    """Contesto in JSON per Claude: processo, dataset, provenienza, vista corrente."""
-    types = [{
-        "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
-        "related_events": t["events"], "cross_cutting": t["hub"], "avg_events_per_object": t["avg"],
-        "own_activities": model.own_activities(t["name"]) if t["hub"] else None,
-    } for t in model.type_summary()]
+def explorer_view(graph: dict, focus: str | None) -> dict:
+    """Cosa mostra il Process Explorer: tipi scelti, attivita', collegamenti visibili con numeri e tempi."""
     edges = sorted((e for e in graph["edges"] if e["kept"]), key=lambda e: -e["count"])[:MAX_EDGES]
-    view = {
+    return {
         "selected_types": graph["types"],
         "cross_cutting_mode": graph.get("hub_mode"),
         "activities": graph["activity_list"],
@@ -163,13 +145,56 @@ def build_context(*, language: str, process_name: str, assessment: dict, dataset
         "connections_total": graph["paths"]["total"],
         "user_is_looking_at": focus or None,
     }
+
+
+def overview_view(ov: dict | None, focus: str | None) -> dict:
+    """Cosa mostra la Process Overview: oggetto guida, misura del tempo, volumi, tempi, aperti, varianti."""
+    if not ov:
+        return {"lead_object": None, "user_is_looking_at": focus or None}
+    st = ov["throughput"]["stats"] or {}
+    days = lambda sec: _round_days(sec) if sec is not None else None  # noqa: E731
+    return {
+        "lead_object": ov["lead"], "throughput_scope": ov["scope"],
+        "objective_filter": ({"attribute": ov["objective"]["filter_attribute"], "values": ov["objective"]["filter_values"]}
+                             if ov.get("objective") and ov["objective"].get("filter_attribute") else None),
+        "related_scope_adds_events_for_objects": ov.get("related_adds"),
+        "volumes": {k: ov["volumes"][k] for k in ("objects", "events", "events_per_object")},
+        "objects_started_per_month": ov["volumes"]["months"],
+        "throughput_days": {k: days(st.get(k)) for k in ("median", "mean", "min", "max", "p90")} if st else None,
+        "throughput_histogram_days": [{"from": round(b["from"], 1), "to": round(b["to"], 1), "objects": b["count"]}
+                                      for b in ov["throughput"]["histogram"]],
+        "open_cases": ({"count": ov["open"]["count"], "median_age_days": days(ov["open"]["median_age"]),
+                        "max_age_days": days(ov["open"]["max_age"])} if ov.get("open") else None),
+        "linked_objects_per_lead": [{"type": r["type"], "avg": round(r["avg"], 2), "share": round(r["share"], 3),
+                                     "cross_cutting": r["hub"]} for r in ov["relations"]],
+        "variants_total": ov["variants_total"],
+        "top_variants": [{"steps": [x["activity"] + (" ×" if x["repeated"] else "") for x in v["steps"]],
+                          "objects": v["count"], "share": round(v["share"], 3), "median_days": days(v["median"])}
+                         for v in ov["variants"][:12]],
+        "happy_path": [x["activity"] for x in ov["happy_path"]["steps"]] if ov.get("happy_path") else None,
+        "other_frequent_activities": [{"activity": a["activity"], "objects": a["objects"], "share": round(a["share"], 3)}
+                                      for a in ov["other_activities"]],
+        "object_types": [{"name": t["name"], "objects": t["objects"], "cross_cutting": t["hub"],
+                          "median_lifetime_days": days(t["median_lifetime"])} for t in ov["types"]],
+        "user_is_looking_at": focus or None,
+    }
+
+
+def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, mapping: dict,
+                  page: str, view: dict, ui_labels: dict | None = None, objective: dict | None = None) -> str:
+    """Contesto in JSON per Claude: processo, dataset, provenienza, pagina e cosa mostra."""
+    types = [{
+        "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
+        "related_events": t["events"], "cross_cutting": t["hub"], "avg_events_per_object": t["avg"],
+        "own_activities": model.own_activities(t["name"]) if t["hub"] else None,
+    } for t in model.type_summary()]
     payload = {
         "language": language,
+        "page": page,
         "ui_labels": ui_labels or {},
         "process": {"name": process_name, "assessment": assessment},
         "dataset": {**dataset, "object_types": types},
         "source_mapping": mapping,
-        "aliases": aliases,
         # obiettivo misurabile salvato: oggetto, filtro, attivita' di inizio e fine (il tempo che conta per il business)
         "measurable_objective": objective,
         "view": view,
@@ -197,7 +222,7 @@ def _messages(history: list[dict]) -> list[dict]:
 def estimate(context: str, history: list[dict]) -> dict:
     """Costo indicativo (risposta tipica) e massimo, in dollari."""
     price_in, price_out = _price()
-    chars = len(SYSTEM_PROMPT) + len(context) + len(json.dumps(RENAME_TOOL)) + sum(
+    chars = len(SYSTEM_PROMPT) + len(context) + sum(
         len(m["content"]) for m in _messages(history))
     tokens_in = int(chars / _CHARS_PER_TOKEN) + 80
     typical = (tokens_in * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000
@@ -206,7 +231,7 @@ def estimate(context: str, history: list[dict]) -> dict:
 
 
 def ask(context: str, history: list[dict]) -> dict:
-    """Chiama Claude. Ritorna {"answer", "actions", "cost_usd", "truncated"}."""
+    """Chiama Claude. Ritorna {"answer", "cost_usd", "truncated"}."""
     import anthropic
 
     messages = _messages(history)
@@ -214,7 +239,7 @@ def ask(context: str, history: list[dict]) -> dict:
         raise ValueError("nessuna domanda")
     client = anthropic.Anthropic()
     request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS,
-                   system=SYSTEM_PROMPT + "\nDATI:\n" + context, tools=[RENAME_TOOL], messages=messages)
+                   system=SYSTEM_PROMPT + "\nDATI:\n" + context, messages=messages)
     try:
         response = client.messages.create(**request, output_config={"effort": "low"})
     except (TypeError, anthropic.BadRequestError):
@@ -223,7 +248,5 @@ def ask(context: str, history: list[dict]) -> dict:
     usage = response.usage
     cost = ((usage.input_tokens or 0) * price_in + (usage.output_tokens or 0) * price_out) / 1_000_000
     answer = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-    actions = [{"type": "rename", **b.input} for b in response.content
-               if getattr(b, "type", "") == "tool_use" and b.name == "rename_label"]
-    return {"answer": answer, "actions": actions, "cost_usd": round(cost, 4),
+    return {"answer": answer, "cost_usd": round(cost, 4),
             "truncated": response.stop_reason == "max_tokens"}

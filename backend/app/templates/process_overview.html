@@ -12,6 +12,7 @@
       </p>
     </div>
     <div class="explorer-head-tools">
+      <button type="button" class="secondary as-open as-open-btn">✦ {{ _("Assistente") }}</button>
       <a class="secondary button-link" href="/analysis/explorer?workspace_id={{ workspace_id }}&config_id={{ config.id }}">Process Explorer →</a>
     </div>
   </div>
@@ -48,19 +49,26 @@
     <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Torna all'analisi") }}</a>
   </p>
 </div>
+{% set assistant_intro = _("Chiedimi cosa significa un numero di questa pagina, perché un tempo è lungo, come leggere varianti e pratiche aperte o quale oggetto guida scegliere.") %}
+{% include "_assistant.html" %}
 
 <script>
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var TYPES = {{ object_types|tojson }};
-  var ALIASES = {{ aliases|tojson }};
   var lead = {{ default_lead|tojson }}, scope = {{ ("objective" if has_objective else "object")|tojson }}, data = null, shown = 5;
-  function tn(n) { return ALIASES.object_type[n] || n; }
+  // i nomi arrivano corretti dall'ingestion: nessuna ridenominazione nell'analisi
+  function tn(n) { return n; }
   // plurale del nome mostrato (calcolato dal server per la lingua attiva): «8 fatture», «8 invoices»
   var PLURALS = {{ plurals|tojson }};
   function tp(n) { var name = tn(n); return PLURALS[name] || name; }
-  function an(n) { return ALIASES.activity[n] || n; }
+  function an(n) { return n; }
   var T = {
+    asSugRead: {{ _("Come si legge questa pagina?")|tojson }},
+    asSugTime: {{ _("Perché il tempo di attraversamento di {t} è questo? Cosa lo allunga?")|tojson }},
+    asSugVariants: {{ _("Quali varianti si discostano dall'happy path e perché contano?")|tojson }},
+    asSugOpen: {{ _("Cosa sono le pratiche aperte e quanto pesano?")|tojson }},
+    asSugLead: {{ _("Quale oggetto guida mi conviene per i miei obiettivi?")|tojson }},
     objects: {{ _("Oggetti")|tojson }},
     events: {{ _("Eventi")|tojson }},
     perObject: {{ _("in media {n} per oggetto (un evento può riguardare più oggetti)")|tojson }},
@@ -319,6 +327,20 @@
 
   // obiettivo salvato (dal riquadro in alto): si riparte da lui
   window.onObjectiveSaved = function (b) { lead = b.object_type; scope = "objective"; load(); };
+
+  // ---------- assistente dell'analisi (static/assistant.js): conosce oggetto guida e tempo scelti ----------
+  initAssistant({
+    ws: WS, config: CONFIG, page: "overview", lang: LANG, T: AS_T,
+    getView: function () { return { lead: lead, scope: scope }; },
+    suggestions: function () {
+      var sug = [T.asSugRead];
+      if (data && data.throughput && data.throughput.stats) sug.push(fmt(T.asSugTime, { t: tn(lead) }));
+      if (data && data.variants_total > 1) sug.push(T.asSugVariants);
+      if (data && data.open && data.open.count) sug.push(T.asSugOpen);
+      sug.push(T.asSugLead);
+      return sug;
+    }
+  });
 
   load();
 })();

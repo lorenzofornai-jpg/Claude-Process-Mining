@@ -178,9 +178,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   numeri usando il contesto del processo (assessment), la provenienza dai dati sorgente (tabelle e colonne
   del mapping) e la vista corrente (tipi scelti, collegamenti visibili con passaggi e tempi). Costo indicativo
   mostrato prima dell'invio e speso finora; risposta nella lingua attiva (`services/analysis_assistant.py`,
-  modello `EXPLAIN_MODEL`). **Nomi personali**: chiedendo all'assistente («chiamalo Invoice») un tipo di
-  oggetto o un'attività prende un nome proprio dopo la conferma, solo nell'analisi di quell'utente e per quel
-  dataset (tabella `analysis_alias`); il dataset non cambia; la freccia ↺ accanto al nome nell'elenco dei tipi riporta il nome originale.
+  modello `EXPLAIN_MODEL`). Dal 9 ottobre 2026 l'assistente c'è anche nella Process Overview (conosce oggetto
+  guida, misura del tempo, KPI, aperti, varianti; `static/assistant.js`, `_assistant.html`, `POST /analysis/assistant`).
+  I nomi personali nell'analisi sono stati tolti: oggetti e attività arrivano con il nome giusto dall'ingestion
+  (passo «Oggetti di business», revisione del mapping).
 - ✅ **Pagina Analisi riorganizzata** (7 ottobre 2026): processo → dataset → analisi del dataset (per ora Process
   Explorer). Tolti lo scarico OCEL (strumento del Data Engineer) e l'avviso «in costruzione».
 - ⬜ Prossimi passi: filtri per dimensione (attributi di oggetti ed eventi, periodo), storia del singolo

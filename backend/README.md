@@ -179,8 +179,9 @@ membro come guardia contro zip bomb).
   **Process Explorer** (`/analysis/explorer`, grafo object-centric dei flussi;
   calcolo in `services/explorer.py`, JSON da `/analysis/explorer/graph`, pagina
   `templates/process_explorer.html`: vista a linee di metropolitana con Cytoscape.js + dagre in `static/vendor/`), con l'assistente
-  dell'analisi (`services/analysis_assistant.py`, `POST /analysis/explorer/assistant`) e i nomi personali di
-  tipi e attività per utente e dataset (`AnalysisAlias`, `POST /analysis/explorer/alias`).
+  dell'analisi (`services/analysis_assistant.py`, `static/assistant.js`, `templates/_assistant.html`,
+  `POST /analysis/assistant` con `page` = explorer | overview), presente anche nella Process Overview. Nessuna
+  ridenominazione nell'analisi: i nomi arrivano dall'ingestion (la tabella `analysis_alias` resta ma non si usa).
 - **Uno stesso utente può avere più ruoli**, anche sullo stesso processo
   (es. Data Engineer *e* Data Analyst sul P2P): non è un attributo fisso
   sull'utente, sono righe distinte in `ProcessAssignment` — `has_process_

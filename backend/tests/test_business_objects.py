@@ -157,3 +157,24 @@ def test_reference_column_links_event_to_object():
     close = [e for e in ocel["events"] if e["type"] == "Close Item"]
     assert len(close) == 5 and all({r["objectId"].split(":")[0] for r in e["relationships"]} == {"Invoice", "Payment"} for e in close)
     assert close[0]["relationships"][1]["objectId"] == "Payment:P0"
+
+
+def test_key_of_confirmed_object_from_another_host_table_is_rejected():
+    """Il mapper propone la colonna di riferimento delle righe ordine come chiave di «Return» (tipo che nasce in
+    orders): niente oggetti doppi, la proposta parte rifiutata."""
+    def p(table, col, el, **kw):
+        base = dict(source_table=table, source_column=col, ocel_element=el, object_type=None, event_type=None,
+                    attribute_name=None, qualifier=None, related_object_type=None, confidence=0.6,
+                    rationale="", based_on_template=None, activity_values=None)
+        base.update(kw)
+        return MappingProposal(**base)
+    data = dict(DATA, items=[{"item_id": f"L{i}", "order_id": f"O{i}"} for i in range(9)])
+    proposals = [p("orders", "order_id", "object_type.key", object_type="Sales Order"),
+                 p("items", "item_id", "object_type.key", object_type="Order Item"),
+                 p("items", "order_id", "object_type.key", object_type="Return")]
+    confirmed = [
+        {"name": "Sales Order", "table": "orders", "key": ["order_id"], "filter": {"column": "order_type", "values": ["SALE"]}, "role": "lead", "include": True},
+        {"name": "Return", "table": "orders", "key": ["order_id"], "filter": {"column": "order_type", "values": ["RETURN"]}, "role": "needed", "include": True},
+        {"name": "Order Item", "table": "items", "key": ["item_id"], "filter": None, "role": "context", "include": True}]
+    out, rejected = bo.apply(proposals, confirmed, data)
+    assert [(out[i].source_table, out[i].source_column) for i in rejected] == [("items", "order_id")]

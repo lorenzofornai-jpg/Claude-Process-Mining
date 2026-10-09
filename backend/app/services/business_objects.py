@@ -300,6 +300,9 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
             rename[mapper_name[table]] = target
     # tipi che restano: quelli di partenza delle tabelle che ospitano oggetti e i nomi di business confermati
     kept = set(base_of_table.values()) | {o["name"] for o in confirmed}
+    # ogni tipo confermato nasce solo dalla sua tabella: le righe chiave di altre tabelle con lo stesso nome
+    # (es. BSEG.AUGBL proposta come chiave di «Incasso») creerebbero oggetti doppi o con i numeri sbagliati
+    owner = {**{o["name"]: o["table"] for o in confirmed}, **{b: t for t, b in base_of_table.items()}}
 
     out: list[MappingProposal] = []
     rejected: set[int] = set()
@@ -313,7 +316,8 @@ def apply(proposals: list[MappingProposal], objects: list[dict], tables_data: di
         # una tabella che non ospita oggetti confermati non definisce oggetti, anche se il mapper le ha dato il nome
         # di uno di loro (es. le righe contabili chiamate «Incasso»: creerebbero incassi con i numeri delle fatture)
         if p.ocel_element in ("object_type.key", "object_type.attribute") and (
-                p.source_table not in by_table or p.object_type not in kept):
+                p.source_table not in by_table or p.object_type not in kept
+                or owner.get(p.object_type, p.source_table) != p.source_table):
             p.rationale = msg("Non è tra gli oggetti di business confermati: proposta rifiutata (puoi ripristinarla).")
             rejected.add(len(out))
         elif p.ocel_element == "e2o_relationship" and p.related_object_type and p.related_object_type not in kept:

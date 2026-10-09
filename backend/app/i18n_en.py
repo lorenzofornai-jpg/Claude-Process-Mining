@@ -1117,4 +1117,12 @@ EN: dict[str, str] = {
     "{c} contiene i numeri di {o} ({p} dei valori): l'evento «{e}» riguarda anche quell'oggetto.": "{c} contains the numbers of {o} ({p} of the values): the event “{e}” also concerns that object.",
     "Qui coincide con «Solo l'oggetto»: nessun oggetto di tipo {t} ha oggetti collegati con eventi propri (i tipi trasversali non contano).": "Here it matches “Object only”: no {t} object has linked objects with events of their own (cross-cutting types do not count).",
     "Comprende anche gli oggetti ancora aperti (fino al loro ultimo evento) e qualunque attività: per questo può essere diverso dal tempo dell'obiettivo.": "It also includes objects still open (up to their last event) and any activity: that is why it can differ from the objective's time.",
+    # Assistente nella Process Overview
+    "Chiedimi cosa significa un numero di questa pagina, perché un tempo è lungo, come leggere varianti e pratiche aperte o quale oggetto guida scegliere.": "Ask me what a number on this page means, why a time is long, how to read variants and open cases, or which lead object to choose.",
+    "Chiedimi cosa significa un oggetto, un'attività o un numero del grafo, o come leggere un passaggio.": "Ask me what an object, an activity or a number in the graph means, or how to read a step.",
+    "Come si legge questa pagina?": "How do I read this page?",
+    "Cosa sono le pratiche aperte e quanto pesano?": "What are the open cases and how much do they weigh?",
+    "Perché il tempo di attraversamento di {t} è questo? Cosa lo allunga?": "Why is the throughput time of {t} what it is? What makes it longer?",
+    "Quale oggetto guida mi conviene per i miei obiettivi?": "Which lead object suits my objectives?",
+    "Quali varianti si discostano dall'happy path e perché contano?": "Which variants depart from the happy path and why do they matter?",
 }
