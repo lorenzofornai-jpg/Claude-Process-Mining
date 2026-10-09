@@ -37,7 +37,7 @@ from app.models import (
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
 from app.services import business_objects, coverage, derived_columns, explain, review_assistant
-from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
+from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError, MappingProposal
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
 from app.services.documents import select_excerpts
@@ -1829,6 +1829,30 @@ def list_structures(request: Request, workspace_id: str):
     )
 
 
+def _with_derived_columns(rows: list[dict], data_profile: dict, lang: str) -> list[dict]:
+    """Mapping salvato riaperto in revisione: le colonne calcolate che il profilo dei dati suggerisce oggi (log di
+    modifiche, chiavi dentro valori composti) e che il mapping non ha ancora. Le righe nuove e quelle di attivita'
+    che cambiano tornano «proposte»: nulla cambia senza conferma, e la versione precedente resta salvata."""
+    fields = list(MappingProposal.__dataclass_fields__)
+    props = [MappingProposal(**{k: r.get(k) for k in fields}) for r in rows]
+    before = [asdict(p) for p in props]
+    out = derived_columns.apply(props, data_profile, lang)
+    result = []
+    for i, r in enumerate(rows):
+        now = asdict(out[i])
+        if now != before[i]:
+            r = {**r, **now, "status": "proposed"}
+        result.append(r)
+    next_id = max((r["row_id"] for r in rows), default=-1) + 1
+    for j, p in enumerate(out[len(rows):]):
+        d = asdict(p)
+        d.update(row_id=next_id + j, status="proposed", original_ai_proposal={
+            k: d[k] for k in ("ocel_element", "object_type", "event_type", "attribute_name", "qualifier",
+                              "related_object_type", "activity_values", "confidence", "rationale")})
+        result.append(d)
+    return result
+
+
 @router.get("/ingestion/structures/{config_id}/review")
 async def review_existing_structure(request: Request, config_id: str, workspace_id: str):
     """Riapre la revisione del mapping di un dataset gia' generato (il Data Engineer vuole rivederlo):
@@ -1878,6 +1902,7 @@ async def review_existing_structure(request: Request, config_id: str, workspace_
         None, time_pairs, planned, [])
     sess["context"]["data_profile"] = compact_for_mapping(sess["profile"])
     sess["context"]["language"] = get_lang(request)
+    rows = _with_derived_columns(rows, sess["context"]["data_profile"], get_lang(request))
     sess.update({
         "dataset_label": msg("{d}, versione {v}", d=name, v=version),
         "tables_schema": [asdict(tb) for tb in tables_schema], "tables_schema_objs": tables_schema,
