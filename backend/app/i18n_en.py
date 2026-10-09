@@ -207,8 +207,8 @@ EN: dict[str, str] = {
     "Vedi tutti i dataset": "See all datasets",
     "Torna ai miei processi": "Back to my processes",
     # ------------------------------------------------------------- dataset per l'analisi
-    "Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo stesso mapping, modificare il mapping (nuova versione) o eliminarlo. «Aggiungi al catalogo» rende il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.":
-        "Each dataset comes from a confirmed mapping (the rules that turn the source tables into objects and events) and contains the latest data uploaded. You can update its data keeping the same mapping, edit the mapping (new version) or delete it. “Add to catalog” makes this dataset's mapping a reusable reference when tables with the same name are uploaded in the future; deleting the dataset also removes it from the catalog.",
+    "Ogni dataset nasce da un mapping confermato (le regole che trasformano le tabelle sorgente in oggetti ed eventi) e contiene gli ultimi dati caricati. Puoi aggiornarne i dati mantenendo lo stesso mapping, modificare il mapping (nuova versione, in bozza finché non la rendi disponibile con «Utilizza per l'analisi») o eliminarlo. «Aggiungi al catalogo» rende il mapping di questo dataset un riferimento riusabile quando in futuro verranno caricate tabelle con lo stesso nome; eliminando il dataset viene tolto anche dal catalogo.":
+        "Each dataset comes from a confirmed mapping (the rules that turn the source tables into objects and events) and contains the latest data uploaded. You can update its data keeping the same mapping, edit the mapping (new version, kept as a draft until you make it available with “Use for analysis”) or delete it. “Add to catalog” makes this dataset's mapping a reusable reference when tables with the same name are uploaded in the future; deleting the dataset also removes it from the catalog.",
     "Dataset": "Dataset",
     "Ultimo aggiornamento": "Last update",
     "Azioni": "Actions",
@@ -1185,4 +1185,7 @@ EN: dict[str, str] = {
     # Overview: varianti con oggetti collegati
     "Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).": "Each variant is the sequence of activities of one {t} object and its related objects (cross-cutting types excluded), in time order. Consecutive repetitions of the same activity are grouped (×).",
     "Attività di {tp} e dei loro oggetti collegati che non fanno parte dell'happy path.": "Activities of {tp} and their related objects that are not part of the happy path.",
+    # Dataset in bozza
+    "bozza": "draft",
+    "Non ancora disponibile per l'analisi: controlla il risultato e rendilo disponibile.": "Not yet available for analysis: check the result and make it available.",
 }

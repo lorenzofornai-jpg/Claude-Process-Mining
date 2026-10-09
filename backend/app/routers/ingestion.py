@@ -1807,10 +1807,13 @@ def list_structures(request: Request, workspace_id: str):
         configs = (
             db.query(IngestionConfig)
             .join(ExtractionRun, ExtractionRun.ingestion_config_id == IngestionConfig.id)
-            .filter(ExtractionRun.workspace_id == workspace_id, IngestionConfig.status == "approved")
+            .filter(ExtractionRun.workspace_id == workspace_id, IngestionConfig.status.in_(["approved", "draft"]))
             .distinct()
             .all()
         )
+        # anche le bozze: un dataset con il mapping modificato torna in bozza finche' non viene reso disponibile
+        # per l'analisi, e non deve sparire dalla lista (in cima, perche' c'e' qualcosa da fare)
+        configs.sort(key=lambda c: (c.status != "draft", c.name))
         structures = []
         for config in configs:
             last_run = (
