@@ -1,8 +1,9 @@
 {# Pannello dell'assistente dell'analisi (Process Explorer, Process Overview); la logica e' in static/assistant.js.
-   Variabile: assistant_intro (testo introduttivo della pagina). #}
-<aside class="assistant" id="assistant" hidden aria-label="{{ _("Assistente dell'analisi") }}">
+   Variabili: assistant_intro (testo introduttivo della pagina), assistant_title (facoltativo). #}
+{% set assistant_title = assistant_title or _("Assistente dell'analisi") %}
+<aside class="assistant" id="assistant" hidden aria-label="{{ assistant_title }}">
   <div class="assistant-head">
-    <strong>✦ {{ _("Assistente dell'analisi") }}</strong>
+    <strong>✦ {{ assistant_title }}</strong>
     <span class="assistant-head-tools">
       <button type="button" class="link-button tiny" id="as-new">{{ _("Nuova conversazione") }}</button>
       <button type="button" class="detail-close" id="as-close" aria-label="{{ _("Chiudi") }}">×</button>

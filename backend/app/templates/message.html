@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>{{ title }}</h1>
+  <p>{{ text }}</p>
+  {% if back %}<div class="actions"><a class="secondary button-link" href="{{ back }}">← {{ _("Indietro") }}</a></div>{% endif %}
+</div>
+{% endblock %}

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, joined, msg, setup_templates, t, to_text, ui_labels
+from app.i18n import get_lang, joined, msg, render, setup_templates, t, to_text, ui_labels
 from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
@@ -36,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import business_objects, coverage, explain
+from app.services import business_objects, coverage, explain, review_assistant
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -1095,6 +1095,98 @@ def _add_link(rows: list[dict], event: str, obj: str, column: str, options: dict
     })
 
 
+def _link_any_column(sess: dict, rows: list[dict], event: str, obj: str, column: str) -> None:
+    """Collegamento chiesto all'assistente: con una colonna in comune tra le due tabelle come «Aggiungi
+    collegamento»; altrimenti con una colonna della tabella dell'evento che contiene il numero dell'oggetto
+    (es. BSEG.AUGBL = numero dell'incasso), letta dal motore come chiave dell'oggetto collegato."""
+    options = _link_options(sess, rows)
+    if column in options.get(event, {}).get(obj, []):
+        _add_link(rows, event, obj, column, options)
+        return
+    e_table = next((r["source_table"] for r in rows if r["ocel_element"] == "event_type.timestamp"
+                    and r.get("event_type") == event and r["status"] != "rejected"), None)
+    known_obj = any(r.get("object_type") == obj or obj in (r.get("activity_values") or {}).values()
+                    for r in rows if r["ocel_element"] in ("object_type.key", "object_type.split") and r["status"] != "rejected")
+    columns = {c.name for t in sess.get("tables_schema_objs") or [] if t.name == e_table for c in t.columns}
+    if not e_table or not known_obj or column not in columns:
+        return
+    rows.append({
+        "row_id": max((r["row_id"] for r in rows), default=-1) + 1,
+        "source_table": e_table, "source_column": column, "ocel_element": "e2o_relationship",
+        "object_type": None, "event_type": event, "attribute_name": None, "qualifier": default_qualifier(obj),
+        "related_object_type": obj, "activity_values": None, "confidence": 1.0, "based_on_template": None,
+        "rationale": msg("Collegamento aggiunto con l'assistente: {c} contiene il numero di {o}.", c=f"{e_table}.{column}", o=obj),
+        "status": "overridden", "original_ai_proposal": None,
+    })
+
+
+@router.post("/ingestion/review/assistant")
+async def review_assistant_ask(request: Request):
+    """Assistente della revisione: con estimate=true solo il costo indicativo; le modifiche che propone tornano
+    come azioni da confermare (descritte), non vengono applicate qui."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    if AI_MAPPER != "claude" or not explain.available():
+        return JSONResponse({"available": False, "error": t(
+            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+    sess = _load_session(user.id, workspace_id)
+    rows = sess.get("mapping_rows")
+    if rows is None:
+        return JSONResponse({"error": t(lang, "La revisione non è più disponibile: riaprila dall'elenco dei dataset.")}, status_code=409)
+    answers, _ = load_assessment(workspace_id)
+    order = _process_order(sess, rows)
+    context = review_assistant.build_context(
+        language=lang, process_name=sess["context"].get("process_name", ""), assessment=answers,
+        rows=rows, model=_model_summary(rows, order), business_objects=sess.get("business_objects"),
+        profile_issues=[f"{i['table'] or ''}: {render(lang, i['title'])}" for i in (sess.get("profile") or {}).get("issues", [])],
+        tables=sess.get("tables_schema_objs") or [], link_options=_link_options(sess, rows),
+        ui_labels=ui_labels(lang, review_assistant.UI_LABELS))
+    history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
+    est = review_assistant.estimate(context, history)
+    if body.get("estimate"):
+        return JSONResponse({"available": True, **est})
+    try:
+        result = await run_in_threadpool(review_assistant.ask, context, history)
+    except Exception as exc:
+        print(f"Assistente della revisione non riuscito ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+                            status_code=502)
+    actions = []
+    for a in result.get("actions", []):
+        d = review_assistant.describe(a, rows)
+        if d:
+            actions.append({"action": d["action"], "lines": [render(lang, x) for x in d["lines"]], "why": d["why"]})
+    answer = result.get("answer") or ""
+    if result.get("truncated"):
+        answer = answer.rstrip() + "…\n\n" + t(lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")
+    return JSONResponse({"available": True, "answer": answer, "actions": actions, "cost_usd": result.get("cost_usd")})
+
+
+@router.post("/ingestion/review/assistant/apply")
+async def review_assistant_apply(request: Request):
+    """Applica una modifica proposta dall'assistente e confermata dall'utente."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    sess = _load_session(user.id, workspace_id)
+    rows = sess.get("mapping_rows")
+    if rows is None:
+        return JSONResponse({"error": t(lang, "La revisione non è più disponibile: riaprila dall'elenco dei dataset.")}, status_code=409)
+    d = review_assistant.describe(body.get("action") or {}, rows)
+    ok = bool(d) and review_assistant.apply(
+        d["action"], rows, add_link=lambda rs, e, o, c: _link_any_column(sess, rs, e, o, c))
+    if not ok:
+        return JSONResponse({"error": t(lang, "Modifica non applicabile: il mapping è cambiato nel frattempo.")}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
 def _document_context(sess: dict) -> dict | None:
     """Brani dei documenti arrivati davvero a Claude: solo con il mapper Claude e solo
     per le tabelle non riconosciute dalle regole (le altre non passano dall'AI)."""
@@ -1705,6 +1797,68 @@ def list_structures(request: Request, workspace_id: str):
     )
 
 
+@router.get("/ingestion/structures/{config_id}/review")
+async def review_existing_structure(request: Request, config_id: str, workspace_id: str):
+    """Riapre la revisione del mapping di un dataset gia' generato (il Data Engineer vuole rivederlo):
+    righe e decisioni salvate, tabelle rilette dai file caricati per questo processo. Rigenerando, si aggiorna
+    lo stesso dataset (nuova versione)."""
+    user, denied = _require_process_access(request, workspace_id)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        if config_id not in set(workspace_config_ids(db, workspace_id)):
+            return RedirectResponse(url=f"/ingestion/structures?workspace_id={workspace_id}", status_code=303)
+        config = db.get(IngestionConfig, config_id)
+        saved = db.query(FieldMapping).filter_by(ingestion_config_id=config_id).all()
+        fingerprint = dict(config.schema_fingerprint or {})
+        business = config.business_objects
+        name, version = config.name, config.current_version
+        rows = []
+        for i, r in enumerate(saved):
+            rows.append({**_field_mapping_row_to_dict(r), "row_id": i, "status": r.status, "confidence": r.confidence,
+                         "rationale": r.rationale or "", "based_on_template": r.based_on_template,
+                         "original_ai_proposal": r.original_ai_proposal})
+    finally:
+        db.close()
+    folder = UPLOAD_DIR / workspace_id
+    files = [p for p in sorted(folder.iterdir()) if p.is_file() and p.stem in fingerprint] if folder.exists() else []
+    missing = sorted(set(fingerprint) - {p.stem for p in files})
+    if missing or not rows:
+        return templates.TemplateResponse("message.html", {
+            "request": request, "user": user, "workspace_id": workspace_id, "step": 3,
+            "title": t(get_lang(request), "Revisione non disponibile"),
+            "text": t(get_lang(request), "Mancano i file sorgente di questo dataset ({t}): ricaricali con «Ricarica i file e rifai il mapping» per rifare la revisione.",
+                      t=", ".join(missing) or "—"),
+            "back": f"/ingestion/structures?workspace_id={workspace_id}"}, status_code=409)
+
+    sess = _load_session(user.id, workspace_id)
+    sess["context"] = mapping_context(workspace_id)
+    connector = FileConnector(files)
+    tables_schema = connector.discover_schema()
+    tables_data = {tb.name: connector.extract_full(tb.name) for tb in tables_schema}
+    answers, _ = load_assessment(workspace_id)
+    date_cols = {tb.name: [c.name for c in tb.columns if c.inferred_type == "date"] for tb in tables_schema}
+    time_pairs = {tb.name: {c.name: c.time_column for c in tb.columns if c.time_column} for tb in tables_schema}
+    planned = {tb.name: {c.name: c.planned_reason for c in tb.columns if c.planned_reason} for tb in tables_schema}
+    sess["profile"] = await run_in_threadpool(
+        profile_tables, tables_data, date_cols, (answers.get("period_from"), answers.get("period_to")),
+        None, time_pairs, planned, [])
+    sess["context"]["data_profile"] = compact_for_mapping(sess["profile"])
+    sess["context"]["language"] = get_lang(request)
+    sess.update({
+        "dataset_label": msg("{d}, versione {v}", d=name, v=version),
+        "tables_schema": [asdict(tb) for tb in tables_schema], "tables_schema_objs": tables_schema,
+        "tables_data": tables_data, "mapping_rows": rows, "mapping_status": "done", "mapping_error": None,
+        "table_descriptions": {}, "result": None, "edit_config_id": config_id, "draft_config_id": None,
+        "mapping_cost_usd": None, "mapping_known_tables": [], "mapping_budget_skipped": [], "process_order": None,
+        "business_objects": business, "relevance": None,
+    })
+    if business:
+        sess["context"]["business_objects"] = business_objects.for_context(business)
+    return RedirectResponse(url=f"/ingestion/review?workspace_id={workspace_id}", status_code=303)
+
+
 @router.get("/ingestion/structures/{config_id}/update-data", response_class=HTMLResponse)
 def update_data_form(request: Request, config_id: str, workspace_id: str):
     user, denied = _require_process_access(request, workspace_id)
@@ -1795,7 +1949,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
                 "request": request, "user": user, "workspace_id": workspace_id, "config": config, "mode": mode,
                 "error": msg(
                     "I dati caricati non sono compatibili con il mapping di questo dataset, mancano: {p}. Usa "
-                    "«Modifica mapping» per rimappare da zero, oppure carica dati nello stesso formato di prima.",
+                    "«Ricarica i file e rifai il mapping» per rimappare da zero, oppure carica dati nello stesso formato di prima.",
                     p=problems,
                 ),
             },

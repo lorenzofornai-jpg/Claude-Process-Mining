@@ -802,3 +802,4 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .edge-label.faded { opacity: 0.15; }
 .cov-q { margin: 2px 0 6px; }
 .cov-unanswered { margin-top: 10px; }
+.as-action-line { margin: 2px 0; }

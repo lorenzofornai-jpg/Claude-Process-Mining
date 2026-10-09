@@ -126,6 +126,11 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   colonna. Bozza senza costi o proposta di Claude (guida, necessari, di contesto) dagli obiettivi dell'assessment, con
   nome di business, tabella, chiave e filtro per valore; l'utente conferma, rinomina, divide o aggiunge. Il mapping si
   allinea agli oggetti confermati qualunque sia il mapper; l'oggetto guida apre Process Overview e obiettivo misurabile.
+- ✅ **Revisione del mapping riapribile e con assistente** (9 ottobre 2026): dall'elenco dei dataset «Rivedi mapping»
+  riapre la revisione di un dataset già generato (righe e decisioni salvate, tabelle rilette dai file caricati;
+  rigenerando si aggiorna lo stesso dataset). Nella revisione l'assistente risponde e propone modifiche (accettare o
+  rifiutare gruppi e righe, rinominare tipi di oggetto ed eventi, nomi per valore, collegamenti) che l'utente
+  applica con «Applica» (`services/review_assistant.py`, `POST /ingestion/review/assistant[/apply]`).
 - ✅ **Process Explorer senza sovrapposizioni** (7 ottobre 2026): percorsi a linee spezzate calcolati dall'app
   (punti intermedi di dagre accanto alle fermate, una corsia orizzontale per ogni tratto tra due righe, ritorni
   all'indietro spostati di lato) e numeri sulle linee posati dove non coprono fermate, punti, altri numeri o linee.

@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card wide">
-  <h1>{{ _("Revisione del mapping") }}</h1>
+  <div class="explorer-head">
+    <h1>{{ _("Revisione del mapping") }}</h1>
+    <div class="explorer-head-tools"><button type="button" class="secondary as-open as-open-btn">✦ {{ _("Assistente") }}</button></div>
+  </div>
   <p class="muted">
     {{ _("Processo: {p}", p=strong(context.process_name)) }} · {{ _("Sorgente:") }} {{ dataset_label|tr }}{% if mapping_known_tables %}
     · {{ _("Riconosciute senza AI:") }} {{ mapping_known_tables|join(", ") }}{% endif %}{% if mapping_cost_usd is not none %}
@@ -215,4 +218,51 @@
   });
 </script>
 {% include "_ask_claude.html" %}
+{% set assistant_intro = _("Chiedimi perché una proposta è fatta così, cosa cambia nel dataset se la accetti o la rifiuti, o chiedimi di farlo: accettare o rifiutare gruppi e righe, correggere nomi di oggetti, eventi e attività, aggiungere collegamenti. Ogni modifica te la mostro prima e la applichi tu.") %}
+{% set assistant_title = _("Assistente della revisione") %}
+{% include "_assistant.html" %}
+<script>
+(function () {
+  var WS = {{ workspace_id|tojson }};
+  var RT = {
+    apply: {{ _("Applica")|tojson }}, cancel: {{ _("Annulla")|tojson }}, applying: {{ _("Applico…")|tojson }},
+    applied: {{ _("Modifica applicata: {x}")|tojson }}, cancelled: {{ _("Modifica non applicata.")|tojson }},
+    error: {{ _("Non è stato possibile applicare la modifica.")|tojson }},
+    sug1: {{ _("Cosa devo controllare prima di generare il dataset?")|tojson }},
+    sug2: {{ _("Ci sono nomi di oggetti o eventi da correggere?")|tojson }},
+    sug3: {{ _("Accetta le proposte coerenti con gli oggetti di business")|tojson }},
+    sug4: {{ _("Mancano collegamenti tra eventi e oggetti?")|tojson }}
+  };
+  var form = document.querySelector('form[action="/ingestion/review"]');
+  // le scelte fatte a mano nella pagina (decisioni, modifiche) si salvano prima di applicare quella dell'assistente
+  function saveForm() {
+    if (!form) return Promise.resolve();
+    var fd = new FormData(form); fd.set("action", "save");
+    return fetch("/ingestion/review", { method: "POST", body: fd, credentials: "same-origin", redirect: "manual" });
+  }
+  initAssistant({
+    ws: WS, config: null, page: "review", lang: {{ current_lang()|tojson }}, T: AS_T,
+    endpoint: "/ingestion/review/assistant", persistKey: "review-assistant-" + WS,
+    getView: function () { return {}; },
+    suggestions: function () { return [RT.sug1, RT.sug2, RT.sug3, RT.sug4]; },
+    renderAction: function (a, box, as) {
+      a.lines.forEach(function (l) { box.appendChild(as.el("div", "as-action-line", "• " + l)); });
+      if (a.why) box.appendChild(as.el("div", "tiny muted", a.why));
+      var row = as.el("div", "as-action-row"), ok = as.el("button", "primary", RT.apply), no = as.el("button", "secondary", RT.cancel);
+      ok.type = no.type = "button";
+      ok.addEventListener("click", function () {
+        ok.disabled = no.disabled = true; ok.textContent = RT.applying;
+        saveForm().then(function () {
+          return fetch("/ingestion/review/assistant/apply", { method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace_id: WS, action: a.action }) });
+        }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || RT.error); return j; }); })
+          .then(function () { as.resolve(a); as.note(as.fmt(RT.applied, { x: a.lines.join("; ") })); location.reload(); })
+          .catch(function (e) { ok.disabled = no.disabled = false; ok.textContent = RT.apply; box.appendChild(as.el("div", "as-error", e.message || RT.error)); });
+      });
+      no.addEventListener("click", function () { as.resolve(a); box.textContent = RT.cancelled; as.note(RT.cancelled); });
+      row.appendChild(ok); row.appendChild(no); box.appendChild(row);
+    }
+  });
+})();
+</script>
 {% endblock %}

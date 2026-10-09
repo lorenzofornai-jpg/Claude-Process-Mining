@@ -17,6 +17,7 @@
           {{ s.config.name }}
           <div class="tiny muted">{{ _("versione {v}", v=s.config.current_version) }}</div>
           {% if s.config.in_catalog %}<div class="tiny"><span class="badge badge-overridden">{{ _("in catalogo") }}</span></div>{% endif %}
+          <div class="tiny"><a href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">{{ _("Ricarica i file e rifai il mapping") }}</a></div>
         </td>
         <td class="tiny nowrap">
           {% if s.last_run %}
@@ -28,7 +29,7 @@
         <td>
           <div class="row-actions" style="grid-template-columns: repeat(4, minmax(0, 1fr))">
             <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/update-data?workspace_id={{ workspace_id }}">{{ _("Aggiorna dati") }}</a>
-            <a class="secondary button-link" href="/ingestion/upload?workspace_id={{ workspace_id }}&edit_config_id={{ s.config.id }}">{{ _("Modifica mapping") }}</a>
+            <a class="secondary button-link" href="/ingestion/structures/{{ s.config.id }}/review?workspace_id={{ workspace_id }}">{{ _("Rivedi mapping") }}</a>
             <form method="post" action="/ingestion/structures/{{ s.config.id }}/toggle-catalog">
               <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
               <button type="submit" class="secondary">{{ _("Rimuovi dal catalogo") if s.config.in_catalog else _("Aggiungi al catalogo") }}</button>
