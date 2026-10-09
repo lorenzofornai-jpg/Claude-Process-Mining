@@ -27,6 +27,10 @@ _EN_VOWEL = {
     "credit", "debit", "memo", "entry", "position", "block", "dunning", "clearing", "billing", "open",
 }
 _EN_INVARIABLE = {"data", "information", "equipment", "stock", "goods", "sales", "series", "staff", "news"}
+_IT_ADJ = {"aperta", "aperto", "chiusa", "chiuso", "nuova", "nuovo", "attiva", "attivo", "bloccata", "bloccato"}
+_IT_PARTICIPLE = ("ata", "ato", "ita", "ito", "uta", "uto")
+_IT_PREP = {"di", "del", "della", "dello", "dei", "delle", "da", "dal", "dalla", "in", "per", "con", "su", "a", "al",
+            "alla", "tra", "fra"}
 _IT_INVARIABLE = {"re", "gru", "foto", "auto", "moto", "radio", "bici", "euro", "crisi", "analisi", "tesi", "sintesi"}
 
 
@@ -81,7 +85,14 @@ def plural(name: str | None, lang: str) -> str:
         return name or ""
     parts = name.split(" ")
     if lang == "it":
-        return " ".join([_it_word(parts[0])] + parts[1:])
+        out = [_it_word(parts[0])] + parts[1:]
+        # aggettivo o participio finale riferito alla testa: «Partita cliente aperta» -> «Partite cliente aperte»
+        # (non dopo una preposizione: «Consegna in uscita», «Ordine di partita» restano come sono)
+        last = parts[-1].lower()
+        if (len(parts) > 1 and (last in _IT_ADJ or last.endswith(_IT_PARTICIPLE))
+                and not any(w.lower() in _IT_PREP or w.lower().endswith("'") for w in parts[1:-1])):
+            out[-1] = _it_word(parts[-1])
+        return " ".join(out)
     if _it_word(parts[0]) != parts[0]:
         return name  # nome italiano in un'interfaccia inglese: invariabile, come le parole straniere
     return " ".join(parts[:-1] + [_en_word(parts[-1])])

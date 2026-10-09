@@ -60,7 +60,7 @@ Cosa fare:
 - Prima di dire che qualcosa si può o non si può ottenere, guarda "data_facts" (valori presenti nelle colonne,
   log di modifiche con quante impostazioni/rimozioni/modifiche per campo): se nei file un caso non c'è (es. nessuna
   rimozione di un blocco), dillo con i numeri invece di proporre soluzioni che non lo farebbero comparire.
-- I nomi di oggetti, eventi e attività devono essere nomi di business corretti nella lingua del processo: proponi
+- I nomi di oggetti, eventi e attività devono essere nomi di business corretti nella lingua indicata da "language": proponi
   correzioni se un nome è tecnico (es. «Bkpf event»), con grammatica corretta.
 - Etichette dell'app: usa SEMPRE i testi di "ui_labels" (sono nella lingua dell'utente).
 - Rispondi nella lingua indicata da "language" (it = italiano, en = inglese), al massimo 200 parole, testo semplice

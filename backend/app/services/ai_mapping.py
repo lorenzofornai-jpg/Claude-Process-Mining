@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from app.config import AI_MAPPING_BUDGET_USD, AI_MAPPING_EFFORT, ANTHROPIC_MODEL
 from app.connectors.base import TableSchema
 from app.i18n import msg, render
-from app.services import catalog, deterministic_mapping, documents
+from app.services import catalog, deterministic_mapping, documents, names_i18n
 
 ID_LIKE_PATTERN = re.compile(r"(_number|_no|_id)$", re.IGNORECASE)
 
@@ -191,7 +191,9 @@ class HeuristicAIMapper(AIMapper):
         for table in tables:
             known = deterministic_mapping.rules_for(table, _TEMPLATE_RULES)
             if known:
-                proposals.extend(proposals_from_rules(table, *known))
+                # nomi del dizionario SAP / del catalogo nella lingua dell'utente
+                proposals.extend(names_i18n.localize_proposals(proposals_from_rules(table, *known),
+                                                               (context_profile or {}).get("language") or "it"))
             else:
                 activity_cols = ((context_profile or {}).get("data_profile") or {}).get("activity_columns", {})
                 proposals.extend(self._generic_fallback(table, activity_cols.get(table.name, {})))
@@ -353,9 +355,11 @@ attivita' BPMN, data_profile con chiavi candidate, colonne data e relazioni misu
 lo scheletro del modello OCEL 2.0 comune a tutto il dataset, che verra' poi usato tabella per tabella.
 "document_excerpts", se presente, contiene per tabella brani dei documenti del cliente (data dictionary,
 manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabella.
-- object_types: i tipi di oggetto di business (nome in inglese, leggibile, es. "Purchase Order"),
+- object_types: i tipi di oggetto di business (nome di business leggibile nella lingua di process_context.language:
+  it = italiano, es. "Ordine d'acquisto"; en = inglese, es. "Purchase Order"),
   la tabella che li definisce e le colonne chiave (preferisci le candidate_keys misurate);
-- event_types: le attivita' di processo (nome riconoscibile, allineato al BPMN se presente), con la
+- event_types: le attivita' di processo (nome riconoscibile nella stessa lingua, verbo + oggetto: it "Crea ordine
+  d'acquisto", en "Create Purchase Order"; allineato al BPMN se presente), con la
   tabella e la colonna data/ora che le genera. Una tabella puo' generare piu' eventi. Se il
   data_profile indica per la tabella una colonna attivita' (activity_columns: tipo movimento, azione,
   stato, causale), quella data genera UN solo evento "contenitore" (nome generico, es. "Order History"):
@@ -412,15 +416,16 @@ Elemento ("el") per ogni colonna mappata; piu' righe per la stessa colonna se se
   (evt, rel = tipo oggetto collegato, q = qualifier breve in inglese, es. "for order");
 - "activity": la colonna dice QUALE operazione e' avvenuta nella riga (tipo movimento, azione, stato,
   causale): evt = lo stesso evento del "timestamp" della tabella, values = un elemento per OGNI valore
-  in activity_columns, {v: valore, act: nome attivita' leggibile in inglese, allineato al BPMN se
-  presente}; act "" per i valori che non sono attivita' di processo. Se i valori sono gia' nomi di
+  in activity_columns, {v: valore, act: nome attivita' leggibile nella lingua di process_context.language
+  (it "Registra entrata merci", en "Post Goods Receipt"), allineato al BPMN se presente}; act "" per i valori che non sono attivita' di processo. Se i valori sono gia' nomi di
   attivita' leggibili, values con act = v. Usalo solo se la colonna e' in activity_columns o il suo
   significato e' inequivocabile;
 - "split": la tabella che definisce un oggetto contiene oggetti di business diversi, distinti da una
   colonna (tipo documento, categoria, tipo record; es. fatture, note di credito e incassi nella stessa
   tabella dei documenti contabili, ordini e resi nella stessa tabella degli ordini). obj = il tipo di
   oggetto della "key" della tabella; values = un elemento per ogni valore in type_columns,
-  {v: valore, act: nome di business del tipo di oggetto in inglese, es. "Invoice", "Payment"};
+  {v: valore, act: nome di business del tipo di oggetto nella lingua di process_context.language,
+  es. it "Fattura", "Incasso"; en "Invoice", "Payment"};
   act "" per i valori da lasciare fuori dal processo (documenti estranei agli obiettivi dell'assessment);
   i valori non elencati restano nel tipo della "key". Proponilo quando i valori hanno cicli di vita
   diversi e gli obiettivi dell'assessment riguardano solo alcuni di essi; per il significato dei codici
@@ -680,7 +685,8 @@ class ClaudeAIMapper(AIMapper):
         for t in mappable:
             known = deterministic_mapping.rules_for(t, _TEMPLATE_RULES)
             if known:
-                proposals.extend(proposals_from_rules(t, *known))
+                proposals.extend(names_i18n.localize_proposals(proposals_from_rules(t, *known),
+                                                               (context_profile or {}).get("language") or "it"))
                 self.known_tables.append(t.name)
             else:
                 unknown.append(t)

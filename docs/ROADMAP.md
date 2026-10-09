@@ -119,6 +119,12 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   di una sua parte, si trovano in un'altra). Fino a 4 interrogazioni per domanda; il contesto è in cache, quindi le
   interrogazioni costano poco. Il costo massimo mostrato le comprende.
 
+## Nomi nella lingua dell'utente (9 ottobre 2026)
+- ✅ Oggetti, eventi, attività e tipi della divisione proposti nella lingua scelta (IT/EN): Claude li scrive già
+  nella lingua (prompt del mapping e degli oggetti di business); i nomi che arrivano senza AI (dizionario SAP,
+  modello P2P, catalogo, nomi generici «Bkpf event») passano da `services/names_i18n.py`, nei due versi. I nomi
+  scelti dall'utente non si cambiano. Plurali italiani con aggettivo finale («Partite cliente aperte»).
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

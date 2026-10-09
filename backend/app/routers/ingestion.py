@@ -36,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import business_objects, coverage, derived_columns, explain, review_assistant
+from app.services import business_objects, coverage, derived_columns, explain, names_i18n, review_assistant
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError, MappingProposal
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -701,7 +701,8 @@ def _bo_proposal(sess: dict, workspace_id: str) -> dict:
     if current and current.get("signature") == _bo_signature(sess):
         return current
     answers, _ = load_assessment(workspace_id)
-    current = business_objects.draft(sess["tables_schema_objs"], sess.get("profile") or {}, answers)
+    current = business_objects.draft(sess["tables_schema_objs"], sess.get("profile") or {}, answers,
+                                     (sess.get("context") or {}).get("language"))
     current["signature"] = _bo_signature(sess)
     sess["bo_proposal"] = current
     return current
@@ -873,6 +874,8 @@ def _run_ai_mapping(
         # valori composti (collegamenti), qualunque mapper abbia lavorato
         proposals = derived_columns.apply(proposals, sess["context"].get("data_profile") or {},
                                           sess["context"].get("language") or "it")
+        # nomi conosciuti (dizionario SAP, catalogo) nella lingua dell'utente, qualunque mapper abbia lavorato
+        proposals = names_i18n.localize_proposals(proposals, sess["context"].get("language") or "it")
         rejected: set[int] = set()
         if sess.get("business_objects"):
             # il mapping si allinea agli oggetti di business confermati (nomi, divisioni, oggetti esclusi)
@@ -940,6 +943,7 @@ def _run_regenerate_missing(sess: dict, tables: list, table_descriptions: dict[s
             "change_logs": {k: v for k, v in (prof.get("change_logs") or {}).items() if k in names},
             "embedded_keys": [e for e in prof.get("embedded_keys") or [] if e["table"] in names]},
             sess["context"].get("language") or "it")
+        proposals = names_i18n.localize_proposals(proposals, sess["context"].get("language") or "it")
         next_id = max((r["row_id"] for r in rows), default=-1) + 1
         for i, p in enumerate(proposals):
             d = asdict(p)

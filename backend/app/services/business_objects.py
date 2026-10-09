@@ -27,7 +27,7 @@ import re
 from app.config import EXPLAIN_MODEL
 from app.connectors.base import TableSchema
 from app.i18n import msg
-from app.services import sap_dictionary
+from app.services import names_i18n, sap_dictionary
 from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK, MappingProposal
 
 ROLES = ("lead", "needed", "context")
@@ -46,7 +46,7 @@ def _pretty(table: str) -> str:
 
 # ---------- bozza senza costi ----------
 
-def draft(tables: list[TableSchema], profile: dict, answers: dict) -> dict:
+def draft(tables: list[TableSchema], profile: dict, answers: dict, lang: str | None = None) -> dict:
     """Prima proposta con regole generiche: tabelle con chiave e date di fatti = oggetti di processo;
     tabelle senza chiave o con una colonna attivita' = eventi di altri oggetti; tabelle con chiave e senza
     date = anagrafiche (dimensioni). Nomi dal dizionario SAP se la tabella e' nota, altrimenti dal nome."""
@@ -72,7 +72,7 @@ def draft(tables: list[TableSchema], profile: dict, answers: dict) -> dict:
                                 msg("Registra operazioni, non oggetti: diventa eventi.")})
             continue
         if not facts:
-            objects.append({"name": sap_obj or _pretty(t.name), "table": t.name, "key": key, "filter": None,
+            objects.append({"name": (names_i18n.name(sap_obj, lang) if lang else sap_obj) or _pretty(t.name), "table": t.name, "key": key, "filter": None,
                             "role": "context", "include": False, "objective": "",
                             "why": msg("Anagrafica senza date di fatti: di solito è meglio come dimensione dei documenti "
                                        "(per filtrare e confrontare) che come oggetto con una storia.")})
@@ -84,7 +84,7 @@ def draft(tables: list[TableSchema], profile: dict, answers: dict) -> dict:
             values = ", ".join(f"{v} ({n})" for v, n in list(tc["values"].items())[:6])
             why = msg("Ha una chiave e date di fatti avvenuti ({d}). Contiene tipi diversi in {c} ({v}): se sono "
                       "oggetti di business diversi, dividilo.", d=", ".join(facts[:3]), c=tc["column"], v=values)
-        objects.append({"name": sap_obj or _pretty(t.name), "table": t.name, "key": key, "filter": None,
+        objects.append({"name": (names_i18n.name(sap_obj, lang) if lang else sap_obj) or _pretty(t.name), "table": t.name, "key": key, "filter": None,
                         "role": "needed", "include": True, "objective": "", "why": why,
                         "split_hint": types[0] if types else None, "_rows": t.row_count})
     # oggetto guida: quello che somiglia all'oggetto principale dell'assessment, altrimenti il piu' numeroso
