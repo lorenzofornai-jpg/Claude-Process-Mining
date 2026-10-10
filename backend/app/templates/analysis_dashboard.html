@@ -19,9 +19,16 @@
       <div class="analysis-tool">
         <div>
           <h3>Process Overview</h3>
-          <p class="tiny muted">{{ _("Il processo in sintesi visto da un oggetto guida a scelta: volumi, tempi di attraversamento, varianti e happy path.") }}</p>
+          <p class="tiny muted">{{ _("Il processo in sintesi visto da un oggetto guida a scelta: volumi, varianti, tempi del processo e delle attività.") }}</p>
         </div>
         <a class="primary button-link" href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">{{ _("Apri") }}</a>
+      </div>
+      <div class="analysis-tool">
+        <div>
+          <h3>Control Tower</h3>
+          <p class="tiny muted">{{ _("La vista per il management sulle domande di business dell'assessment: KPI con obiettivi, andamento nel tempo e dove intervenire.") }}</p>
+        </div>
+        <a class="primary button-link" href="/analysis/control-tower?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">{{ _("Apri") }}</a>
       </div>
       <div class="analysis-tool">
         <div>

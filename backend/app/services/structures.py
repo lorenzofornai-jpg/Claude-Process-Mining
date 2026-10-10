@@ -25,6 +25,7 @@ from app.models import (
     ProcessIngestionLink,
     AnalysisAlias,
     AnalysisObjective,
+    ControlTower,
 )
 
 
@@ -44,7 +45,7 @@ def delete_structures(db: Session, config_ids: list[str]) -> list[Path]:
     )
     # anche i nomi personali dati nell'analisi (valgono solo per quel dataset)
     for model in (ExtractionRun, ProcessIngestionLink, FieldMapping, ObjectTypeDef, EventTypeDef, IngestionConfigVersion,
-                  AnalysisAlias, AnalysisObjective):
+                  AnalysisAlias, AnalysisObjective, ControlTower):
         db.query(model).filter(model.ingestion_config_id.in_(config_ids)).delete(synchronize_session=False)
     db.query(IngestionConfig).filter(IngestionConfig.id.in_(config_ids)).delete(synchronize_session=False)
     return files

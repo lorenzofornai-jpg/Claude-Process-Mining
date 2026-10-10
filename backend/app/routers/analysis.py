@@ -15,12 +15,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels
+from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels, utc_iso
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
-from app.models import AnalysisObjective, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
+from app.models import AnalysisObjective, ControlTower, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
 from app.routers.assessment import load_assessment
-from app.services import analysis_assistant, explain, explorer, objectives, ocel_filter, overview
+from app.services import analysis_assistant, control_tower, explain, explorer, objectives, ocel_filter, overview
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -446,3 +446,187 @@ async def objective_save(request: Request):
     finally:
         db.close()
     return JSONResponse({"saved": True})
+
+
+# ---------- Control Tower ----------
+# Le domande di business dell'assessment tradotte in KPI (services/control_tower.py): Claude propone le definizioni
+# una volta per dataset, il Data Analyst le rivede e le approva, l'app calcola i valori.
+
+def _tower_row(db, config_id: str):
+    return db.query(ControlTower).filter_by(ingestion_config_id=config_id).first()
+
+
+def _tower_info(row, lang: str) -> dict | None:
+    if row is None:
+        return None
+    return {"status": row.status, "language": row.language, "cost_usd": row.cost_usd,
+            "created_by": row.created_by, "created_at": utc_iso(row.created_at),
+            "updated_by": row.updated_by, "updated_at": utc_iso(row.updated_at),
+            "approved_by": row.approved_by, "approved_at": utc_iso(row.approved_at) if row.approved_at else None}
+
+
+@router.get("/analysis/control-tower", response_class=HTMLResponse)
+def control_tower_page(request: Request, workspace_id: str, config_id: str | None = None):
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return denied
+    config, run, configs = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return HTMLResponse(t(get_lang(request), "Dataset non disponibile per l'analisi."), status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    answers, _ = load_assessment(workspace_id)
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+    finally:
+        db.close()
+    lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
+    return templates.TemplateResponse(
+        "control_tower.html",
+        {
+            "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
+            "config": config, "run": run, "lead": lead,
+            "questions": (answers.get("key_questions") or "").strip(),
+            "plurals": _plurals(get_lang(request), model.types, {}),
+            "claude": explain.available(),
+        },
+    )
+
+
+def _tower_payload(request: Request, model, spec: dict | None, row, period: str, lang: str, lead: str | None) -> dict:
+    out = {"info": _tower_info(row, lang), "catalog": control_tower.catalog(model, lead), "spec": None}
+    if spec:
+        clean, issues = control_tower.validate(spec, model)
+        values = control_tower.compute(clean, model, period)
+        # problemi (dati mancanti) gia' tradotti
+        for k in values["kpis"].values():
+            if k.get("issues"):
+                k["issues"] = [render(lang, x) for x in k["issues"]]
+        for s in values["sections"]:
+            for c in s["charts"]:
+                if c.get("issues"):
+                    c["issues"] = [render(lang, x) for x in c["issues"]]
+        for s in clean["sections"]:
+            for c in s["charts"]:
+                c.pop("issues", None)
+        out.update(spec=clean, values=values)
+    return out
+
+
+@router.api_route("/analysis/control-tower/data", methods=["GET", "POST"])
+async def control_tower_data(request: Request):
+    """Definizioni salvate, valori calcolati per il periodo e catalogo del dataset (per l'editor). In POST con
+    "spec": anteprima di definizioni non ancora salvate."""
+    body = await request.json() if request.method == "POST" else dict(request.query_params)
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    answers, _ = load_assessment(workspace_id)
+    lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
+    db = SessionLocal()
+    try:
+        row = _tower_row(db, config.id)
+    finally:
+        db.close()
+    spec = body.get("spec") if isinstance(body.get("spec"), dict) else (row.spec if row else None)
+    period = str(body.get("period") or "12")
+    return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead))
+
+
+@router.post("/analysis/control-tower/propose")
+async def control_tower_propose(request: Request):
+    """Claude propone le definizioni (o le modifica secondo "instruction"). Con estimate=true solo il costo."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    if not explain.available():
+        return JSONResponse({"available": False, "error": t(
+            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    answers, _ = load_assessment(workspace_id)
+    lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+        row = _tower_row(db, config.id)
+        current = row.spec if row else None
+    finally:
+        db.close()
+    instruction = str(body.get("instruction") or "").strip()
+    revise = bool(instruction) and current is not None
+    payload = control_tower.build_payload(
+        language=lang, process_name=ws.process_name, assessment=answers,
+        cat=control_tower.catalog(model, lead), library=control_tower.library_hints(ws.process_name, ws.process_type),
+        current_spec=current if revise else None, instruction=instruction if revise else None)
+    est = control_tower.estimate(payload)
+    if body.get("estimate"):
+        return JSONResponse({"available": True, **est})
+    try:
+        result = await run_in_threadpool(control_tower.propose, payload)
+    except Exception as exc:
+        print(f"Control Tower: proposta non riuscita ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+                            status_code=502)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    try:
+        row = _tower_row(db, config.id) or ControlTower(ingestion_config_id=config.id, created_by=user.name, created_at=now)
+        row.spec, row.language, row.status = result["spec"], lang, "draft"
+        row.cost_usd = round((row.cost_usd or 0.0) + result["cost_usd"], 4)
+        row.updated_by, row.updated_at, row.approved_by, row.approved_at = user.name, now, None, None
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+    return JSONResponse({"available": True, "cost_usd": result["cost_usd"]})
+
+
+@router.post("/analysis/control-tower/save")
+async def control_tower_save(request: Request):
+    """Salva le definizioni modificate dal Data Analyst; approve=true le approva (senza: tornano da approvare)."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    db = SessionLocal()
+    try:
+        row = _tower_row(db, config.id)
+        spec = body.get("spec")
+        if row is None and not isinstance(spec, dict):
+            return JSONResponse({"error": t(lang, "Non ci sono definizioni da salvare.")}, status_code=400)
+        if row is None:
+            row = ControlTower(ingestion_config_id=config.id, created_by=user.name, created_at=now, language=lang)
+        if isinstance(spec, dict):
+            model = explorer.load_model(run.ocel_file_path)
+            clean, _ = control_tower.validate(control_tower.normalize(spec), model)
+            for s in clean["sections"]:
+                for c in s["charts"]:
+                    c.pop("issues", None)
+            if clean != row.spec:
+                row.spec, row.updated_by, row.updated_at = clean, user.name, now
+                row.status, row.approved_by, row.approved_at = "draft", None, None
+        if body.get("approve"):
+            row.status, row.approved_by, row.approved_at = "approved", user.name, now
+        db.add(row)
+        db.commit()
+        return JSONResponse({"saved": True, "status": row.status})
+    finally:
+        db.close()

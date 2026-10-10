@@ -166,6 +166,21 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ Istogrammi uno sotto l'altro a tutta larghezza; con tante barre (es. 36 mesi) larghezza minima per barra e
   scorrimento orizzontale.
 
+## Control Tower (10 ottobre 2026)
+- Terza analisi, seconda nell'elenco dopo la Process Overview: la vista per il management sulle domande di business
+  dell'assessment. Intestazione con periodo (3, 6, 12 mesi, tutto; confronto con il periodo precedente), «In sintesi»
+  con i KPI principali, poi una sezione per domanda: KPI con valore, ▲▼ rispetto al periodo precedente (verde se
+  migliora) e obiettivo (verde/rosso), grafici (andamento mensile con la linea dell'obiettivo, barre e tabelle per
+  gruppo, ciambella della composizione), cosa manca nei dati.
+- Definizioni in un vocabolario chiuso (services/control_tower.py), valido per ogni processo e sistema: misure
+  quota / numero / somma di un importo / quota dell'importo / tempo in giorni; condizioni su attività (anche negli
+  oggetti collegati), utente non di sistema, attributi, tempo tra due momenti (anche rispetto a una scadenza calcolata
+  da data base + giorni). Claude le propone una volta per dataset (costo mostrato prima, ~0,10-0,25 $); il Data
+  Analyst le modifica con l'editor o con «Rivedi con Claude» e le approva; i valori li calcola l'app.
+- Dati mancanti: un KPI che usa attività o attributi che il dataset non ha mostra «Dato mancante» e il perché.
+- Da fare: assistente anche nella Control Tower; esportazione PDF/immagine per il management; KPI per gruppo
+  di clienti o società con filtro in testata; avvisi quando un KPI esce dall'obiettivo.
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

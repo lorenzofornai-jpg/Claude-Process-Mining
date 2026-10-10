@@ -67,6 +67,8 @@ AI_MAPPING_EFFORT = os.environ.get("AI_MAPPING_EFFORT", "low")
 RELEVANCE_CHECK_MODEL = os.environ.get("RELEVANCE_CHECK_MODEL", "claude-opus-5-5")
 # «Chiedi a Claude» sui messaggi dell'app: spiegazioni brevi, basta un modello piu' economico
 EXPLAIN_MODEL = os.environ.get("EXPLAIN_MODEL", "claude-sonnet-5-5")
+# Control Tower: Claude traduce le domande di business in KPI (una volta per dataset): conta la qualita'
+CONTROL_TOWER_MODEL = os.environ.get("CONTROL_TOWER_MODEL", ANTHROPIC_MODEL)
 
 # Cache-busting per gli asset statici (style.css): senza una query string che
 # cambia, il browser puo' continuare a servire una versione in cache anche

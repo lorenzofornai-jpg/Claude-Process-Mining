@@ -382,3 +382,24 @@ class ObjectiveCoverage(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class ControlTower(Base):
+    """Control Tower di un dataset (services/control_tower.py): le domande di business dell'assessment tradotte
+    in KPI calcolabili (definizioni, obiettivi, grafici). Le propone Claude una volta per dataset; il Data Analyst
+    le rivede, le modifica e le approva. I valori si calcolano dall'app a ogni apertura."""
+
+    __tablename__ = "control_tower"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"), unique=True)
+    spec: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved
+    language: Mapped[str] = mapped_column(String(8), default="it")
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    approved_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

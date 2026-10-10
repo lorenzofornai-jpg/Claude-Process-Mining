@@ -1,0 +1,860 @@
+{% extends "base.html" %}
+{% block title %}Control Tower · {{ process_name }}{% endblock %}
+{% block main_class %}content-wide{% endblock %}
+{% block content %}
+<div class="card wide ct-card">
+  <div class="explorer-head">
+    <div>
+      <p class="eyebrow">{{ _("Vista per il management") }}</p>
+      <h1>Control Tower</h1>
+      <p class="muted tiny">
+        {{ _("Processo: {p}.", p=strong(process_name)) }}
+        {{ _("Dataset {d}, v{v}: {o} oggetti, {e} eventi.", d=strong(config.name), v=config.current_version, o=run.object_count, e=run.event_count) }}
+      </p>
+    </div>
+    <div class="explorer-head-tools">
+      <div id="ct-period-box" hidden>
+        <div class="tiny muted ov-control-label">{{ _("Periodo") }}</div>
+        <div class="segmented" role="group" aria-label="{{ _("Periodo") }}">
+          <button type="button" class="seg" data-period="3">{{ _("3 mesi") }}</button>
+          <button type="button" class="seg" data-period="6">{{ _("6 mesi") }}</button>
+          <button type="button" class="seg" data-period="12">{{ _("12 mesi") }}</button>
+          <button type="button" class="seg" data-period="all">{{ _("Tutto") }}</button>
+        </div>
+      </div>
+      <button type="button" class="secondary" id="ct-edit-btn" hidden>{{ _("Definizioni dei KPI") }}</button>
+      <a class="secondary button-link" href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ config.id }}">Process Overview →</a>
+    </div>
+  </div>
+
+  <div id="ct-status" aria-live="polite"></div>
+  <div id="ct-body" aria-live="polite"><p class="muted">{{ _("Calcolo in corso…") }}</p></div>
+
+  <p class="tiny muted" style="margin-top:18px">
+    <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Torna all'analisi") }}</a>
+  </p>
+</div>
+
+<script>
+(function () {
+  var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
+  var LEAD = {{ lead|tojson }}, QUESTIONS = {{ questions|tojson }}, CLAUDE = {{ claude|tojson }};
+  var PLURALS = {{ plurals|tojson }};
+  var T = {
+    intro: {{ _("La Control Tower traduce le domande di business dell'assessment in KPI misurati sul dataset: per ogni domanda i numeri chiave con obiettivo, l'andamento nel tempo e dove si concentra il fenomeno. Claude propone le definizioni una volta sola; tu le controlli, le modifichi se serve e le approvi. I valori li calcola l'app, senza altre chiamate a Claude.")|tojson }},
+    questions: {{ _("Domande di business dell'assessment")|tojson }},
+    noQuestions: {{ _("Nell'assessment non ci sono domande di business: Claude proporrà i KPI tipici di questo processo, a partire dagli obiettivi e dai dati.")|tojson }},
+    propose: {{ _("Proponi i KPI con Claude")|tojson }},
+    noClaude: {{ _("Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")|tojson }},
+    cost: {{ _("Costo indicativo {c} (al massimo {m}), modello {model}.")|tojson }},
+    go: {{ _("Procedi")|tojson }}, cancel: {{ _("Annulla")|tojson }},
+    working: {{ _("Claude sta preparando le definizioni: può richiedere un minuto…")|tojson }},
+    spent: {{ _("Fatto: costo {c}.")|tojson }},
+    error: {{ _("Non è stato possibile calcolare la Control Tower.")|tojson }},
+    draft: {{ _("Definizioni proposte da Claude: controllale (pulsante «Definizioni dei KPI») e approvale. Finché non sono approvate i numeri sono provvisori.")|tojson }},
+    draftEdited: {{ _("Definizioni modificate da {u}: da approvare.")|tojson }},
+    approved: {{ _("Definizioni approvate da {u} il {d}.")|tojson }},
+    approve: {{ _("Approva le definizioni")|tojson }},
+    unsaved: {{ _("Modifiche alle definizioni non ancora salvate.")|tojson }},
+    previewing: {{ _("Stai vedendo un'anteprima con le modifiche non salvate.")|tojson }},
+    save: {{ _("Salva")|tojson }}, saveApprove: {{ _("Salva e approva")|tojson }}, discard: {{ _("Annulla le modifiche")|tojson }},
+    preview: {{ _("Anteprima")|tojson }}, backToEdit: {{ _("Torna alle definizioni")|tojson }}, close: {{ _("Chiudi le definizioni")|tojson }},
+    otherLang: {{ _("Le definizioni sono state scritte in un'altra lingua: per averle in questa lingua chiedi a Claude di tradurle con «Rivedi con Claude».")|tojson }},
+    claudeNote: {{ _("Nota di Claude")|tojson }},
+    periodNote: {{ _("Periodo: {tp} con il primo evento da {a} a {b}, confronto con i {n} mesi precedenti.")|tojson }},
+    periodNoPrev: {{ _("Periodo: {tp} con il primo evento da {a} a {b} (il dataset non copre il periodo precedente: nessun confronto).")|tojson }},
+    periodAll: {{ _("Periodo: tutto il dataset, {tp} con il primo evento da {a} a {b}.")|tojson }},
+    headline: {{ _("In sintesi")|tojson }},
+    missing: {{ _("Cosa manca nei dati")|tojson }},
+    noData: {{ _("Dato mancante")|tojson }},
+    noValue: {{ _("nessun oggetto nel periodo")|tojson }},
+    target: {{ _("Obiettivo {op} {v}")|tojson }},
+    targetOk: {{ _("in linea con l'obiettivo")|tojson }}, targetKo: {{ _("fuori obiettivo")|tojson }},
+    vsPrev: {{ _("{d} rispetto al periodo precedente")|tojson }},
+    pp: {{ _("{n} pp")|tojson }},
+    subShare: {{ _("{n} di {d}")|tojson }}, subCount: {{ _("su {d}")|tojson }},
+    subSum: {{ _("da {n}")|tojson }}, subShareAmount: {{ _("{a} di {b}")|tojson }}, subDuration: {{ _("misurato su {n}")|tojson }},
+    days: {{ _("{n} g")|tojson }},
+    targetLine: {{ _("obiettivo")|tojson }},
+    trendTip: {{ _("{m}: {v} ({s})")|tojson }},
+    other: {{ _("Altro")|tojson }}, rest: {{ _("Gli altri")|tojson }}, empty: {{ _("(nessun valore)")|tojson }},
+    others: {{ _("+ altri {n} gruppi")|tojson }},
+    colGroup: {{ _("Gruppo")|tojson }}, colObjects: {{ _("Oggetti")|tojson }}, colHit: {{ _("Colpiti")|tojson }},
+    colValue: {{ _("Valore")|tojson }}, colAmount: {{ _("Importo")|tojson }},
+    dimAttr: {{ _("per {a}")|tojson }}, dimRel: {{ _("per {a} di {t}")|tojson }}, dimRelId: {{ _("per {t}")|tojson }},
+    dimEv: {{ _("per {a} degli eventi")|tojson }}, dimAct: {{ _("per attività")|tojson }},
+    noPoints: {{ _("Nessun oggetto nel periodo.")|tojson }},
+    // editor
+    edTitle: {{ _("Definizioni dei KPI")|tojson }},
+    edIntro: {{ _("Ogni KPI si calcola sugli oggetti di un tipo (di solito l'oggetto guida). «Quali oggetti contano» restringe la popolazione; «Quando un oggetto conta nel KPI» è la condizione del fenomeno (es. un intervento manuale). Le modifiche si vedono con «Anteprima» e valgono dopo «Salva».")|tojson }},
+    reviseTitle: {{ _("Rivedi con Claude")|tojson }},
+    reviseHelp: {{ _("Scrivi cosa cambiare (es. «considera manuale anche l'incasso registrato da un utente non di sistema», «aggiungi il DSO», «traduci in inglese»): Claude riscrive le definizioni e tornano da approvare.")|tojson }},
+    reviseDirty: {{ _("Salva o annulla prima le modifiche: Claude parte dalle definizioni salvate.")|tojson }},
+    regenerate: {{ _("Rifai la proposta da capo")|tojson }},
+    regenerateHelp: {{ _("Claude riparte dalle domande di business e dai dati e sostituisce tutte le definizioni.")|tojson }},
+    estimate: {{ _("Stima il costo")|tojson }},
+    section: {{ _("Domanda di business")|tojson }}, why: {{ _("Perché conta")|tojson }}, missingField: {{ _("Cosa manca nei dati (facoltativo)")|tojson }},
+    addSection: {{ _("+ Domanda")|tojson }}, delSection: {{ _("Elimina la domanda")|tojson }},
+    addKpi: {{ _("+ KPI")|tojson }}, delKpi: {{ _("Elimina il KPI")|tojson }},
+    addChart: {{ _("+ Grafico")|tojson }}, delChart: {{ _("Elimina il grafico")|tojson }},
+    kpiName: {{ _("Nome")|tojson }}, kpiDesc: {{ _("Come si calcola")|tojson }}, kpiType: {{ _("Oggetti")|tojson }},
+    kpiMeasure: {{ _("Misura")|tojson }}, kpiAmount: {{ _("Importo")|tojson }}, kpiCurrency: {{ _("Valuta")|tojson }},
+    kpiHeadline: {{ _("In sintesi (in alto)")|tojson }}, kpiBetter: {{ _("Migliora quando")|tojson }},
+    higher: {{ _("sale")|tojson }}, lower: {{ _("scende")|tojson }},
+    kpiTarget: {{ _("Obiettivo")|tojson }}, noTarget: {{ _("nessuno")|tojson }}, targetUnitPct: {{ _("%")|tojson }},
+    targetUnitDays: {{ _("giorni")|tojson }},
+    population: {{ _("Quali oggetti contano")|tojson }}, condition: {{ _("Quando un oggetto conta nel KPI")|tojson }},
+    allObjects: {{ _("tutti")|tojson }},
+    mShare: {{ _("Quota di oggetti (%)")|tojson }}, mCount: {{ _("Numero di oggetti")|tojson }},
+    mSum: {{ _("Somma di un importo")|tojson }}, mShareAmount: {{ _("Quota dell'importo (%)")|tojson }},
+    mDuration: {{ _("Tempo in giorni")|tojson }},
+    durFrom: {{ _("Da")|tojson }}, durTo: {{ _("A")|tojson }}, durStat: {{ _("Statistica")|tojson }},
+    sMedian: {{ _("mediana")|tojson }}, sMean: {{ _("media")|tojson }}, sP90: {{ _("9 su 10 entro")|tojson }},
+    none: {{ _("—")|tojson }},
+    cNone: {{ _("Nessuna condizione")|tojson }}, cActivity: {{ _("Ha almeno una di queste attività")|tojson }},
+    cUser: {{ _("Attività fatta da un utente (non di sistema)")|tojson }}, cAttribute: {{ _("Valore di un attributo")|tojson }},
+    cDuration: {{ _("Tempo tra due momenti")|tojson }}, cAny: {{ _("Almeno una di queste condizioni")|tojson }},
+    cAll: {{ _("Tutte queste condizioni")|tojson }}, cNot: {{ _("Non vale")|tojson }},
+    related: {{ _("anche negli oggetti collegati")|tojson }}, minCount: {{ _("almeno n volte")|tojson }},
+    anyActivity: {{ _("(nessuna spunta = qualunque attività)")|tojson }},
+    userAttrs: {{ _("Attributi dell'utente negli eventi")|tojson }},
+    exclude: {{ _("Utenti esclusi (di sistema), con * — es. SYSTEM*, BATCH*")|tojson }},
+    attribute: {{ _("Attributo")|tojson }}, values: {{ _("Valori, separati da virgola")|tojson }},
+    cmpIn: {{ _("è uno di")|tojson }}, cmpNotIn: {{ _("non è uno di")|tojson }}, cmpEmpty: {{ _("è vuoto")|tojson }},
+    cmpNotEmpty: {{ _("non è vuoto")|tojson }}, cmpGt: {{ _("maggiore di")|tojson }}, cmpLt: {{ _("minore di")|tojson }},
+    cmpGe: {{ _("almeno")|tojson }}, cmpLe: {{ _("al massimo")|tojson }},
+    durCmp: {{ _("il tempo è")|tojson }}, daysLabel: {{ _("giorni")|tojson }},
+    addCond: {{ _("+ condizione")|tojson }}, remove: {{ _("Togli")|tojson }},
+    pActivity: {{ _("Attività")|tojson }}, pDate: {{ _("Data dell'oggetto")|tojson }},
+    first: {{ _("la prima volta")|tojson }}, last: {{ _("l'ultima volta")|tojson }},
+    plusDays: {{ _("più i giorni di")|tojson }}, plusConst: {{ _("più giorni fissi")|tojson }},
+    chartKind: {{ _("Grafico")|tojson }}, chartKpi: {{ _("KPI")|tojson }}, chartTitle: {{ _("Titolo")|tojson }},
+    kTrend: {{ _("Andamento mensile")|tojson }}, kBars: {{ _("Barre per gruppo")|tojson }},
+    kDonut: {{ _("Composizione (ciambella)")|tojson }}, kTable: {{ _("Tabella per gruppo")|tojson }},
+    dimension: {{ _("Raggruppa per")|tojson }},
+    dAttr: {{ _("attributo dell'oggetto")|tojson }}, dRel: {{ _("oggetto collegato")|tojson }},
+    dEv: {{ _("attributo degli eventi (es. utente)")|tojson }}, dAct: {{ _("attività")|tojson }},
+    dNone: {{ _("colpiti contro gli altri")|tojson }}, dCats: {{ _("categorie")|tojson }},
+    relType: {{ _("Tipo di oggetto")|tojson }}, relAttr: {{ _("Attributo (vuoto = identificativo)")|tojson }},
+    catLabel: {{ _("Nome della categoria")|tojson }}, addCat: {{ _("+ categoria")|tojson }},
+    catHelp: {{ _("Ogni oggetto colpito va nella prima categoria che gli si applica; gli altri in «Altro».")|tojson }},
+    newKpi: {{ _("Nuovo KPI")|tojson }}, newSection: {{ _("Nuova domanda")|tojson }},
+    saved: {{ _("Salvato.")|tojson }}, kpiIssues: {{ _("Non calcolabile:")|tojson }},
+    confirmDelete: {{ _("Eliminare questo KPI? Spariscono anche i suoi grafici.")|tojson }},
+    confirmRegen: {{ _("Le definizioni attuali saranno sostituite. Procedere?")|tojson }}
+  };
+  var COLORS = ["#3b63e0", "#e08a3b", "#2fa36b", "#c2457a", "#7a5be0", "#2a9fb8", "#a6720a", "#68707e"];
+
+  var data = null, spec = null, editing = false, dirty = false, previewing = false, period = "12";
+  try { period = localStorage.getItem("pm-ct-period") || "12"; } catch (e) {}
+
+  // ---------- utilita' ----------
+  function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; }
+  function num(n, d) { return Number(n).toLocaleString(LANG, { maximumFractionDigits: d === undefined ? 0 : d }); }
+  function pct(x, d) { return Number(x).toLocaleString(LANG, { style: "percent", maximumFractionDigits: d === undefined ? 1 : d }); }
+  function money(v, cur) {
+    if (v === null || v === undefined) return "—";
+    var o = { notation: Math.abs(v) >= 100000 ? "compact" : "standard", maximumFractionDigits: Math.abs(v) >= 100000 ? 2 : 0 };
+    if (cur && /^[A-Z]{3}$/.test(cur)) {
+      try { return Number(v).toLocaleString(LANG, Object.assign({ style: "currency", currency: cur }, o)); } catch (e) {}
+    }
+    return Number(v).toLocaleString(LANG, o) + (cur ? " " + cur : "");
+  }
+  function days(v) { return fmt(T.days, { n: Number(v).toLocaleString(LANG, { maximumFractionDigits: 1 }) }); }
+  // nome del tipo dentro una frase: minuscolo («170 di 1.000 fatture»), tranne le sigle («SAP Document»)
+  function tp(t, n) { var w = n === 1 ? t : (PLURALS[t] || t); return /^[A-ZÀ-Ý][a-zà-ÿ]/.test(w) ? w.charAt(0).toLowerCase() + w.slice(1) : w; }
+  function monthLabel(m) {
+    var p = m.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, 1));
+    return d.toLocaleDateString(LANG, { month: "short", year: "2-digit", timeZone: "UTC" });
+  }
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+  function kpiById(id) { return (spec.kpis || []).filter(function (k) { return k.id === id; })[0]; }
+  function isPct(k) { return k.measure === "share" || k.measure === "share_amount"; }
+  function value(k, v, cur) {
+    if (v === null || v === undefined) return "—";
+    if (isPct(k)) return pct(v);
+    if (k.measure === "sum") return money(v, cur);
+    if (k.measure === "duration") return days(v);
+    return num(v);
+  }
+  function targetText(k) {
+    var t = k.target; if (!t || (t.op !== ">=" && t.op !== "<=") || t.value === null || t.value === undefined || t.value === "") return null;
+    var v = Number(t.value); if (isPct(k) && v > 1) v = v / 100;
+    return fmt(T.target, { op: t.op === ">=" ? "≥" : "≤", v: value(k, v, null) });
+  }
+
+  function api(url, body) {
+    var opts = body ? { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+                    : { credentials: "same-origin" };
+    return fetch(url, opts).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
+  }
+
+  // ---------- caricamento ----------
+  function load(withSpec) {
+    var body = document.getElementById("ct-body"); body.style.opacity = 0.5;
+    var p = withSpec ? api("/analysis/control-tower/data", { workspace_id: WS, config_id: CONFIG, period: period, spec: withSpec })
+                     : api("/analysis/control-tower/data?" + new URLSearchParams({ workspace_id: WS, config_id: CONFIG, period: period }));
+    return p.then(function (d) {
+      data = d;
+      if (!withSpec) { spec = d.spec ? clone(d.spec) : null; dirty = false; previewing = false; }
+      else previewing = true;
+      render();
+    }).catch(function (e) { body.textContent = ""; body.appendChild(el("p", "as-error", e.message || T.error)); })
+      .finally(function () { body.style.opacity = 1; });
+  }
+  function refresh() { return previewing || dirty ? load(spec) : load(); }
+
+  document.querySelectorAll(".seg[data-period]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      period = b.dataset.period; try { localStorage.setItem("pm-ct-period", period); } catch (e) {}
+      markPeriod(); refresh();
+    });
+  });
+  function markPeriod() { document.querySelectorAll(".seg[data-period]").forEach(function (x) { x.classList.toggle("active", x.dataset.period === period); }); }
+  markPeriod();
+  document.getElementById("ct-edit-btn").addEventListener("click", function () {
+    editing = !editing;
+    if (!editing && dirty) { load(spec); return; }   // chiudendo l'editor si vede l'anteprima delle modifiche
+    render();
+  });
+
+  // ---------- stato delle definizioni ----------
+  function renderStatus() {
+    var box = document.getElementById("ct-status"); box.textContent = "";
+    if (!data || !data.spec) return;
+    var info = data.info || {};
+    var bar = el("div", "ct-status");
+    if (dirty || previewing) {
+      bar.classList.add("ct-status-warn");
+      bar.appendChild(el("span", "", previewing && !editing ? T.previewing + " " + T.unsaved : T.unsaved));
+      var acts = el("span", "ct-status-actions");
+      if (editing) acts.appendChild(button(T.preview, "secondary", function () { editing = false; load(spec); }));
+      acts.appendChild(button(T.save, "secondary", function () { save(false); }));
+      acts.appendChild(button(T.saveApprove, "primary", function () { save(true); }));
+      acts.appendChild(button(T.discard, "link-btn", function () { editing = false; load(); }));
+      bar.appendChild(acts);
+    } else if (info.status === "approved") {
+      bar.classList.add("ct-status-ok");
+      // data e ora nell'ora del dispositivo
+      var when = window.pmLocalTime ? window.pmLocalTime(info.approved_at) : info.approved_at;
+      bar.appendChild(el("span", "", fmt(T.approved, { u: info.approved_by || "—", d: when })));
+    } else {
+      bar.classList.add("ct-status-warn");
+      bar.appendChild(el("span", "", info.updated_by && info.updated_by !== info.created_by ? fmt(T.draftEdited, { u: info.updated_by }) : T.draft));
+      var a2 = el("span", "ct-status-actions");
+      a2.appendChild(button(T.approve, "primary", function () { save(true, true); }));
+      bar.appendChild(a2);
+    }
+    box.appendChild(bar);
+    if (info.language && info.language !== LANG) box.appendChild(el("p", "tiny ct-note", T.otherLang));
+    if (spec && spec.notes) {
+      var det = el("details", "ct-claude-note"); det.appendChild(el("summary", "tiny", T.claudeNote));
+      det.appendChild(el("p", "tiny muted", spec.notes)); box.appendChild(det);
+    }
+  }
+  function button(text, cls, fn) { var b = el("button", cls, text); b.type = "button"; b.addEventListener("click", fn); return b; }
+
+  function save(approve, onlyApprove) {
+    var body = { workspace_id: WS, config_id: CONFIG, approve: !!approve };
+    if (!onlyApprove) body.spec = spec;
+    api("/analysis/control-tower/save", body).then(function () { editing = false; load(); })
+      .catch(function (e) { alert(e.message); });
+  }
+
+  // ---------- proposta con Claude (costo prima) ----------
+  function claudeBox(label, help, instruction) {
+    var box = el("div", "ct-claude");
+    if (help) box.appendChild(el("p", "tiny muted", help));
+    var ta = null;
+    if (instruction) { ta = el("textarea", "ct-instruction"); ta.rows = 3; box.appendChild(ta); }
+    var out = el("div", "tiny ct-claude-out");
+    var go = button(CLAUDE ? T.estimate : label, "secondary", function () {
+      if (!CLAUDE) { out.textContent = T.noClaude; return; }
+      if (instruction && dirty) { out.textContent = T.reviseDirty; return; }
+      var instr = ta ? ta.value.trim() : "";
+      if (ta && !instr) { ta.focus(); return; }
+      if (!ta && data.spec && !confirm(T.confirmRegen)) return;
+      out.textContent = "…";
+      api("/analysis/control-tower/propose", { workspace_id: WS, config_id: CONFIG, estimate: true, instruction: instr }).then(function (e) {
+        if (e.available === false) { out.textContent = e.error || T.noClaude; return; }
+        out.textContent = "";
+        out.appendChild(el("span", "", fmt(T.cost, { c: "$" + e.cost_usd.toFixed(2), m: "$" + e.max_usd.toFixed(2), model: e.model }) + " "));
+        out.appendChild(button(T.go, "primary", function () {
+          out.textContent = T.working; go.disabled = true;
+          api("/analysis/control-tower/propose", { workspace_id: WS, config_id: CONFIG, instruction: instr }).then(function (r) {
+            out.textContent = fmt(T.spent, { c: "$" + r.cost_usd.toFixed(2) });
+            editing = false; load();
+          }).catch(function (err) { out.textContent = err.message; go.disabled = false; });
+        }));
+        out.appendChild(button(T.cancel, "link-btn", function () { out.textContent = ""; }));
+      }).catch(function (err) { out.textContent = err.message; });
+    });
+    if (!CLAUDE) go.textContent = label;
+    box.appendChild(go); box.appendChild(out);
+    return box;
+  }
+
+  // ---------- disegno ----------
+  function render() {
+    document.getElementById("ct-period-box").hidden = !data.spec || editing;
+    var eb = document.getElementById("ct-edit-btn"); eb.hidden = !data.spec;
+    eb.textContent = editing ? T.close : T.edTitle; eb.setAttribute("aria-pressed", editing ? "true" : "false");
+    renderStatus();
+    var body = document.getElementById("ct-body"); body.textContent = "";
+    if (!data.spec) { body.appendChild(emptyState()); return; }
+    if (editing) { body.appendChild(editor()); return; }
+    body.appendChild(dashboard());
+    drawCharts();
+  }
+
+  function emptyState() {
+    var s = el("section", "ct-empty");
+    s.appendChild(el("p", "", T.intro));
+    if (QUESTIONS) {
+      s.appendChild(el("h2", "ov-title", T.questions));
+      s.appendChild(el("blockquote", "ct-questions", QUESTIONS));
+    } else s.appendChild(el("p", "tiny muted", T.noQuestions));
+    var b = claudeBox(T.propose, null, false);
+    b.querySelector("button").textContent = T.propose;
+    s.appendChild(b);
+    return s;
+  }
+
+  function dashboard() {
+    var v = data.values, wrap = el("div");
+    var lt = LEAD || (spec.kpis[0] || {}).object_type || "";
+    var note;
+    if (!v.months) note = fmt(T.periodAll, { tp: tp(lt), a: v.first_month ? monthLabel(v.first_month) : "—", b: v.last_month ? monthLabel(v.last_month) : "—" });
+    else note = fmt(v.previous_months ? T.periodNote : T.periodNoPrev, { tp: tp(lt), a: monthLabel(v.months[0]), b: monthLabel(v.months[v.months.length - 1]), n: v.months.length });
+    wrap.appendChild(el("p", "tiny muted ct-period-note", note));
+    if (spec.headline && spec.headline.length) {
+      var h = el("section", "ct-headline");
+      h.appendChild(el("h2", "ct-h", T.headline));
+      var g = el("div", "ct-kpis ct-kpis-big");
+      spec.headline.forEach(function (id) { var k = kpiById(id); if (k) g.appendChild(kpiCard(k, true)); });
+      h.appendChild(g); wrap.appendChild(h);
+    }
+    spec.sections.forEach(function (s, i) {
+      var sec = el("section", "ct-section");
+      var head = el("div", "ct-section-head");
+      head.appendChild(el("span", "ct-section-n", String(i + 1)));
+      var ht = el("div"); ht.appendChild(el("h2", "ct-h", s.question)); if (s.why) ht.appendChild(el("p", "tiny muted ct-why", s.why));
+      head.appendChild(ht); sec.appendChild(head);
+      if (s.missing) {
+        var m = el("div", "ct-missing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(s.missing)); sec.appendChild(m);
+      }
+      if (s.kpis.length) {
+        var g2 = el("div", "ct-kpis");
+        s.kpis.forEach(function (id) { var k = kpiById(id); if (k) g2.appendChild(kpiCard(k, false)); });
+        sec.appendChild(g2);
+      }
+      var vs = (v.sections.filter(function (x) { return x.id === s.id; })[0] || { charts: [] }).charts;
+      if (vs.length) {
+        var cg = el("div", "ct-charts");
+        vs.forEach(function (c) {
+          var box = el("figure", "ct-chart ct-chart-" + c.kind);
+          var k = kpiById(c.kpi);
+          var cap = el("figcaption"); cap.appendChild(el("span", "ct-chart-title", c.title || (k && k.name)));
+          var dl = dimLabel(c, k); if (dl) cap.appendChild(el("span", "tiny muted", " · " + dl));
+          box.appendChild(cap);
+          var area = el("div", "ct-chart-area"); area.dataset.chart = c.id; box.appendChild(area);
+          cg.appendChild(box);
+        });
+        sec.appendChild(cg);
+      }
+      wrap.appendChild(sec);
+    });
+    return wrap;
+  }
+
+  function dimLabel(c, k) {
+    var specChart = findChart(c.id); var d = specChart && specChart.dimension;
+    if (!d || c.kind === "trend") return "";
+    if (d.source === "attribute") return fmt(T.dimAttr, { a: d.attribute });
+    if (d.source === "related") return d.attribute ? fmt(T.dimRel, { a: d.attribute, t: d.object_type }) : fmt(T.dimRelId, { t: d.object_type });
+    if (d.source === "event_attribute") return fmt(T.dimEv, { a: (d.attributes || []).join(" / ") });
+    if (d.source === "activity") return T.dimAct;
+    return "";
+  }
+  function findChart(id) {
+    var out = null;
+    spec.sections.forEach(function (s) { s.charts.forEach(function (c) { if (c.id === id) out = c; }); });
+    return out;
+  }
+
+  function kpiCard(k, big) {
+    var r = data.values.kpis[k.id] || {};
+    var card = el("div", "ct-kpi" + (big ? " ct-kpi-big" : "") + (r.status ? " ct-" + r.status : ""));
+    var lab = el("div", "ct-kpi-label", k.name); if (k.description) lab.title = k.description; card.appendChild(lab);
+    if (r.issues) {
+      card.classList.add("ct-kpi-missing");
+      card.appendChild(el("div", "ct-kpi-value muted", T.noData));
+      var ul = el("ul", "tiny ct-issues"); r.issues.forEach(function (x) { ul.appendChild(el("li", "", x)); }); card.appendChild(ul);
+      return card;
+    }
+    card.appendChild(el("div", "ct-kpi-value", r.value === null || r.value === undefined ? "—" : value(k, r.value, r.currency)));
+    // confronto con il periodo precedente: verde se migliora, rosso se peggiora
+    if (r.previous !== null && r.previous !== undefined && r.value !== null && r.value !== undefined) {
+      var diff = r.value - r.previous, txt;
+      if (isPct(k)) txt = fmt(T.pp, { n: (Math.abs(diff) * 100).toLocaleString(LANG, { maximumFractionDigits: 1 }) });
+      else if (k.measure === "duration") txt = days(Math.abs(diff));
+      else txt = r.previous ? pct(Math.abs(diff / r.previous)) : (k.measure === "sum" ? money(Math.abs(diff), r.currency) : num(Math.abs(diff)));
+      var arrow = diff > 0 ? "▲ " : diff < 0 ? "▼ " : "= ";
+      var good = !r.better || diff === 0 ? "" : ((diff > 0) === (r.better === "higher") ? " ct-good" : " ct-bad");
+      card.appendChild(el("div", "tiny ct-delta" + good, fmt(T.vsPrev, { d: arrow + txt })));
+    }
+    var sub = subline(k, r);
+    if (sub) card.appendChild(el("div", "tiny muted ct-kpi-sub", sub));
+    var tt = targetText(k);
+    if (tt) {
+      var chip = el("div", "ct-target" + (r.status ? " ct-target-" + r.status : ""), tt);
+      if (r.status) chip.title = r.status === "ok" ? T.targetOk : T.targetKo;
+      if (k.target && k.target.reason) chip.title = (chip.title ? chip.title + " — " : "") + k.target.reason;
+      card.appendChild(chip);
+    }
+    return card;
+  }
+  function subline(k, r, cur) {
+    cur = cur || r.currency;
+    var t = k.object_type;
+    if (!r.den) return T.noValue;
+    if (k.measure === "share") return fmt(T.subShare, { n: num(r.num), d: num(r.den) + " " + tp(t, r.den) }) + (r.amount ? " · " + money(r.amount, cur) : "");
+    if (k.measure === "count") return fmt(T.subCount, { d: num(r.den) + " " + tp(t, r.den) });
+    if (k.measure === "sum") return fmt(T.subSum, { n: num(r.num) + " " + tp(t, r.num) });
+    if (k.measure === "share_amount") return fmt(T.subShareAmount, { a: money(r.amount, cur), b: money(r.amount_total, cur) });
+    if (k.measure === "duration") return fmt(T.subDuration, { n: num(r.measured || 0) + " " + tp(t, r.measured || 0) });
+    return "";
+  }
+
+  // ---------- grafici (SVG e HTML, nessuna libreria) ----------
+  function drawCharts() {
+    data.values.sections.forEach(function (s) {
+      s.charts.forEach(function (c) {
+        var area = document.querySelector('[data-chart="' + c.id + '"]'); if (!area) return;
+        area.textContent = "";
+        var k = kpiById(c.kpi);
+        if (c.issues) { var ul = el("ul", "tiny ct-issues"); c.issues.forEach(function (x) { ul.appendChild(el("li", "", x)); }); area.appendChild(el("div", "ct-kpi-value muted", T.noData)); area.appendChild(ul); return; }
+        var cur = (data.values.kpis[c.kpi] || {}).currency;
+        if (c.kind === "trend") trend(area, c, k, cur);
+        else if (c.kind === "bars") barsChart(area, c, k, cur);
+        else if (c.kind === "donut") donut(area, c, k, cur);
+        else tableChart(area, c, k, cur);
+      });
+    });
+  }
+  var resizeTimer = null;
+  window.addEventListener("resize", function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(function () { if (data && data.spec && !editing) drawCharts(); }, 200); });
+
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs, text) { var e = document.createElementNS(SVGNS, tag); for (var a in attrs) e.setAttribute(a, attrs[a]); if (text !== undefined) e.textContent = text; return e; }
+
+  function trend(area, c, k, cur) {
+    var pts = c.points || [];
+    if (!pts.some(function (p) { return p.den; })) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
+    var W = Math.max(area.clientWidth || 600, pts.length * 46), H = 220, L = 54, R = 14, TOP = 14, B = 30;
+    var vals = pts.map(function (p) { return p.value; }).filter(function (x) { return x !== null && x !== undefined; });
+    var target = c.target;
+    var hi = Math.max.apply(null, vals.concat(target !== null && target !== undefined ? [target] : []));
+    var lo = Math.min.apply(null, vals.concat(target !== null && target !== undefined ? [target] : []).concat(k.measure === "duration" ? [] : [0]));
+    if (hi === lo) { hi = hi + (Math.abs(hi) || 1) * 0.5; lo = lo - (k.measure === "duration" ? (Math.abs(lo) || 1) * 0.5 : 0); }
+    hi = hi + (hi - lo) * 0.08;
+    var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": c.title || k.name, "class": "ct-svg" });
+    function x(i) { return L + (pts.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (pts.length - 1)); }
+    function y(v) { return TOP + (hi - v) * (H - TOP - B) / (hi - lo); }
+    for (var g = 0; g <= 3; g++) {
+      var gv = lo + (hi - lo) * g / 3, gy = y(gv);
+      svg.appendChild(svgEl("line", { x1: L, x2: W - R, y1: gy, y2: gy, "class": "ct-grid" }));
+      svg.appendChild(svgEl("text", { x: L - 6, y: gy + 4, "text-anchor": "end", "class": "ct-axis" }, value(k, gv, cur)));
+    }
+    if (target !== null && target !== undefined) {
+      var ty = y(target);
+      svg.appendChild(svgEl("line", { x1: L, x2: W - R, y1: ty, y2: ty, "class": "ct-target-line" }));
+      svg.appendChild(svgEl("text", { x: W - R, y: ty - 5, "text-anchor": "end", "class": "ct-axis ct-target-label" }, T.targetLine + " " + value(k, target, cur)));
+    }
+    var d = "", pen = false;
+    pts.forEach(function (p, i) {
+      if (p.value === null || p.value === undefined) { pen = false; return; }
+      d += (pen ? " L" : " M") + x(i).toFixed(1) + " " + y(p.value).toFixed(1); pen = true;
+    });
+    svg.appendChild(svgEl("path", { d: d.trim(), "class": "ct-line" }));
+    var step = Math.ceil(pts.length / Math.max(1, Math.floor((W - L - R) / 52)));
+    pts.forEach(function (p, i) {
+      if (i % step === 0 || i === pts.length - 1) svg.appendChild(svgEl("text", { x: x(i), y: H - 8, "text-anchor": "middle", "class": "ct-axis" }, monthLabel(p.month)));
+      if (p.value === null || p.value === undefined) return;
+      var bad = target !== null && target !== undefined && k.target && ((k.target.op === ">=" && p.value < target) || (k.target.op === "<=" && p.value > target));
+      var dot = svgEl("circle", { cx: x(i), cy: y(p.value), r: 4.5, "class": "ct-dot" + (bad ? " ct-dot-bad" : ""), tabindex: 0 });
+      dot.appendChild(svgEl("title", {}, fmt(T.trendTip, { m: monthLabel(p.month), v: value(k, p.value, cur), s: subline(k, p, cur) })));
+      svg.appendChild(dot);
+    });
+    var sc = el("div", "ov-scroll"); sc.appendChild(svg); area.appendChild(sc);
+  }
+
+  function groupLabel(x) { return x.label === "" ? T.empty : x.label; }
+  function violates(k, v) {
+    var t = k.target; if (!t || v === null || v === undefined) return false;
+    var g = Number(t.value); if (isNaN(g)) return false; if (isPct(k) && g > 1) g /= 100;
+    return (t.op === ">=" && v < g) || (t.op === "<=" && v > g);
+  }
+  function barsChart(area, c, k, cur) {
+    var items = c.items || [];
+    if (!items.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
+    var max = Math.max.apply(null, items.map(function (x) { return Math.abs(x.value || 0); }).concat([isPct(k) ? 0 : 1e-9]));
+    var list = el("ol", "ct-hbars");
+    items.forEach(function (x) {
+      var li = el("li", "ct-hbar"); li.title = groupLabel(x) + ": " + value(k, x.value, cur) + " · " + subline(k, x, cur);
+      var lab = el("span", "ct-hbar-label", groupLabel(x)); lab.title = groupLabel(x); li.appendChild(lab);
+      var track = el("span", "ct-hbar-track"), fill = el("span", "ct-hbar-fill" + (violates(k, x.value) ? " ct-bad-fill" : ""));
+      fill.style.width = (max ? Math.max(1.5, 100 * Math.abs(x.value || 0) / max) : 0) + "%"; track.appendChild(fill); li.appendChild(track);
+      var val = el("span", "ct-hbar-value"); val.appendChild(el("strong", "", value(k, x.value, cur)));
+      val.appendChild(el("span", "tiny muted", " " + subline(k, x, cur))); li.appendChild(val);
+      list.appendChild(li);
+    });
+    area.appendChild(list);
+    if (c.others) area.appendChild(el("p", "tiny muted", fmt(T.others, { n: num(c.others) })));
+  }
+  function tableChart(area, c, k, cur) {
+    var items = c.items || [];
+    if (!items.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
+    var t = el("table", "ov-acts ct-table"), hr = el("tr");
+    var showValue = k.measure !== "count";   // per un conteggio il valore e' gia' la colonna «Colpiti»
+    var cols = [T.colGroup, cap(tp(k.object_type)), T.colHit].concat(showValue ? [k.name] : []);
+    if (k.amount && k.measure !== "sum") cols.push(T.colAmount);
+    cols.forEach(function (h, i) { hr.appendChild(el("th", i ? "num" : "", h)); });
+    var th = el("thead"); th.appendChild(hr); t.appendChild(th);
+    var tb = el("tbody");
+    items.forEach(function (x) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "", groupLabel(x)));
+      tr.appendChild(el("td", "num", num(x.den)));
+      tr.appendChild(el("td", "num", num(x.num)));
+      if (showValue) tr.appendChild(el("td", "num strong" + (violates(k, x.value) ? " ct-bad" : ""), value(k, x.value, cur)));
+      if (k.amount && k.measure !== "sum") tr.appendChild(el("td", "num", money(x.amount, cur)));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    var sc = el("div", "ov-scroll"); sc.appendChild(t); area.appendChild(sc);
+    if (c.others) area.appendChild(el("p", "tiny muted", fmt(T.others, { n: num(c.others) })));
+  }
+  function donut(area, c, k, cur) {
+    var items = c.items || [];
+    var total = items.reduce(function (a, x) { return a + x.value; }, 0);
+    if (!total) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
+    var box = el("div", "ct-donut");
+    var S = 168, R = 70, r = 44, cx = S / 2, cy = S / 2;
+    var svg = svgEl("svg", { width: S, height: S, viewBox: "0 0 " + S + " " + S, role: "img", "aria-label": c.title || k.name });
+    var a0 = -Math.PI / 2;
+    items.forEach(function (x, i) {
+      var color = x.rest ? "var(--border)" : x.other ? "#9aa1ad" : COLORS[i % COLORS.length];
+      x._color = color;
+      var frac = x.value / total, a1 = a0 + frac * 2 * Math.PI;
+      var path;
+      if (frac >= 0.9999) {
+        path = svgEl("circle", { cx: cx, cy: cy, r: (R + r) / 2, fill: "none", stroke: color, "stroke-width": R - r });
+      } else {
+        var large = frac > 0.5 ? 1 : 0;
+        var p = ["M", cx + R * Math.cos(a0), cy + R * Math.sin(a0), "A", R, R, 0, large, 1, cx + R * Math.cos(a1), cy + R * Math.sin(a1),
+                 "L", cx + r * Math.cos(a1), cy + r * Math.sin(a1), "A", r, r, 0, large, 0, cx + r * Math.cos(a0), cy + r * Math.sin(a0), "Z"].join(" ");
+        path = svgEl("path", { d: p, fill: color });
+      }
+      path.appendChild(svgEl("title", {}, (x.rest ? T.rest : x.other ? T.other : groupLabel(x)) + ": " + (c.amount ? money(x.value, cur) : num(x.value)) + " · " + pct(frac)));
+      svg.appendChild(path);
+      a0 = a1;
+    });
+    svg.appendChild(svgEl("text", { x: cx, y: cy + 2, "text-anchor": "middle", "class": "ct-donut-total" }, c.amount ? money(total, cur) : num(total)));
+    svg.appendChild(svgEl("text", { x: cx, y: cy + 18, "text-anchor": "middle", "class": "ct-axis" }, c.amount ? "" : tp(k.object_type, total)));
+    box.appendChild(svg);
+    var leg = el("ul", "ct-legend");
+    items.forEach(function (x) {
+      var li = el("li"); var sw = el("span", "swatch"); sw.style.background = x._color; li.appendChild(sw);
+      li.appendChild(el("span", "ct-legend-label", x.rest ? T.rest : x.other ? T.other : groupLabel(x)));
+      li.appendChild(el("span", "ct-legend-value", (c.amount ? money(x.value, cur) : num(x.value)) + " · " + pct(x.value / total, 0)));
+      leg.appendChild(li);
+    });
+    box.appendChild(leg);
+    area.appendChild(box);
+  }
+
+  // ---------- editor delle definizioni ----------
+  var CAT = null;
+  function typeInfo(t) { return (data.catalog.types.filter(function (x) { return x.name === t; })[0]) || { attributes: [], activities: [] }; }
+  function eventAttrNames() {
+    var s = {}; Object.keys(data.catalog.event_attributes).forEach(function (a) { data.catalog.event_attributes[a].forEach(function (x) { s[x.name] = 1; }); });
+    return Object.keys(s).sort();
+  }
+  function changed() { dirty = true; renderStatus(); }
+  function field(label, control, cls) { var f = el("label", "ct-field" + (cls ? " " + cls : "")); f.appendChild(el("span", "ct-field-label", label)); f.appendChild(control); return f; }
+  function input(val, onChange, type) {
+    var i = el("input"); i.type = type || "text"; i.value = val === null || val === undefined ? "" : val;
+    i.addEventListener("input", function () { onChange(type === "number" ? (i.value === "" ? null : Number(i.value)) : i.value); changed(); });
+    return i;
+  }
+  function textarea(val, onChange, rows) {
+    var i = el("textarea"); i.rows = rows || 2; i.value = val || "";
+    i.addEventListener("input", function () { onChange(i.value); changed(); }); return i;
+  }
+  function select(options, val, onChange, rerender) {
+    var s = el("select");
+    options.forEach(function (o) { var op = el("option", "", o[1]); op.value = o[0]; op.selected = String(o[0]) === String(val === null || val === undefined ? "" : val); s.appendChild(op); });
+    s.addEventListener("change", function () { onChange(s.value); changed(); if (rerender) rerender(); });
+    return s;
+  }
+  function checkbox(label, val, onChange) {
+    var l = el("label", "ct-check"); var c = el("input"); c.type = "checkbox"; c.checked = !!val;
+    c.addEventListener("change", function () { onChange(c.checked); changed(); });
+    l.appendChild(c); l.appendChild(document.createTextNode(" " + label)); return l;
+  }
+  function multiCheck(options, chosen, onChange) {
+    var box = el("div", "ct-multi"); chosen = chosen || [];
+    options.forEach(function (o) {
+      var name = o[0];
+      box.appendChild(checkbox(o[1], chosen.indexOf(name) >= 0, function (on) {
+        var cur = chosen.filter(function (x) { return x !== name; }); if (on) cur.push(name); chosen = cur; onChange(cur);
+      }));
+    });
+    return box;
+  }
+  function activityOptions(t) {
+    var mine = typeInfo(t).activities.map(function (a) { return a.name; });
+    var all = data.catalog.activities.slice().sort(function (a, b) { return (mine.indexOf(a) < 0) - (mine.indexOf(b) < 0) || a.localeCompare(b); });
+    return all.map(function (a) { var n = typeInfo(t).activities.filter(function (x) { return x.name === a; })[0]; return [a, a + (n ? " (" + num(n.objects) + ")" : "")]; });
+  }
+  function attrOptions(t, kind, blank) {
+    var out = blank ? [["", T.none]] : [];
+    typeInfo(t).attributes.forEach(function (a) { if (!kind || a.kind === kind) out.push([a.name, a.name + " · " + (a.examples || []).slice(0, 3).join(", ")]); });
+    return out;
+  }
+  function typeOptions() { return data.catalog.types.map(function (x) { return [x.name, x.name]; }); }
+
+  // condizione (ricorsiva). holder[key] e' la condizione; t il tipo di oggetto del KPI
+  function condEditor(holder, key, t, root, redraw) {
+    var c = holder[key];
+    var box = el("div", "ct-cond");
+    var opts = (root ? [["", T.cNone]] : []).concat([["activity", T.cActivity], ["user", T.cUser], ["attribute", T.cAttribute],
+      ["duration", T.cDuration], ["any", T.cAny], ["all", T.cAll], ["not", T.cNot]]);
+    box.appendChild(select(opts, c ? c.op : "", function (v) {
+      if (!v) holder[key] = null;
+      else if (v === "any" || v === "all") holder[key] = { op: v, items: c && c.op !== "any" && c.op !== "all" && c.op ? [c] : (c && c.items) || [] };
+      else if (v === "not") holder[key] = { op: "not", item: c && c.op ? c : null };
+      else if (v === "activity") holder[key] = { op: "activity", activities: (c && c.activities) || [], related: false };
+      else if (v === "user") holder[key] = { op: "user", activities: (c && c.activities) || [], attributes: [], exclude: ["SYSTEM*", "BATCH*"], related: false };
+      else if (v === "attribute") holder[key] = { op: "attribute", attribute: "", cmp: "in", values: [] };
+      else if (v === "duration") holder[key] = { op: "duration", from: { activity: "", which: "first" }, to: { activity: "", which: "first" }, cmp: "gt", days: 0 };
+    }, redraw));
+    c = holder[key];
+    if (!c) return box;
+    if (c.op === "activity" || c.op === "user") {
+      box.appendChild(multiCheck(activityOptions(t), c.activities, function (v) { c.activities = v; }));
+      if (c.op === "user") {
+        box.appendChild(el("p", "tiny muted", T.anyActivity));
+        box.appendChild(field(T.userAttrs, multiCheck(eventAttrNames().map(function (a) { return [a, a]; }), c.attributes, function (v) { c.attributes = v; })));
+        box.appendChild(field(T.exclude, input((c.exclude || []).join(", "), function (v) { c.exclude = v.split(",").map(function (x) { return x.trim(); }).filter(Boolean); })));
+      }
+      var row = el("div", "ct-row");
+      row.appendChild(checkbox(T.related, c.related, function (v) { c.related = v; }));
+      if (c.op === "activity") row.appendChild(field(T.minCount, input(c.min_count || 1, function (v) { c.min_count = v; }, "number"), "ct-narrow"));
+      box.appendChild(row);
+    } else if (c.op === "attribute") {
+      var r2 = el("div", "ct-row");
+      r2.appendChild(field(T.attribute, select(attrOptions(t, null, true), c.attribute, function (v) { c.attribute = v; })));
+      r2.appendChild(field("", select([["in", T.cmpIn], ["not_in", T.cmpNotIn], ["empty", T.cmpEmpty], ["not_empty", T.cmpNotEmpty],
+        ["gt", T.cmpGt], ["lt", T.cmpLt], ["ge", T.cmpGe], ["le", T.cmpLe]], c.cmp, function (v) { c.cmp = v; }, redraw)));
+      if (c.cmp !== "empty" && c.cmp !== "not_empty")
+        r2.appendChild(field(T.values, input((c.values || []).join(", "), function (v) { c.values = v.split(",").map(function (x) { return x.trim(); }).filter(Boolean); })));
+      box.appendChild(r2);
+    } else if (c.op === "duration") {
+      box.appendChild(pointEditor(c, "from", T.durFrom, t, redraw));
+      box.appendChild(pointEditor(c, "to", T.durTo, t, redraw));
+      var r3 = el("div", "ct-row");
+      r3.appendChild(field(T.durCmp, select([["gt", T.cmpGt], ["ge", T.cmpGe], ["lt", T.cmpLt], ["le", T.cmpLe]], c.cmp, function (v) { c.cmp = v; })));
+      r3.appendChild(field(T.daysLabel, input(c.days, function (v) { c.days = v; }, "number"), "ct-narrow"));
+      box.appendChild(r3);
+    } else if (c.op === "any" || c.op === "all") {
+      var list = el("div", "ct-cond-list");
+      c.items = c.items || [];
+      c.items.forEach(function (_, i) {
+        var item = el("div", "ct-cond-item");
+        item.appendChild(condEditor(c.items, i, t, false, redraw));
+        item.appendChild(button(T.remove, "link-btn", function () { c.items.splice(i, 1); changed(); redraw(); }));
+        list.appendChild(item);
+      });
+      box.appendChild(list);
+      box.appendChild(button(T.addCond, "link-btn", function () { c.items.push({ op: "activity", activities: [], related: false }); changed(); redraw(); }));
+    } else if (c.op === "not") {
+      var sub = condEditor(c, "item", t, false, redraw); sub.classList.add("ct-cond-inner"); box.appendChild(sub);
+    }
+    return box;
+  }
+  function pointEditor(holder, key, label, t, redraw) {
+    var p = holder[key] || (holder[key] = { activity: "", which: "first" });
+    var row = el("div", "ct-row ct-point");
+    row.appendChild(el("span", "ct-field-label ct-point-label", label));
+    var isDate = !!p.attribute;
+    row.appendChild(select([["activity", T.pActivity], ["date", T.pDate]], isDate ? "date" : "activity", function (v) {
+      holder[key] = v === "date" ? { attribute: "", plus_days_attribute: null } : { activity: "", which: "first" };
+    }, redraw));
+    if (!isDate) {
+      row.appendChild(select([["", T.none]].concat(activityOptions(t)), p.activity, function (v) { p.activity = v; }));
+      row.appendChild(select([["first", T.first], ["last", T.last]], p.which || "first", function (v) { p.which = v; }));
+      row.appendChild(checkbox(T.related, p.related, function (v) { p.related = v; }));
+    } else {
+      row.appendChild(select(attrOptions(t, "date", true), p.attribute, function (v) { p.attribute = v; }));
+      row.appendChild(field(T.plusDays, select(attrOptions(t, "number", true), p.plus_days_attribute || "", function (v) { p.plus_days_attribute = v || null; })));
+      row.appendChild(field(T.plusConst, input(p.plus_days || "", function (v) { p.plus_days = v; }, "number"), "ct-narrow"));
+    }
+    return row;
+  }
+
+  function kpiEditor(k, sec, redraw) {
+    var box = el("div", "ct-ed-kpi");
+    var r = data.values && data.values.kpis[k.id];
+    var head = el("div", "ct-row");
+    head.appendChild(field(T.kpiName, input(k.name, function (v) { k.name = v; }), "ct-grow"));
+    head.appendChild(checkbox(T.kpiHeadline, (spec.headline || []).indexOf(k.id) >= 0, function (on) {
+      spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; }); if (on) spec.headline.push(k.id);
+    }));
+    head.appendChild(button(T.delKpi, "link-btn ct-danger", function () {
+      if (!confirm(T.confirmDelete)) return;
+      spec.kpis = spec.kpis.filter(function (x) { return x.id !== k.id; });
+      spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; });
+      spec.sections.forEach(function (s) { s.kpis = s.kpis.filter(function (x) { return x !== k.id; }); s.charts = s.charts.filter(function (c) { return c.kpi !== k.id; }); });
+      changed(); redraw();
+    }));
+    box.appendChild(head);
+    if (r && r.issues) { var ul = el("ul", "tiny ct-issues"); ul.appendChild(el("li", "", T.kpiIssues)); r.issues.forEach(function (x) { ul.appendChild(el("li", "", x)); }); box.appendChild(ul); }
+    box.appendChild(field(T.kpiDesc, textarea(k.description, function (v) { k.description = v; })));
+    var r1 = el("div", "ct-row");
+    r1.appendChild(field(T.kpiType, select(typeOptions(), k.object_type, function (v) { k.object_type = v; }, redraw)));
+    r1.appendChild(field(T.kpiMeasure, select([["share", T.mShare], ["count", T.mCount], ["sum", T.mSum], ["share_amount", T.mShareAmount], ["duration", T.mDuration]],
+      k.measure, function (v) { k.measure = v; if (v === "duration" && !k.duration) k.duration = { from: { activity: "", which: "first" }, to: { activity: "", which: "last" }, stat: "median" }; }, redraw)));
+    if (k.measure !== "duration" && k.measure !== "count") {
+      r1.appendChild(field(T.kpiAmount, select(attrOptions(k.object_type, "number", true), k.amount || "", function (v) { k.amount = v || null; })));
+      r1.appendChild(field(T.kpiCurrency, select(attrOptions(k.object_type, "text", true), k.currency || "", function (v) { k.currency = v || null; })));
+    }
+    box.appendChild(r1);
+    if (k.measure === "duration") {
+      k.duration = k.duration || { from: {}, to: {}, stat: "median" };
+      box.appendChild(pointEditor(k.duration, "from", T.durFrom, k.object_type, redraw));
+      box.appendChild(pointEditor(k.duration, "to", T.durTo, k.object_type, redraw));
+      box.appendChild(field(T.durStat, select([["median", T.sMedian], ["mean", T.sMean], ["p90", T.sP90]], k.duration.stat || "median", function (v) { k.duration.stat = v; }), "ct-narrow"));
+    }
+    var r2 = el("div", "ct-row");
+    k.target = k.target || null;
+    r2.appendChild(field(T.kpiTarget, select([["", T.noTarget], [">=", "≥"], ["<=", "≤"]], k.target ? k.target.op : "", function (v) {
+      if (!v) k.target = null; else k.target = Object.assign({}, k.target || {}, { op: v });
+    }, redraw), "ct-narrow"));
+    if (k.target) {
+      r2.appendChild(field(isPct(k) ? T.targetUnitPct : k.measure === "duration" ? T.targetUnitDays : T.colValue,
+        input(k.target.value, function (v) { k.target.value = v; }, "number"), "ct-narrow"));
+    } else {
+      r2.appendChild(field(T.kpiBetter, select([["", T.none], ["higher", T.higher], ["lower", T.lower]], k.better || "", function (v) { k.better = v || null; }), "ct-narrow"));
+    }
+    box.appendChild(r2);
+    var pop = el("div", "ct-cond-block"); pop.appendChild(el("div", "ct-field-label", T.population));
+    pop.appendChild(condEditor(k, "population", k.object_type, true, redraw)); box.appendChild(pop);
+    var cond = el("div", "ct-cond-block"); cond.appendChild(el("div", "ct-field-label", T.condition));
+    cond.appendChild(condEditor(k, "condition", k.object_type, true, redraw)); box.appendChild(cond);
+    return box;
+  }
+
+  function chartEditor(c, sec, redraw) {
+    var box = el("div", "ct-ed-chart");
+    var r1 = el("div", "ct-row");
+    r1.appendChild(field(T.chartKind, select([["trend", T.kTrend], ["bars", T.kBars], ["donut", T.kDonut], ["table", T.kTable]], c.kind, function (v) {
+      c.kind = v; if ((v === "bars" || v === "table") && !c.dimension) c.dimension = { source: "attribute", attribute: "" };
+    }, redraw)));
+    r1.appendChild(field(T.chartKpi, select(spec.kpis.map(function (k) { return [k.id, k.name]; }), c.kpi, function (v) { c.kpi = v; }, redraw)));
+    r1.appendChild(field(T.chartTitle, input(c.title, function (v) { c.title = v; }), "ct-grow"));
+    r1.appendChild(button(T.delChart, "link-btn ct-danger", function () { sec.charts = sec.charts.filter(function (x) { return x !== c; }); changed(); redraw(); }));
+    box.appendChild(r1);
+    var k = kpiById(c.kpi) || {};
+    if (c.kind === "trend") return box;
+    var mode = c.categories && c.categories.length ? "cats" : c.dimension ? (c.dimension.source || "attribute") : "none";
+    var srcOpts = [["attribute", T.dAttr], ["related", T.dRel], ["event_attribute", T.dEv], ["activity", T.dAct]];
+    if (c.kind === "donut") srcOpts = [["none", T.dNone], ["cats", T.dCats]].concat(srcOpts);
+    box.appendChild(field(T.dimension, select(srcOpts, mode, function (v) {
+      c.categories = v === "cats" ? (c.categories && c.categories.length ? c.categories : [{ label: "", condition: { op: "activity", activities: [] } }]) : undefined;
+      if (v === "none" || v === "cats") delete c.dimension;
+      else if (v === "attribute") c.dimension = { source: v, attribute: "" };
+      else if (v === "related") c.dimension = { source: v, object_type: "", attribute: "" };
+      else if (v === "event_attribute") c.dimension = { source: v, attributes: [], activities: [], related: false };
+      else c.dimension = { source: v, activities: [], related: false };
+    }, redraw)));
+    var d = c.dimension;
+    if (mode === "cats") {
+      box.appendChild(el("p", "tiny muted", T.catHelp));
+      c.categories.forEach(function (cat, i) {
+        var cb = el("div", "ct-cat");
+        var rr = el("div", "ct-row");
+        rr.appendChild(field(T.catLabel, input(cat.label, function (v) { cat.label = v; }), "ct-grow"));
+        rr.appendChild(button(T.remove, "link-btn", function () { c.categories.splice(i, 1); changed(); redraw(); }));
+        cb.appendChild(rr);
+        cb.appendChild(condEditor(cat, "condition", k.object_type, false, redraw));
+        box.appendChild(cb);
+      });
+      box.appendChild(button(T.addCat, "link-btn", function () { c.categories.push({ label: "", condition: { op: "activity", activities: [] } }); changed(); redraw(); }));
+    } else if (d && d.source === "attribute") {
+      box.appendChild(field(T.attribute, select(attrOptions(k.object_type, null, true), d.attribute, function (v) { d.attribute = v; })));
+    } else if (d && d.source === "related") {
+      var rr2 = el("div", "ct-row");
+      rr2.appendChild(field(T.relType, select([["", T.none]].concat(typeOptions()), d.object_type, function (v) { d.object_type = v; d.attribute = ""; }, redraw)));
+      if (d.object_type) rr2.appendChild(field(T.relAttr, select(attrOptions(d.object_type, null, true), d.attribute || "", function (v) { d.attribute = v; })));
+      box.appendChild(rr2);
+    } else if (d && (d.source === "event_attribute" || d.source === "activity")) {
+      if (d.source === "event_attribute") box.appendChild(field(T.userAttrs, multiCheck(eventAttrNames().map(function (a) { return [a, a]; }), d.attributes, function (v) { d.attributes = v; })));
+      box.appendChild(multiCheck(activityOptions(k.object_type), d.activities, function (v) { d.activities = v; }));
+      box.appendChild(checkbox(T.related, d.related, function (v) { d.related = v; }));
+    }
+    return box;
+  }
+
+  function newId(prefix, list) { var i = list.length + 1; while (list.some(function (x) { return x.id === prefix + i; })) i++; return prefix + i; }
+
+  function editor() {
+    var wrap = el("div", "ct-editor");
+    function redraw() { var y = window.scrollY; var b = document.getElementById("ct-body"); b.textContent = ""; b.appendChild(editor()); window.scrollTo(0, y); }
+    wrap.appendChild(el("p", "tiny muted", T.edIntro));
+    var rev = el("details", "ct-revise"); rev.appendChild(el("summary", "", "✦ " + T.reviseTitle));
+    rev.appendChild(claudeBox(T.reviseTitle, T.reviseHelp, true));
+    var regen = el("div", "ct-regen"); regen.appendChild(el("strong", "tiny", T.regenerate));
+    var rb = claudeBox(T.regenerate, T.regenerateHelp, false); regen.appendChild(rb); rev.appendChild(regen);
+    wrap.appendChild(rev);
+    spec.sections.forEach(function (s, si) {
+      var sec = el("section", "ct-ed-section");
+      var head = el("div", "ct-row");
+      head.appendChild(el("span", "ct-section-n", String(si + 1)));
+      head.appendChild(field(T.section, input(s.question, function (v) { s.question = v; }), "ct-grow"));
+      head.appendChild(button(T.delSection, "link-btn ct-danger", function () {
+        spec.sections.splice(si, 1);
+        var used = {}; spec.sections.forEach(function (x) { x.kpis.forEach(function (id) { used[id] = 1; }); });
+        spec.kpis = spec.kpis.filter(function (k) { return used[k.id]; });
+        spec.headline = (spec.headline || []).filter(function (id) { return used[id]; });
+        changed(); redraw();
+      }));
+      sec.appendChild(head);
+      sec.appendChild(field(T.why, textarea(s.why, function (v) { s.why = v; }, 2)));
+      sec.appendChild(field(T.missingField, textarea(s.missing, function (v) { s.missing = v; }, 2)));
+      s.kpis.forEach(function (id) { var k = kpiById(id); if (k) sec.appendChild(kpiEditor(k, s, redraw)); });
+      sec.appendChild(button(T.addKpi, "secondary ct-add", function () {
+        var id = newId("k", spec.kpis);
+        spec.kpis.push({ id: id, name: T.newKpi, description: "", object_type: LEAD || (data.catalog.types[0] || {}).name, measure: "share",
+                         population: null, condition: { op: "activity", activities: [], related: false }, target: null });
+        s.kpis.push(id); changed(); redraw();
+      }));
+      s.charts.forEach(function (c) { sec.appendChild(chartEditor(c, s, redraw)); });
+      if (spec.kpis.length) sec.appendChild(button(T.addChart, "secondary ct-add", function () {
+        s.charts.push({ id: newId(s.id + "c", s.charts), kind: "trend", kpi: s.kpis[0] || spec.kpis[0].id, title: "" }); changed(); redraw();
+      }));
+      wrap.appendChild(sec);
+    });
+    wrap.appendChild(button(T.addSection, "secondary ct-add", function () {
+      spec.sections.push({ id: newId("s", spec.sections), question: T.newSection, why: "", missing: "", kpis: [], charts: [] }); changed(); redraw();
+    }));
+    return wrap;
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

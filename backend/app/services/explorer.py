@@ -69,8 +69,12 @@ class ExplorerModel:
         self.event_count = 0
         relations: list[list[tuple[str, str, str]]] = []   # per evento: (oggetto, tipo, qualificatore)
         self.event_times: list[float] = []
+        # attributi di ogni evento (es. l'utente che l'ha fatto), per la Control Tower
+        self.event_attrs: list[dict[str, str]] = []
         for idx, ev in enumerate(ocel.get("events", [])):
             self.event_count += 1
+            self.event_attrs.append({a["name"]: str(a["value"]) for a in ev.get("attributes") or []
+                                     if a.get("name") and a.get("value") not in (None, "")})
             ts = _epoch(ev.get("time", ""))
             act = ev.get("type", "")
             seen = set()
