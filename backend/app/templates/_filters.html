@@ -1,0 +1,33 @@
+{# Filtri per attributo dell'analisi (Process Explorer, Process Overview); la logica e' in static/filters.js.
+   Variabile: filters_class (classi del contenitore, facoltativa). #}
+<div class="flt {{ filters_class or '' }}" id="flt">
+  <div class="side-title">{{ _("Filtri") }}</div>
+  <div class="flt-chips" id="flt-chips"></div>
+  <details class="flt-add" id="flt-add">
+    <summary class="tiny">{{ _("Aggiungi un filtro") }}</summary>
+    <label class="tiny">{{ _("Attributo") }}
+      <select id="flt-attr"></select>
+    </label>
+    <input type="search" id="flt-search" class="list-search" placeholder="{{ _("Cerca un valore") }}" aria-label="{{ _("Cerca un valore") }}">
+    <ul class="check-list flt-values" id="flt-values"></ul>
+    <p class="tiny muted" id="flt-hint"></p>
+    <button type="button" class="primary" id="flt-apply" disabled>{{ _("Applica il filtro") }}</button>
+  </details>
+  <p class="tiny muted flt-note">{{ _("Con un filtro attivo, grafo, tempi e varianti valgono solo per i casi filtrati e per gli oggetti collegati a loro.") }}</p>
+</div>
+<script src="/static/filters.js?v={{ static_version }}"></script>
+<script>
+var FLT_T = {
+  events: {{ _("Eventi")|tojson }},
+  none: {{ _("Nessun filtro: tutti i casi.")|tojson }},
+  more: {{ _("e altri {n}")|tojson }},
+  remove: {{ _("Togli il filtro")|tojson }},
+  clear: {{ _("Togli tutti")|tojson }},
+  narrow: {{ _("{n} valori: scrivi per restringere la ricerca.")|tojson }},
+  noMatch: {{ _("Nessun valore trovato.")|tojson }},
+  hintObject: {{ _("Oggetti {t} con questo valore di {a} ({d} valori diversi).")|tojson }},
+  hintEvent: {{ _("Oggetti collegati agli eventi con questo valore di {a} ({d} valori diversi).")|tojson }},
+  chosen: {{ _("{n} scelti")|tojson }},
+  chosen1: {{ _("1 scelto")|tojson }}
+};
+</script>

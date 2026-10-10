@@ -34,8 +34,8 @@ PALETTE = ["#3b63e0", "#e07b39", "#1b9e77", "#c2408f", "#8c6bd6", "#c9a227", "#2
 START = "__start__"
 END = "__end__"
 
-_CACHE: dict[tuple[str, float], "ExplorerModel"] = {}
-_CACHE_MAX = 4
+_CACHE: dict[tuple, "ExplorerModel"] = {}
+_CACHE_MAX = 6
 
 
 def _epoch(raw: str) -> float:
@@ -48,7 +48,10 @@ def _epoch(raw: str) -> float:
 class ExplorerModel:
     """Il log ridotto a cio' che serve al grafo: per ogni oggetto la sequenza (data, attivita', evento)."""
 
-    def __init__(self, ocel: dict):
+    def __init__(self, ocel: dict, colors: dict[str, str] | None = None, hubs: set[str] | None = None):
+        """colors, hubs: quelli del dataset intero, per un modello filtrato (stessi colori e stessi tipi
+        trasversali anche quando restano pochi oggetti)."""
+        self._hubs = hubs
         type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
         self.type_of = type_of
         # attributi degli oggetti (ultimo valore), per filtri come «tipo documento = fattura»
@@ -94,7 +97,7 @@ class ExplorerModel:
         self.sequences_by_type_index = {oid: seq for t in self.sequences_by_type.values() for oid, seq in t}
 
         self.types = sorted(self.object_counts, key=lambda t: (-self.object_counts[t], t))
-        self.colors = {t: PALETTE[i % len(PALETTE)] for i, t in enumerate(self.types)}
+        self.colors = {t: (colors or {}).get(t) or PALETTE[i % len(PALETTE)] for i, t in enumerate(self.types)}
         self.with_events = {t: len(self.sequences_by_type.get(t, [])) for t in self.types}
         self.related_events = {t: len(set().union(*[e for (tt, _), e in self.events_by_type_act.items() if tt == t]))
                                for t in self.types}
@@ -124,6 +127,8 @@ class ExplorerModel:
     def is_hub(self, t: str) -> bool:
         """Tipo «trasversale» (cliente, fornitore, materiale...): pochi oggetti, ognuno in moltissimi eventi di
         documenti diversi. La sua linea collega eventi di documenti diversi e attraversa tutto il grafo."""
+        if self._hubs is not None:
+            return t in self._hubs
         return self.avg_events(t) >= 8 and self.with_events[t] * 4 <= self.related_events[t]
 
     def default_types(self, preferred: list[str] | None = None) -> list[str]:
@@ -148,7 +153,22 @@ class ExplorerModel:
         return sorted({act for _, seq in self.sequences_by_type.get(t, []) for _, act, idx in seq if idx in own})
 
 
-def load_model(path: str | Path) -> ExplorerModel:
+def load_model(path: str | Path, filters: list[dict] | None = None) -> ExplorerModel:
+    """Modello del dataset, eventualmente filtrato per attributo (ocel_filter): in cache per file e filtri."""
+    from app.services import ocel_filter
+    filters = ocel_filter.clean(filters)
+    if filters:
+        base = load_model(path)
+        path = Path(path)
+        key = (str(path.resolve()), path.stat().st_mtime, json.dumps(filters, sort_keys=True))
+        model = _CACHE.get(key)
+        if model is None:
+            hubs = {t for t in base.types if base.is_hub(t)}
+            model = ExplorerModel(ocel_filter.apply(ocel_filter.load_raw(path), filters, hubs), base.colors, hubs)
+            if len(_CACHE) >= _CACHE_MAX:
+                _CACHE.pop(next(iter(_CACHE)))
+            _CACHE[key] = model
+        return model
     path = Path(path)
     key = (str(path.resolve()), path.stat().st_mtime)
     model = _CACHE.get(key)

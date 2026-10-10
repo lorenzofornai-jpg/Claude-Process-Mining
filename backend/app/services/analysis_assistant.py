@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 from app.config import EXPLAIN_MODEL
+from app.services import data_query
 from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
 
 MAX_OUTPUT_TOKENS = 2000
@@ -46,6 +47,16 @@ nome di una linea la si vede da sola. Tipi «trasversali» (es. cliente): pochi 
 documenti diversi; di base la linea passa solo dagli eventi propri, un interruttore la mostra su tutti.
 Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi.
 
+Filtri (in Process Explorer e Process Overview, pannello ui_labels.filters): l'utente può limitare l'analisi ai
+casi con un valore di attributo (es. gli ordini di un cliente, gli eventi con un certo motivo). "filters" nei DATI
+dice quali filtri sono attivi: tutti i numeri della pagina valgono solo per quei casi; dillo quando rispondi.
+
+Dati: con query_rows e compare_columns leggi il dataset (con gli stessi filtri della pagina) in sola lettura. Tabelle:
+una per tipo di oggetto (id, attributi, events, first, last, duration_days, activities = attività in ordine) e
+"events" (id, activity, time, objects, attributi dell'evento). Usale quando la risposta richiede numeri o elenchi che
+la pagina non mostra (es. quali ordini di un cliente sono ancora aperti, quanti oggetti hanno un'attività); fai poche
+interrogazioni mirate e cita i numeri.
+
 Il dataset si prepara nel modulo Ingestion (Data Engineer): passo «Oggetti di business» (quali oggetti e con che
 nome), «Revisione mapping» (eventi, attività, collegamenti). Lì si correggono nomi, oggetti e collegamenti:
 nell'analisi i nomi non si cambiano.
@@ -57,7 +68,8 @@ Cosa fare:
   perché sono stati scelti), numeri della pagina, contesto del processo e obiettivo misurabile. Per spiegare cos'è
   un oggetto o un'attività unisci la provenienza alle tue conoscenze del sistema sorgente (es. tabelle SAP),
   dicendo cosa è certo dai dati e cosa è interpretazione.
-- Usa solo i numeri forniti; se un numero non c'è, dillo e suggerisci come vederlo nell'app. Non inventare funzioni.
+- Usa solo i numeri forniti o letti con le interrogazioni; se un numero non c'è, dillo e suggerisci come vederlo
+  nell'app. Non inventare funzioni.
 - Se l'utente vuole un altro nome per un oggetto o un'attività, spiega che i nomi si decidono nell'ingestion
   (ui_labels.business_objects_step o ui_labels.mapping_review) e che nell'analisi non si cambiano.
 - Rispondi nella lingua indicata da "language" (it = italiano, en = inglese), in modo semplice e concreto,
@@ -117,7 +129,7 @@ UI_LABELS = {
     "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
     "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
     "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
-    "cross_cutting_tag": "trasversale", "assistant": "Assistente",
+    "cross_cutting_tag": "trasversale", "assistant": "Assistente", "filters": "Filtri",
     "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",
     "business_objects_step": "Oggetti di business", "lead_object": "Oggetto guida",
     "throughput_time": "Tempo di attraversamento", "start_to_end": "Da inizio a fine", "object_only": "Solo l'oggetto",
@@ -181,7 +193,8 @@ def overview_view(ov: dict | None, focus: str | None) -> dict:
 
 
 def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, mapping: dict,
-                  page: str, view: dict, ui_labels: dict | None = None, objective: dict | None = None) -> str:
+                  page: str, view: dict, ui_labels: dict | None = None, objective: dict | None = None,
+                  filters: list | None = None) -> str:
     """Contesto in JSON per Claude: processo, dataset, provenienza, pagina e cosa mostra."""
     types = [{
         "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
@@ -198,6 +211,7 @@ def build_context(*, language: str, process_name: str, assessment: dict, dataset
         # obiettivo misurabile salvato: oggetto, filtro, attivita' di inizio e fine (il tempo che conta per il business)
         "measurable_objective": objective,
         "view": view,
+        "filters": filters or [],
     }
     text = json.dumps(payload, ensure_ascii=False, default=list, separators=(",", ":"))
     return text[:60000]
@@ -224,29 +238,22 @@ def estimate(context: str, history: list[dict]) -> dict:
     price_in, price_out = _price()
     chars = len(SYSTEM_PROMPT) + len(context) + sum(
         len(m["content"]) for m in _messages(history))
+    chars += len(json.dumps(data_query.TOOLS))
     tokens_in = int(chars / _CHARS_PER_TOKEN) + 80
-    typical = (tokens_in * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000
-    maximum = (tokens_in * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000
+    # il contesto va in cache (scrittura: +25%); le interrogazioni dei dati lo rileggono a un decimo
+    typical = (tokens_in * 1.25 * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000
+    maximum = ((tokens_in * 1.25 * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000
+               + data_query.extra_cost(tokens_in, (price_in, price_out)))
     return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": EXPLAIN_MODEL}
 
 
-def ask(context: str, history: list[dict]) -> dict:
-    """Chiama Claude. Ritorna {"answer", "cost_usd", "truncated"}."""
-    import anthropic
-
+def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None = None) -> dict:
+    """Chiama Claude, che puo' leggere il dataset (tables) prima di rispondere.
+    Ritorna {"answer", "cost_usd", "truncated", "queries"}."""
     messages = _messages(history)
     if not messages:
         raise ValueError("nessuna domanda")
-    client = anthropic.Anthropic()
-    request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS,
-                   system=SYSTEM_PROMPT + "\nDATI:\n" + context, messages=messages)
-    try:
-        response = client.messages.create(**request, output_config={"effort": "low"})
-    except (TypeError, anthropic.BadRequestError):
-        response = client.messages.create(**request)
-    price_in, price_out = _price()
-    usage = response.usage
-    cost = ((usage.input_tokens or 0) * price_in + (usage.output_tokens or 0) * price_out) / 1_000_000
-    answer = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-    return {"answer": answer, "cost_usd": round(cost, 4),
-            "truncated": response.stop_reason == "max_tokens"}
+    out = data_query.converse(model=EXPLAIN_MODEL, system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
+                              messages=messages, max_tokens=MAX_OUTPUT_TOKENS, price=_price(), tables=tables)
+    out.pop("actions", None)
+    return out

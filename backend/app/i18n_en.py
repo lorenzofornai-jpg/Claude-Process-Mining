@@ -1202,4 +1202,24 @@ EN: dict[str, str] = {
     "meno della metà: nella revisione aggiungi il collegamento mancante (una colonna degli eventi che contiene il numero di quell'oggetto) o chiedilo all'assistente": "less than half: in the review add the missing link (an event column holding that object's number) or ask the assistant",
     # Oggetti aggiunti dall'utente
     "aggiunto da te": "added by you",
+    # Filtri per attributo
+    "Filtri": "Filters",
+    "Aggiungi un filtro": "Add a filter",
+    "Attributo": "Attribute",
+    "Cerca un valore": "Search a value",
+    "Applica il filtro": "Apply filter",
+    "Con un filtro attivo, grafo, tempi e varianti valgono solo per i casi filtrati e per gli oggetti collegati a loro.": "With an active filter, graph, times and variants only cover the filtered cases and the objects linked to them.",
+    "Nessun filtro: tutti i casi.": "No filter: all cases.",
+    "e altri {n}": "and {n} more",
+    "Togli il filtro": "Remove filter",
+    "Togli tutti": "Remove all",
+    "{n} valori: scrivi per restringere la ricerca.": "{n} values: type to narrow the search.",
+    "Nessun valore trovato.": "No value found.",
+    "Oggetti {t} con questo valore di {a} ({d} valori diversi).": "{t} objects with this value of {a} ({d} different values).",
+    "Oggetti collegati agli eventi con questo valore di {a} ({d} valori diversi).": "Objects linked to events with this value of {a} ({d} different values).",
+    "{n} scelti": "{n} selected",
+    # Filtri: nessun caso
+    "Nessun caso con questi filtri per i tipi di oggetto scelti: togli un filtro o scegli altri tipi.": "No cases with these filters for the chosen object types: remove a filter or choose other types.",
+    # Filtri: singolare
+    "1 scelto": "1 selected",
 }

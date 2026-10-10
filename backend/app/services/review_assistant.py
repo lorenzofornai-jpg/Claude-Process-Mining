@@ -251,51 +251,12 @@ def estimate(context: str, history: list[dict]) -> dict:
 def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None = None) -> dict:
     """Chiama Claude; se chiede di leggere i dati (data_query) esegue le interrogazioni e continua, fino a
     MAX_DATA_ROUNDS volte. Ritorna {"answer", "actions", "cost_usd", "truncated", "queries"}."""
-    import anthropic
-
     messages = _messages(history)
     if not messages:
         raise ValueError("nessuna domanda")
-    client = anthropic.Anthropic()
-    # il contesto e' lo stesso a ogni giro: in cache costa un decimo
-    system = [{"type": "text", "text": SYSTEM_PROMPT + "\nDATI:\n" + context, "cache_control": {"type": "ephemeral"}}]
-    tools = TOOLS + (data_query.TOOLS if tables is not None else [])
-    price_in, price_out = _price()
-    cost, answer, actions, queries, truncated = 0.0, [], [], 0, False
-    for round_no in range(MAX_DATA_ROUNDS + 1):
-        request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=system, messages=messages,
-                       tools=tools if round_no < MAX_DATA_ROUNDS else TOOLS)
-        try:
-            response = client.messages.create(**request, output_config={"effort": "low"})
-        except (TypeError, anthropic.BadRequestError):
-            response = client.messages.create(**request)
-        u = response.usage
-        cost += ((u.input_tokens or 0) * price_in + (getattr(u, "cache_creation_input_tokens", 0) or 0) * price_in * 1.25
-                 + (getattr(u, "cache_read_input_tokens", 0) or 0) * price_in * 0.1
-                 + (u.output_tokens or 0) * price_out) / 1_000_000
-        text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-        if text:
-            answer.append(text)
-        uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
-        actions += [{"type": b.name, **(b.input or {})} for b in uses if b.name not in data_query.NAMES]
-        truncated = response.stop_reason == "max_tokens"
-        data_uses = [b for b in uses if b.name in data_query.NAMES]
-        if not data_uses or tables is None:
-            break
-        # ogni tool_use vuole il suo risultato: i dati per le interrogazioni, una conferma per le proposte
-        results = []
-        for b in uses:
-            if b.name in data_query.NAMES:
-                queries += 1
-                out = data_query.run(b.name, b.input or {}, tables)
-                results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": json.dumps(out, ensure_ascii=False, default=str)[:12000]})
-            else:
-                results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": "Proposta mostrata all'utente, che la confermerà."})
-        messages = messages + [{"role": "assistant", "content": response.content}, {"role": "user", "content": results}]
-    return {"answer": "\n\n".join(answer), "actions": actions, "cost_usd": round(cost, 4), "truncated": truncated,
-            "queries": queries}
+    return data_query.converse(model=EXPLAIN_MODEL, system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
+                               messages=messages, max_tokens=MAX_OUTPUT_TOKENS, price=_price(), tables=tables,
+                               action_tools=TOOLS, max_rounds=MAX_DATA_ROUNDS)
 
 
 # ---------- azioni: controllo e applicazione ----------

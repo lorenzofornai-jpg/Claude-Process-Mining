@@ -12,6 +12,7 @@ presenti nei dati passati.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
 
 MAX_SAMPLE = 20
@@ -101,7 +102,8 @@ def _match(value: str, op: str, target) -> bool:
 
 
 def _columns(rows: list[dict]) -> list[str]:
-    return list(rows[0].keys()) if rows else []
+    """Colonne della tabella (unione delle chiavi: le righe di un dataset OCEL non hanno tutte gli stessi attributi)."""
+    return list(dict.fromkeys(k for r in rows[:2000] for k in r))
 
 
 def query_rows(tables: dict[str, list[dict]], args: dict) -> dict:
@@ -167,3 +169,62 @@ def run(name: str, args: dict, tables: dict[str, list[dict]]) -> dict:
     except Exception as exc:   # un input sbagliato non deve rompere la conversazione: Claude riceve l'errore
         return {"error": f"{type(exc).__name__}: {exc}"}
     return {"error": f"unknown tool: {name}"}
+
+
+def converse(*, model: str, system_text: str, messages: list[dict], max_tokens: int, price: tuple[float, float],
+             tables: dict[str, list[dict]] | None, action_tools: list[dict] | None = None, max_rounds: int = 4) -> dict:
+    """Conversazione con Claude in cui Claude puo' leggere i dati (query_rows, compare_columns) prima di rispondere.
+
+    Il contesto (system_text) e' in cache: i giri successivi lo rileggono a un decimo del prezzo. action_tools:
+    strumenti che propongono modifiche (non vengono eseguiti qui: tornano in "actions").
+    Ritorna {"answer", "actions", "cost_usd", "truncated", "queries"}."""
+    import anthropic
+
+    client = anthropic.Anthropic()
+    system = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
+    actions_only = list(action_tools or [])
+    tools = actions_only + (TOOLS if tables is not None else [])
+    price_in, price_out = price
+    cost, answer, actions, queries, truncated = 0.0, [], [], 0, False
+    for round_no in range(max_rounds + 1):
+        last = round_no >= max_rounds
+        request = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
+        use = actions_only if last else tools
+        if use:
+            request["tools"] = use
+        try:
+            response = client.messages.create(**request, output_config={"effort": "low"})
+        except (TypeError, anthropic.BadRequestError):
+            response = client.messages.create(**request)
+        u = response.usage
+        cost += ((u.input_tokens or 0) * price_in + (getattr(u, "cache_creation_input_tokens", 0) or 0) * price_in * 1.25
+                 + (getattr(u, "cache_read_input_tokens", 0) or 0) * price_in * 0.1
+                 + (u.output_tokens or 0) * price_out) / 1_000_000
+        text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
+        if text:
+            answer.append(text)
+        uses = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
+        actions += [{"type": b.name, **(b.input or {})} for b in uses if b.name not in NAMES]
+        truncated = response.stop_reason == "max_tokens"
+        if not any(b.name in NAMES for b in uses) or tables is None:
+            break
+        # ogni tool_use vuole il suo risultato: i dati per le interrogazioni, una conferma per le proposte
+        results = []
+        for b in uses:
+            if b.name in NAMES:
+                queries += 1
+                out = run(b.name, b.input or {}, tables)
+                results.append({"type": "tool_result", "tool_use_id": b.id,
+                                "content": json.dumps(out, ensure_ascii=False, default=str)[:12000]})
+            else:
+                results.append({"type": "tool_result", "tool_use_id": b.id,
+                                "content": "Proposta mostrata all'utente, che la confermerà."})
+        messages = messages + [{"role": "assistant", "content": response.content}, {"role": "user", "content": results}]
+    return {"answer": "\n\n".join(answer), "actions": actions, "cost_usd": round(cost, 4), "truncated": truncated,
+            "queries": queries}
+
+
+def extra_cost(tokens_in: int, price: tuple[float, float], rounds: int = 4) -> float:
+    """Costo in piu' (USD) se Claude usa tutte le interrogazioni: contesto dalla cache, risultati, risposta breve."""
+    price_in, price_out = price
+    return rounds * (tokens_in * 0.1 * price_in + 2500 * price_in + 300 * price_out) / 1_000_000
