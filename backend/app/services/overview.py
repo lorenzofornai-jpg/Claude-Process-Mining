@@ -103,7 +103,7 @@ def _steps(acts: list[str]) -> tuple:
 
 
 def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objective: dict | None = None,
-                   top_variants: int | None = None) -> dict:
+                   variant_ids: list[int] | None = None) -> dict:
     """scope: object | related | objective (da inizio a fine dell'obiettivo misurabile, se e' su questo tipo).
     Con un obiettivo sul tipo guida si analizzano solo gli oggetti del suo filtro (es. solo le fatture)."""
     hubs = {t for t in model.types if model.is_hub(t)}
@@ -230,16 +230,17 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
                          "median": st["median"] if st else None, "mean": st["mean"] if st else None})
     happy = variants[0] if variants else None
 
-    # istogrammi solo per le prime `top_variants` varianti (quelle mostrate nell'elenco): stesse classi e stessi mesi
+    # istogrammi solo per le varianti scelte (posizioni 1, 2, ... nell'elenco): stesse classi e stessi mesi
     chart_scope = None
     all_tp = [tps[o] for o, _ in seqs]
     histogram = _histogram(all_tp)
-    if top_variants and 0 < top_variants < len(variants):
+    picked = sorted({int(v) for v in variant_ids or [] if 1 <= int(v) <= len(variants)})
+    if variant_ids is not None and len(picked) < len(variants):
         ordered = [oids for _, oids in sorted(groups.items(), key=lambda kv: (-len(kv[1]), len(kv[0]), kv[0]))]
-        chosen = {o for oids in ordered[:top_variants] for o in oids}
+        chosen = {o for i in picked for o in ordered[i - 1]}
         month_list = month_list_of(month_counts([(o, sq) for o, sq in seqs if o in chosen]))
         histogram = _histogram(all_tp, [tps[o] for o in chosen])
-        chart_scope = {"variants": top_variants, "objects": len(chosen), "share": len(chosen) / n_obj if n_obj else 0}
+        chart_scope = {"variants": len(picked), "objects": len(chosen), "share": len(chosen) / n_obj if n_obj else 0}
 
     # ---------- altre attivita' frequenti ----------
     happy_acts = {s["activity"] for s in happy["steps"]} if happy else set()

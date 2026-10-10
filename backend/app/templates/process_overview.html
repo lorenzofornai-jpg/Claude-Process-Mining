@@ -47,7 +47,7 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var TYPES = {{ object_types|tojson }};
-  var lead = {{ default_lead|tojson }}, scope = "object", data = null, shown = 5;
+  var lead = {{ default_lead|tojson }}, scope = "object", data = null, picked = null;   // varianti spuntate (posizioni 1, 2, ...); null = tutte
   // i nomi arrivano corretti dall'ingestion: nessuna ridenominazione nell'analisi
   function tn(n) { return n; }
   // plurale del nome mostrato (calcolato dal server per la lingua attiva): «8 fatture», «8 invoices»
@@ -90,9 +90,11 @@
     varTitle: {{ _("Varianti")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
-    chartScope: {{ _("Grafici delle prime {n} varianti: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.")|tojson }},
-    chartScope1: {{ _("Grafici della variante più frequente: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.")|tojson }},
-    varSlider: {{ _("Varianti mostrate: {n} di {m} · copertura: {p} dei casi")|tojson }},
+    chartScope: {{ _("Grafici delle {n} varianti spuntate: {o} oggetti ({p} dei casi).")|tojson }},
+    chartScope1: {{ _("Grafici della variante spuntata: {o} oggetti ({p} dei casi).")|tojson }},
+    varAll: {{ _("tutte")|tojson }}, varNone: {{ _("nessuna")|tojson }}, varTop: {{ _("solo la più frequente")|tojson }},
+    varChosen: {{ _("{n} spuntate di {m}")|tojson }},
+    varCover: {{ _("— {o} oggetti ({p} dei casi)")|tojson }},
     varCount: {{ _("{n} oggetti · {p}")|tojson }},
     varCount1: {{ _("1 oggetto · {p}")|tojson }},
     varTime: {{ _("mediana {d}")|tojson }},
@@ -140,7 +142,8 @@
 
   function load() {
     document.getElementById("ov-body").style.opacity = 0.5;
-    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope, variants: shown });
+    picked = null;   // nuovo oggetto guida o nuovo tempo: varianti diverse, si riparte da tutte
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope });
     fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
       .then(function (d) { data = d; lead = d.lead; render(); })
@@ -153,7 +156,8 @@
   function reloadCharts() {
     clearTimeout(chartTimer);
     chartTimer = setTimeout(function () {
-      var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope, variants: shown });
+      var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope });
+      if (picked) { q.set("vsel", "1"); picked.forEach(function (v) { q.append("var", v); }); }
       fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -257,29 +261,50 @@
     }
 
 
-    // varianti con cursore
-    var s4 = section(T.varTitle, fmt(scope === "related" ? T.varDescRelated : T.varDesc, { t: L }));
-    var total = data.variants.length;
-    shown = Math.min(Math.max(1, shown), total);
-    var lab = el("label", "slider ov-var-slider"), lt = el("span"), sl = el("input");
-    sl.type = "range"; sl.min = 1; sl.max = Math.max(1, total); sl.value = shown;
-    lab.appendChild(lt); lab.appendChild(sl); s4.appendChild(lab);
-    var list = el("ol", "ov-variants"); s4.appendChild(list);
+    // varianti: riquadro richiudibile, una casella per variante (i grafici sotto contano solo quelle spuntate)
+    var s4 = el("details", "ov-section ov-collapse"); s4.open = true;
+    var sum = el("summary"); var h = el("h2", "ov-title", T.varTitle); var sumNote = el("span", "tiny muted ov-var-count");
+    sum.appendChild(h); sum.appendChild(sumNote); s4.appendChild(sum);
+    s4.appendChild(el("p", "tiny muted", fmt(scope === "related" ? T.varDescRelated : T.varDesc, { t: L })));
+    var tools = el("div", "tiny ov-var-tools");
+    [[T.varAll, function () { picked = null; }], [T.varNone, function () { picked = []; }],
+     [T.varTop, function () { picked = [1]; }]].forEach(function (x, i) {
+      if (i) tools.appendChild(document.createTextNode(" · "));
+      var a = el("a", "", x[0]); a.href = "#";
+      a.addEventListener("click", function (e) { e.preventDefault(); x[1](); drawVariants(); reloadCharts(); });
+      tools.appendChild(a);
+    });
+    var cover = el("span", "muted ov-var-cover"); tools.appendChild(cover);
+    s4.appendChild(tools);
+    var list = el("ol", "ov-variants ov-variants-check"); s4.appendChild(list);
+    function isOn(id) { return !picked || picked.indexOf(id) >= 0; }
     function drawVariants() {
       list.textContent = "";
-      data.variants.slice(0, shown).forEach(function (v) {
-        var li = el("li", "ov-variant");
+      var on = 0, objs = 0;
+      data.variants.forEach(function (v, i) {
+        var id = i + 1, checked = isOn(id);
+        if (checked) { on++; objs += v.count; }
+        var li = el("li", "ov-variant" + (checked ? "" : " off"));
+        var cb = el("input"); cb.type = "checkbox"; cb.checked = checked; cb.setAttribute("aria-label", "#" + id);
+        cb.addEventListener("change", function () {
+          var cur = picked ? picked.slice() : data.variants.map(function (_, k) { return k + 1; });
+          picked = cb.checked ? cur.concat([id]) : cur.filter(function (x) { return x !== id; });
+          if (picked.length === data.variants.length) picked = null;
+          drawVariants(); reloadCharts();
+        });
+        var main = el("div", "ov-variant-main");
         var meta = el("div", "ov-variant-meta");
         meta.appendChild(el("span", "", fmt(v.count === 1 ? T.varCount1 : T.varCount, { n: num(v.count), p: pct(v.share) })));
         meta.appendChild(el("span", "muted", fmt(T.varTime, { d: dur(v.median) })));
         var bar = el("div", "ov-share"); var fill = el("div", "ov-share-fill"); fill.style.width = (v.share * 100) + "%"; bar.appendChild(fill);
-        li.appendChild(chain(v.steps)); li.appendChild(meta); li.appendChild(bar);
+        main.appendChild(chain(v.steps)); main.appendChild(meta); main.appendChild(bar);
+        li.appendChild(cb); li.appendChild(main);
         list.appendChild(li);
       });
-      var cov = data.variants[shown - 1] ? data.variants[shown - 1].cum_share : 0;
-      lt.textContent = fmt(T.varSlider, { n: shown, m: num(data.variants_total), p: pct(cov) });
+      var n = data.volumes.objects || 1;
+      sumNote.textContent = fmt(T.varChosen, { n: on, m: num(data.variants_total) });
+      cover.textContent = " " + fmt(T.varCover, { o: num(objs), p: pct(objs / n) });
     }
-    sl.addEventListener("input", function () { shown = Number(sl.value); drawVariants(); reloadCharts(); });
     drawVariants();
     body.appendChild(s4);
     var charts = el("div"); charts.id = "ov-charts"; body.appendChild(charts);

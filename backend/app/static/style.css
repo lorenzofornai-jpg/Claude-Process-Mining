@@ -858,3 +858,16 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .ov-grid.ov-stack { grid-template-columns: 1fr; }
 .ov-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
 .ov-scroll .ov-bars { width: 100%; }
+
+/* Process Overview: riquadro delle varianti richiudibile, con una casella per variante */
+.ov-collapse > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 10px; }
+.ov-collapse > summary::-webkit-details-marker { display: none; }
+.ov-collapse > summary::before { content: "▸"; color: var(--muted); font-size: 13px; }
+.ov-collapse[open] > summary::before { content: "▾"; }
+.ov-collapse > summary .ov-title { margin: 0; }
+.ov-var-tools { margin: 4px 0 8px; }
+.ov-variants-check .ov-variant { display: flex; gap: 10px; align-items: flex-start; }
+.ov-variants-check .ov-variant > input { margin-top: 10px; flex: none; width: 18px; height: 18px; }
+.ov-variants-check .ov-variant-main { flex: 1; min-width: 0; }
+.ov-variants-check .ov-variant.off { opacity: 0.5; }
+.ov-var-tools .ov-var-cover { font-size: inherit; }

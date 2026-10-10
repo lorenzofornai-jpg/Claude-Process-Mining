@@ -1242,4 +1242,10 @@ EN: dict[str, str] = {
     # Overview: grafici per varianti
     "Grafici delle prime {n} varianti: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.": "Charts of the first {n} variants: {o} objects ({p} of cases). Move the variants slider to change them.",
     "Grafici della variante più frequente: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.": "Charts of the most common variant: {o} objects ({p} of cases). Move the variants slider to change them.",
+    # Overview: varianti con caselle
+    "solo la più frequente": "most common only",
+    "{n} spuntate di {m}": "{n} of {m} ticked",
+    "— {o} oggetti ({p} dei casi)": "— {o} objects ({p} of cases)",
+    "Grafici delle {n} varianti spuntate: {o} oggetti ({p} dei casi).": "Charts of the {n} ticked variants: {o} objects ({p} of cases).",
+    "Grafici della variante spuntata: {o} oggetti ({p} dei casi).": "Charts of the ticked variant: {o} objects ({p} of cases).",
 }
