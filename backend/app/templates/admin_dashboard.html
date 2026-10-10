@@ -24,7 +24,7 @@
       {% for row in rows %}
       <tr>
         <td>{{ row.workspace.process_name }}</td>
-        <td class="tiny muted">{{ row.workspace.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td class="tiny muted">{{ row.workspace.created_at|localtime }}</td>
         {% for role in assignable_roles %}
         <td>
           {% set assigned = row.assignments[role] %}

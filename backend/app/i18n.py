@@ -124,6 +124,25 @@ def to_text(value) -> str:
     return value or ""
 
 
+def utc_iso(dt) -> str:
+    """Data e ora salvate (UTC, anche senza fuso indicato) in ISO con «Z»: il browser le converte nell'ora locale."""
+    from datetime import timezone
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def localtime(dt) -> Markup:
+    """<time> con l'ora UTC: lo script di base.html la mostra nel fuso del dispositivo dell'utente (senza
+    JavaScript resta l'ora UTC, dichiarata come tale)."""
+    if dt is None:
+        return Markup("—")
+    iso = utc_iso(dt)
+    return Markup('<time class="lt" datetime="{}">{} UTC</time>').format(iso, iso[:16].replace("T", " "))
+
+
 def setup_templates(templates) -> None:
     """Rende disponibili _(), |tr e la lingua corrente in tutti i template."""
     from jinja2 import pass_context
@@ -162,3 +181,4 @@ def setup_templates(templates) -> None:
     templates.env.globals["current_lang"] = current_lang
     templates.env.globals["languages"] = LANGS
     templates.env.filters["tr"] = translate
+    templates.env.filters["localtime"] = localtime

@@ -12,7 +12,7 @@
       <p class="tiny muted">
         v{{ s.config.current_version }} ·
         {{ _("{o} oggetti, {e} eventi", o=s.last_run.object_count, e=s.last_run.event_count) }} ·
-        {{ _("aggiornato il {d}", d=s.last_run.started_at.strftime("%Y-%m-%d %H:%M")) }}
+        {{ _("aggiornato il {d}", d=s.last_run.started_at|localtime) }}
       </p>
     </div>
     <div class="analysis-tools">

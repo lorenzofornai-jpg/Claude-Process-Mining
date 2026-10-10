@@ -121,7 +121,7 @@
             {% endif %}
           </td>
           <td class="tiny">{{ _(doc_types.get(d.doc_type, d.doc_type)) }}</td>
-          <td class="tiny muted">{{ d.uploaded_by }}<br>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="tiny muted">{{ d.uploaded_by }}<br>{{ d.created_at|localtime }}</td>
           <td>
             <form method="post" action="/ingestion/assessment/documents/{{ d.id }}/delete" style="display:inline"
                   data-confirm-title="{{ _("Eliminare il documento?") }}"

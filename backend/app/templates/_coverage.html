@@ -93,7 +93,7 @@
       list.appendChild(item);
     });
     box.appendChild(list);
-    var meta = fmt(T.when, { d: s.created_at, c: usd(s.cost_usd || 0) }) + (s.language && s.language !== LANG ? " " + T.otherLang : "");
+    var meta = fmt(T.when, { d: window.pmLocalTime ? window.pmLocalTime(s.created_at) : s.created_at, c: usd(s.cost_usd || 0) }) + (s.language && s.language !== LANG ? " " + T.otherLang : "");
     box.appendChild(el("p", "tiny muted", meta));
     if (truncated) box.appendChild(el("p", "tiny cov-miss", T.truncated));
   }

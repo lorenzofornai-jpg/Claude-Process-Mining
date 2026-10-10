@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <title>{% block title %}AI Process Mining{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
+  <script>
+    // date e ore salvate in UTC: mostrate nel fuso del dispositivo («2026-10-10 14:33»)
+    window.pmLocalTime = function (iso) {
+      var d = new Date(iso); if (isNaN(d)) return iso || "";
+      function p(n) { return (n < 10 ? "0" : "") + n; }
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    };
+  </script>
 </head>
 <body>
   <header class="app-header">
@@ -48,6 +56,12 @@
       </div>
     </form>
   </dialog>
+  <script>
+    document.querySelectorAll("time.lt[datetime]").forEach(function (t) {
+      t.textContent = window.pmLocalTime(t.getAttribute("datetime"));
+      t.title = t.getAttribute("datetime").replace("T", " ").replace("Z", " UTC");
+    });
+  </script>
   <script>
     (function () {
       var dlg = document.getElementById("confirm-dialog");

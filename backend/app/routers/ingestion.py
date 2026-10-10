@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
-from app.i18n import get_lang, joined, msg, render, setup_templates, t, to_text, ui_labels
+from app.i18n import get_lang, joined, msg, render, setup_templates, t, to_text, ui_labels, utc_iso
 from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
@@ -522,7 +522,7 @@ def _coverage_context(request: Request, workspace_id: str, sess: dict) -> dict:
         stored = (db.query(ObjectiveCoverage).filter_by(workspace_id=workspace_id, tables_signature=signature)
                   .order_by(ObjectiveCoverage.created_at.desc()).first())
         stored = {"result": stored.result, "cost_usd": stored.cost_usd, "language": stored.language,
-                  "created_at": stored.created_at.strftime("%Y-%m-%d %H:%M")} if stored else None
+                  "created_at": utc_iso(stored.created_at)} if stored else None
     finally:
         db.close()
     claude_ok = AI_MAPPER == "claude" and explain.available()
@@ -567,7 +567,7 @@ async def coverage_evaluate(request: Request):
                                 language=lang, result=out["result"], cost_usd=out["cost_usd"], created_by=user.name)
         db.add(row)
         db.commit()
-        created = row.created_at.strftime("%Y-%m-%d %H:%M")
+        created = utc_iso(row.created_at)
     finally:
         db.close()
     return JSONResponse({"result": out["result"], "cost_usd": out["cost_usd"], "truncated": out["truncated"],

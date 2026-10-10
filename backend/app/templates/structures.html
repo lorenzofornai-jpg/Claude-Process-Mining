@@ -21,7 +21,7 @@
         </td>
         <td class="tiny nowrap">
           {% if s.last_run %}
-          <span class="muted">{{ s.last_run.started_at.strftime("%Y-%m-%d %H:%M") }}</span><br>
+          <span class="muted">{{ s.last_run.started_at|localtime }}</span><br>
           {{ _("{o} oggetti · {e} eventi", o=s.last_run.object_count, e=s.last_run.event_count) }}<br>
           <a href="/ingestion/runs/{{ s.last_run.id }}/download?workspace_id={{ workspace_id }}">{{ _("scarica OCEL") }}</a>
           {% else %}—{% endif %}

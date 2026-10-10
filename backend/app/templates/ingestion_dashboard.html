@@ -25,7 +25,7 @@
       {% set roles = roles_by_workspace.get(ws.id, []) %}
       <tr>
         <td>{{ ws.process_name }}</td>
-        <td class="tiny muted nowrap">{{ ws.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td class="tiny muted nowrap">{{ ws.created_at|localtime }}</td>
         <td>
           <div class="row-actions" style="grid-template-columns: repeat({{ cols }}, minmax(0, 1fr))">
           {% if 'data_engineer' in roles %}
