@@ -36,7 +36,7 @@ tra gli «Aperti», con la sua età all'ultimo evento del dataset), «Solo l'ogg
 dell'oggetto, aperti compresi), «Con gli oggetti collegati» (fino all'ultimo evento anche degli oggetti collegati,
 esclusi i tipi trasversali). Le varianti sono le sequenze di attività dell'oggetto guida (ripetizioni consecutive
 raggruppate); l'happy path è la più frequente; «Altre attività frequenti» sono quelle fuori dall'happy path.
-L'obiettivo misurabile si imposta nel riquadro «Obiettivo misurabile».
+L'obiettivo misurabile lo imposta il Data Engineer nella pagina del risultato del dataset (riquadro «Obiettivo misurabile»): nella Overview si vede come «Da inizio a fine».
 
 Process Explorer (page = explorer): mappa a linee di metropolitana. Ogni tipo di oggetto è una linea colorata che
 parte in alto (tratteggio iniziale: l'oggetto non è ancora entrato nel processo) e finisce in un cerchio pieno;

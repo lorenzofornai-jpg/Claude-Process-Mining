@@ -23,8 +23,6 @@
     <div class="ov-types" id="ov-types"></div>
   </section>
 
-  {% set objective_ws = workspace_id %}{% set objective_config = config.id %}{% set objective_collapsed = has_objective %}
-  {% include "_objective.html" %}
 
   <div class="ov-controls">
     <label class="ov-lead">{{ _("Oggetto guida") }}
@@ -327,8 +325,6 @@
     body.appendChild(s5);
   }
 
-  // obiettivo salvato (dal riquadro in alto): si riparte da lui
-  window.onObjectiveSaved = function (b) { lead = b.object_type; scope = "objective"; load(); };
 
   // ---------- assistente dell'analisi (static/assistant.js): conosce oggetto guida e tempo scelti ----------
   initAssistant({
