@@ -78,7 +78,7 @@
       </div>
 
       <div class="side-panel" id="tab-vars" hidden>
-        <p class="tiny muted var-help">{{ _("Filtro alternativo a quello per attività: il grafo mostra solo gli oggetti del tipo scelto che seguono le varianti spuntate, con tutte le loro attività.") }}</p>
+        <p class="tiny muted var-help">{{ _("Filtro alternativo a quello per attività. Una variante è la sequenza delle attività di un oggetto del tipo scelto e degli oggetti collegati a lui tra i tipi selezionati (il suo caso). Il grafo mostra i tipi selezionati, solo per i casi delle varianti spuntate.") }}</p>
         <label class="tiny var-type-label">{{ _("Varianti di") }}
           <select id="var-type"></select>
         </label>
@@ -159,7 +159,6 @@
     varObjects: {{ _("{n} oggetti · {p}")|tojson }},
     varObject1: {{ _("1 oggetto · {p}")|tojson }},
     varMedian: {{ _("mediana {d}")|tojson }},
-    varTypesNote: {{ _("Filtro per varianti attivo: il grafo mostra solo il tipo scelto nella scheda «Varianti».")|tojson }},
     nOfM: {{ _("{n} di {m}")|tojson }},
     top: {{ _("Le più frequenti: {n} di {m}")|tojson }},
     paths: {{ _("Percorsi più frequenti: {p}%")|tojson }},
@@ -314,9 +313,7 @@
 
   function renderLists() {
     var list = data.activity_list, total = list.length, sel = filterMode === "vars" ? total : actSet.length;
-    var typeList = document.querySelector(".type-list");
-    typeList.classList.toggle("dimmed", filterMode === "vars");
-    typeList.title = filterMode === "vars" ? T.varTypesNote : "";
+
     actSlider.max = Math.max(1, total);
     actSlider.value = actMode === "top" ? Math.min(actTop, total) : sel;
     document.getElementById("act-label").textContent = fmt(T.top, { n: actSlider.value, m: total });
@@ -784,22 +781,24 @@
   function variantTypes() {
     return Object.keys(TYPES).filter(function (t) { return TYPES[t].with_events && !TYPES[t].hub; });
   }
+  // il tipo delle varianti e' uno dei tipi selezionati; gli altri selezionati entrano nel suo caso
   function fillVariantTypes() {
     varType.textContent = "";
     var sel = selectedTypes().filter(function (t) { return variantTypes().indexOf(t) >= 0; });
-    vType = vType || sel[0] || variantTypes()[0] || null;
-    variantTypes().forEach(function (t) { var o = el("option", "", tn(t)); o.value = t; o.selected = t === vType; varType.appendChild(o); });
+    if (sel.indexOf(vType) < 0) vType = sel[0] || null;
+    sel.forEach(function (t) { var o = el("option", "", tn(t)); o.value = t; o.selected = t === vType; varType.appendChild(o); });
   }
   function loadVariants() {
-    if (!vType) return;
+    if (!vType) { vData = null; vSel = []; renderVariants(); schedule(); return; }
     var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, type: vType });
+    selectedTypes().forEach(function (t) { if (t !== vType) q.append("with_type", t); });
     fetch("/analysis/explorer/variants?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) { vData = j; vSel = j.variants.length ? [1] : []; renderVariants(); schedule(); });
   }
   function renderVariants() {
     var ul = document.getElementById("var-list"); ul.textContent = "";
-    if (!vData) return;
+    if (!vData) { document.getElementById("var-cover").textContent = ""; document.getElementById("vars-chip").textContent = "–"; return; }
     var objs = 0;
     vData.variants.forEach(function (v) {
       var on = vSel.indexOf(v.id) >= 0;
@@ -852,7 +851,13 @@
   try { if (window.localStorage.getItem("pm-explorer-side") === "closed") { bodyEl.classList.add("side-collapsed"); document.getElementById("side-show").hidden = false; } } catch (e) {}
 
   // ---------- comandi ----------
-  document.querySelectorAll(".type-check").forEach(function (c) { c.addEventListener("change", schedule); });
+  document.querySelectorAll(".type-check").forEach(function (c) {
+    c.addEventListener("change", function () {
+      // con il filtro per varianti, cambiare i tipi cambia i casi: le varianti si ricalcolano
+      fillVariantTypes();
+      if (filterMode === "vars") { vData = null; loadVariants(); } else { vData = null; schedule(); }
+    });
+  });
   if (document.getElementById("hub-all")) document.getElementById("hub-all").addEventListener("change", schedule);
   actSlider.addEventListener("input", function () {
     actMode = "top"; actTop = Number(actSlider.value);

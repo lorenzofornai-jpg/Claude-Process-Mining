@@ -44,8 +44,26 @@ def test_explorer_variant_filter_shows_only_chosen_variants():
     vs = m.variants("Invoice")
     assert [(v["id"], v["steps"], v["count"]) for v in vs] == [
         (1, ["Create Invoice", "Clear Invoice"], 2), (2, ["Create Invoice"], 1)]
-    g = build_graph(m, ["Invoice", "Payment"], variant_type="Invoice", variant_ids=[2])
+    g = build_graph(m, ["Invoice"], variant_type="Invoice", variant_ids=[2])
     assert g["types"] == ["Invoice"] and g["variants"]["objects"] == 1
     assert {(e["source"], e["target"]) for e in g["edges"]} == {("__start__|Invoice", "Create Invoice"),
                                                                 ("Create Invoice", "__end__|Invoice")}
     assert [a["name"] for a in g["activity_list"]] == ["Create Invoice"]
+
+
+
+def test_case_variants_include_selected_related_types():
+    """Con il pagamento tra i tipi scelti la variante della fattura comprende le sue attivita'; il grafo mostra
+    i pagamenti solo dei casi scelti."""
+    from app.services.explorer import build_graph
+    m = ExplorerModel(_ocel())
+    vs = m.variants("Invoice", ["Payment"])
+    assert [(v["steps"], v["count"]) for v in vs] == [
+        (["Create Invoice", "Post Payment", "Clear Invoice"], 2), (["Create Invoice"], 1)]
+    g = build_graph(m, ["Invoice", "Payment"], variant_type="Invoice", variant_ids=[1])
+    assert g["types"] == ["Invoice", "Payment"] and g["variants"]["with_types"] == ["Payment"]
+    pay = {(e["source"], e["target"]): e["count"] for e in g["edges"] if e["type"] == "Payment"}
+    assert pay == {("__start__|Payment", "Post Payment"): 2, ("Post Payment", "Clear Invoice"): 2,
+                   ("Clear Invoice", "__end__|Payment"): 2}
+    g2 = build_graph(m, ["Invoice", "Payment"], variant_type="Invoice", variant_ids=[2])
+    assert not [e for e in g2["edges"] if e["type"] == "Payment"]

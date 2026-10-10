@@ -153,7 +153,9 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 ## Process Explorer: filtro per varianti e pannello richiudibile (10 ottobre 2026)
 - ✅ Scheda «Varianti», alternativa a «Attività» (vale l'ultima delle due aperta): tipo di oggetto, elenco delle
   varianti (sequenze di attività, ripetizioni raggruppate come nella Overview) con oggetti, quota e tempo mediano;
-  «− Meno», «Solo la più frequente», «+ Più». Il grafo mostra solo gli oggetti di quel tipo nelle varianti spuntate.
+  «− Meno», «Solo la più frequente», «+ Più». Varianti del caso: la sequenza comprende le attività degli oggetti
+  collegati tra i tipi selezionati (fino a 2 passaggi, senza trasversali né oggetti dello stesso tipo); il grafo
+  mostra i tipi selezionati, solo per i casi delle varianti spuntate.
 - ✅ Pannello «Controllo del grafo» richiudibile («) per dare spazio al grafo; si riapre dal pulsante sul grafo
   e la scelta resta per le visite successive.
 

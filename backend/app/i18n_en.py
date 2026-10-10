@@ -1235,4 +1235,6 @@ EN: dict[str, str] = {
     "Più": "More",
     "Varianti mostrate: {n} di {m} · {o} oggetti ({p} del tipo)": "Variants shown: {n} of {m} · {o} objects ({p} of the type)",
     "Filtro per varianti attivo: il grafo mostra solo il tipo scelto nella scheda «Varianti».": "Variant filter active: the graph shows only the type chosen in the “Variants” tab.",
+    # Explorer: varianti del caso
+    "Filtro alternativo a quello per attività. Una variante è la sequenza delle attività di un oggetto del tipo scelto e degli oggetti collegati a lui tra i tipi selezionati (il suo caso). Il grafo mostra i tipi selezionati, solo per i casi delle varianti spuntate.": "Alternative to the activity filter. A variant is the sequence of activities of an object of the chosen type and of the objects linked to it among the selected types (its case). The graph shows the selected types, only for the cases of the ticked variants.",
 }

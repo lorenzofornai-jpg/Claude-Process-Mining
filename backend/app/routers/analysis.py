@@ -155,7 +155,8 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
 
 
 @router.get("/analysis/explorer/variants")
-def process_explorer_variants(request: Request, workspace_id: str, config_id: str, type: str):
+def process_explorer_variants(request: Request, workspace_id: str, config_id: str, type: str,
+                              with_type: list[str] = Query(default=[])):
     """Varianti di un tipo di oggetto (sequenze di attivita'), dalla piu' frequente: per il filtro per varianti."""
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -164,8 +165,9 @@ def process_explorer_variants(request: Request, workspace_id: str, config_id: st
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
     model = explorer.load_model(run.ocel_file_path)
-    variants = model.variants(type) if type in model.object_counts else []
-    return JSONResponse({"type": type, "total": len(variants), "objects": sum(v["count"] for v in variants),
+    others = [x for x in with_type if x in model.object_counts and x != type and not model.is_hub(x)]
+    variants = model.variants(type, others) if type in model.object_counts else []
+    return JSONResponse({"type": type, "with_types": others, "total": len(variants), "objects": sum(v["count"] for v in variants),
                          "variants": variants[:300]})
 
 

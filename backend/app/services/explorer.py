@@ -141,13 +141,43 @@ class ExplorerModel:
         ranked = sorted((t for t in self.types if self.related_events[t]), key=lambda t: (-self.related_events[t], t))
         return ([t for t in ranked if not self.is_hub(t)] or ranked)[:2]
 
-    def variants(self, t: str) -> list[dict]:
-        """Varianti di un tipo di oggetto: la sequenza delle sue attivita' (ripetizioni consecutive raggruppate,
-        come nella Process Overview), dalla piu' frequente. id = posizione (1 = la piu' frequente)."""
+    def case_objects(self, oid: str, with_types: set[str], hops: int = 2) -> set[str]:
+        """Il «caso» di un oggetto: lui e gli oggetti dei tipi with_types collegati a lui da eventi (fino a `hops`
+        passaggi: riga d'ordine -> fattura -> pagamento). Non si passa per i tipi trasversali ne' per altri
+        oggetti del suo tipo (le righe sorelle dello stesso ordine non entrano nel caso)."""
+        own_type = self.type_of[oid]
+        allowed = {t for t in with_types if t != own_type and not self.is_hub(t)}
+        seen, frontier = {oid}, {oid}
+        for _ in range(hops):
+            nxt = set()
+            for x in frontier:
+                for _, _, idx in self.sequences_by_type_index.get(x, ()):
+                    for y in self.event_objects[idx]:
+                        if y not in seen and self.type_of.get(y) in allowed:
+                            seen.add(y)
+                            nxt.add(y)
+            frontier = nxt
+            if not frontier:
+                break
+        return seen
+
+    def variants(self, t: str, with_types: list[str] | None = None) -> list[dict]:
+        """Varianti di un tipo di oggetto, dalla piu' frequente. Senza with_types: la sequenza delle sue attivita'.
+        Con with_types (gli altri tipi scelti nel grafo): la sequenza delle attivita' del suo caso, cioe' anche
+        degli oggetti collegati di quei tipi, in ordine di tempo. Ripetizioni consecutive raggruppate, come nella
+        Process Overview. id = posizione (1 = la piu' frequente); count = oggetti del tipo t."""
+        others = tuple(sorted(set(with_types or []) - {t}))
+        key = (t, others)
         cache = self.__dict__.setdefault("_variants", {})
-        if t not in cache:
+        if key not in cache:
             groups: dict[tuple, list] = defaultdict(list)
             for oid, seq in self.sequences_by_type.get(t, []):
+                if others:
+                    events = {}
+                    for x in self.case_objects(oid, set(others)):
+                        for ts, a, idx in self.sequences_by_type_index.get(x, ()):
+                            events[idx] = (ts, a, idx)
+                    seq = sorted(events.values(), key=lambda e: (math.inf if math.isnan(e[0]) else e[0], e[2]))
                 steps = tuple(a for i, (_, a, _) in enumerate(seq) if i == 0 or seq[i - 1][1] != a)
                 ts = [x for x, _, _ in seq if not math.isnan(x)]
                 groups[steps].append((oid, (ts[-1] - ts[0]) if ts else float("nan")))
@@ -158,12 +188,12 @@ class ExplorerModel:
                 out.append({"id": i, "steps": list(steps), "count": len(objs), "share": len(objs) / n,
                             "median": statistics.median(durs) if durs else None})
                 of.update({oid: i for oid, _ in objs})
-            cache[t] = (out, of)
-        return cache[t][0]
+            cache[key] = (out, of)
+        return cache[key][0]
 
-    def variant_of(self, t: str) -> dict[str, int]:
-        self.variants(t)
-        return self.__dict__["_variants"][t][1]
+    def variant_of(self, t: str, with_types: list[str] | None = None) -> dict[str, int]:
+        self.variants(t, with_types)
+        return self.__dict__["_variants"][(t, tuple(sorted(set(with_types or []) - {t})))][1]
 
     def type_summary(self) -> list[dict]:
         return [{"name": t, "color": self.colors[t], "objects": self.object_counts[t],
@@ -234,16 +264,23 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
     ev_by = model.events_by_type_act
     obj_by = model.objects_by_type_act
     if variant_type in model.object_counts:
+        # varianti del caso: gli oggetti del tipo scelto nelle varianti spuntate e, per gli altri tipi scelti, gli
+        # oggetti del loro caso (collegati a loro), ognuno con tutta la sua storia
+        others = [t for t in types if t != variant_type and not model.is_hub(t)]
         allowed = set(variant_ids or [])
-        of = model.variant_of(variant_type)
-        chosen = [(oid, seq) for oid, seq in model.sequences_by_type.get(variant_type, []) if of.get(oid) in allowed]
-        types = [variant_type]
-        seqs_of = {variant_type: chosen}
+        of = model.variant_of(variant_type, others)
+        leads = [oid for oid, _ in model.sequences_by_type.get(variant_type, []) if of.get(oid) in allowed]
+        members: set[str] = set()
+        for oid in leads:
+            members |= model.case_objects(oid, set(others))
+        types = [variant_type] + others
+        seqs_of = {t: [(oid, seq) for oid, seq in model.sequences_by_type.get(t, []) if oid in members] for t in types}
         ev_by, obj_by = defaultdict(set), defaultdict(set)
-        for oid, seq in chosen:
-            for _, act, idx in seq:
-                ev_by[(variant_type, act)].add(idx)
-                obj_by[(variant_type, act)].add(oid)
+        for t in types:
+            for oid, seq in seqs_of[t]:
+                for _, act, idx in seq:
+                    ev_by[(t, act)].add(idx)
+                    obj_by[(t, act)].add(oid)
         activities = None
         top = None
 
@@ -317,7 +354,8 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
     return {
         "types": types, "hub_mode": hub_mode,
         "variants": ({"type": variant_type, "ids": sorted(set(variant_ids or [])),
-                      "objects": len(seqs_of.get(variant_type, []))} if variant_type in model.object_counts else None),
+                      "objects": len(seqs_of.get(variant_type, [])),
+                      "with_types": [t for t in types if t != variant_type]} if variant_type in model.object_counts else None),
         "own_activities": {t: model.own_activities(t) for t in types if t in model.own_events},
         "activity_list": [{"name": a, "events": len(act_events[a]), "selected": a in kept} for a in ranking],
         "activities": {"shown": len(kept), "total": len(ranking)},

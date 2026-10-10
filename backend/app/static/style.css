@@ -836,7 +836,6 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .side-hide { font-size: 20px; line-height: 1; padding: 0 6px 8px; text-decoration: none; }
 .explorer-body.side-collapsed { grid-template-columns: minmax(0, 1fr); }
 .explorer-body.side-collapsed .explorer-side { display: none; }
-.type-list.dimmed { opacity: 0.45; }
 .var-help { margin: 0 0 8px; }
 .var-type-label { display: block; margin-bottom: 8px; }
 .var-type-label select { width: 100%; margin-top: 3px; }
