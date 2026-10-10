@@ -120,12 +120,6 @@
     return fmt(T.seconds, { n: Math.round(sec).toLocaleString(LANG) });
   }
   function days(d) { return dur(d * 86400); }
-  // etichetta di una classe dell'istogramma: «0–3,8 g», «3,8–7,5 g» (l'unita' una volta sola se e' la stessa)
-  function range(a, b) {
-    var hi = days(b), lo = a > 0 ? days(a) : "0", unit = hi.replace(/^[\d.,\s\u00a0]+/, "");
-    if (unit && lo.slice(-unit.length) === unit) lo = lo.slice(0, -unit.length).trim();
-    return lo + "–" + hi;
-  }
   function monthLabel(m) {
     var p = m.month.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, 1));
     return d.toLocaleDateString(LANG, { month: "short", year: "2-digit", timeZone: "UTC" });
@@ -236,7 +230,7 @@
     s1.appendChild(scroller(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); })));
     grid.appendChild(s1);
     var s2 = section(T.tpTitle);
-    s2.appendChild(scroller(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : range(b.from, b.to); },
+    s2.appendChild(scroller(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
       function (b) { var one = b.count === 1;
         return b.overflow ? fmt(one ? T.tpOver1 : T.tpOver, { a: days(b.from), n: num(b.count) })
                           : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); })));
