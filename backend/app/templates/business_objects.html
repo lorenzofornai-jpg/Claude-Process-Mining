@@ -7,6 +7,20 @@
     {{ _("Gli oggetti sono le cose di cui misuri le prestazioni (fatture, incassi, ordini, righe d'ordine, ticket), non le tabelle: una tabella può contenere più oggetti, e log e anagrafiche di solito non sono oggetti. Scegli quali entrano nel dataset: il mapping colonna per colonna partirà da qui.") }}
   </p>
 
+  <details class="bo-help" open>
+    <summary>{{ _("Cosa cambiano queste scelte") }}</summary>
+    <dl>
+      <dt>{{ _("Includere o escludere un oggetto") }}</dt>
+      <dd>{{ _("Incluso: nel dataset nasce un tipo di oggetto con i suoi attributi, e il mapping gli collega gli eventi delle tabelle. Escluso: le sue colonne possono servire come attributi di altri oggetti (es. il cliente come dimensione), ma nelle analisi non ha una linea propria. Per includerlo in seguito serve «Ricarica i file e rifai il mapping».") }}</dd>
+      <dt>{{ _("Oggetto guida") }}</dt>
+      <dd>{{ _("È l'oggetto che gli obiettivi misurano. Il mapping cerca di far arrivare a lui gli eventi; obiettivo misurabile e Process Overview partono da lui, il Process Explorer si apre su di lui. Non è definitivo: in analisi puoi scegliere un altro oggetto come guida in qualsiasi momento, senza rigenerare il dataset. Sceglierlo ora conta per il mapping: i collegamenti che servono a misurarlo si cercano adesso, e un oggetto a cui gli eventi non arrivano darà numeri poveri anche se lo scegli dopo.") }}</dd>
+      <dt>{{ _("Necessario") }}</dt>
+      <dd>{{ _("Senza di lui la misura non si fa (es. il pagamento che chiude la fattura). Il mapping deve collegargli gli eventi; dopo la generazione un controllo dice quanti oggetti guida lo raggiungono; il Process Explorer si apre con lui già selezionato.") }}</dd>
+      <dt>{{ _("Di contesto") }}</dt>
+      <dd>{{ _("Serve a spiegare i risultati, non a misurarli (es. le posizioni per confrontare quantità e prezzi). Entra nel dataset con chiave e attributi, con i collegamenti evidenti; nel Process Explorer lo aggiungi tu quando ti serve.") }}</dd>
+    </dl>
+  </details>
+
   {% if answers.objectives or answers.key_questions %}
   <div class="bo-goals tiny">
     <strong>{{ _("I tuoi obiettivi") }}:</strong>

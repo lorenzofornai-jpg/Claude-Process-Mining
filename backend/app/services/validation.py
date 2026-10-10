@@ -285,7 +285,8 @@ def _main_type(ocel: dict, main_object: str | None) -> str | None:
 
 
 def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict | None = None,
-                            main_object: str | None = None, planned_events: dict[str, str] | None = None) -> list[dict]:
+                            main_object: str | None = None, planned_events: dict[str, str] | None = None,
+                            business_objects: list[dict] | None = None) -> list[dict]:
     """Controlli su tutti i tipi di oggetto, senza dipendere dal processo (P2P, O2C, AR...).
     main_object: oggetto principale dichiarato nell'assessment (facoltativo, solo per l'ordine);
     planned_events: {tipo di evento del mapping: motivo} per gli eventi nati da date previste."""
@@ -299,8 +300,61 @@ def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict 
         _check_orphan_objects(ocel),
         *_check_object_split(ocel, skip_log, stats or {}),
         *_check_activity_columns(skip_log, stats or {}),
+        *_check_needed_links(ocel, business_objects or []),
         _check_event_distribution(ocel),
     ]
+
+
+def _check_needed_links(ocel: dict, objects: list[dict], max_hops: int = 3) -> list[dict]:
+    """Oggetti di business «necessari»: quanti oggetti guida li raggiungono attraverso gli eventi (anche passando
+    per altri oggetti, es. posizione d'ordine -> fattura -> pagamento). Se pochi, la misura che dipende da loro
+    non regge: lo si dice con i numeri."""
+    lead = next((o["name"] for o in objects if o.get("include") and o.get("role") == "lead"), None)
+    needed = [o["name"] for o in objects if o.get("include") and o.get("role") == "needed" and o["name"] != lead]
+    type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
+    present = set(type_of.values())
+    needed = [t for t in needed if t in present]
+    if not lead or lead not in present or not needed:
+        return []
+    neighbours: dict[str, set] = defaultdict(set)
+    for e in ocel.get("events", []):
+        ids = [r["objectId"] for r in e.get("relationships", []) if r.get("objectId") in type_of]
+        for a in ids:
+            neighbours[a].update(x for x in ids if x != a)
+    leads = [oid for oid, t in type_of.items() if t == lead]
+    reached: dict[str, int] = defaultdict(int)
+    for oid in leads:
+        seen, frontier, types = {oid}, {oid}, set()
+        for _ in range(max_hops):
+            nxt = set()
+            for x in frontier:
+                for y in neighbours.get(x, ()):
+                    if y not in seen and len(seen) < 5000:
+                        seen.add(y)
+                        nxt.add(y)
+                        types.add(type_of[y])
+            frontier = nxt
+            if not frontier:
+                break
+        for t in needed:
+            if t in types:
+                reached[t] += 1
+    parts, weak = [], 0
+    for t in needed:
+        n = reached[t]
+        pct = round(100 * n / len(leads)) if leads else 0
+        parts.append(msg("{t}: raggiungibile da {n} oggetti {l} su {m} ({p}%)", t=t, n=n, l=lead, m=len(leads), p=pct))
+        if n * 2 < len(leads):
+            weak += 1
+    return [{
+        "check_name": "Collegamento agli oggetti necessari",
+        "severity": "warning",
+        "passed": weak == 0,
+        "details": joined(parts + ([msg(
+            "meno della metà: nella revisione aggiungi il collegamento mancante (una colonna degli eventi che contiene "
+            "il numero di quell'oggetto) o chiedilo all'assistente")] if weak else []), "; "),
+        "affected_count": weak,
+    }]
 
 
 def _check_planned_events(planned: dict[str, str], stats: dict) -> list[dict]:

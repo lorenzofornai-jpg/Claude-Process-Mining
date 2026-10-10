@@ -126,9 +126,13 @@ class ExplorerModel:
         documenti diversi. La sua linea collega eventi di documenti diversi e attraversa tutto il grafo."""
         return self.avg_events(t) >= 8 and self.with_events[t] * 4 <= self.related_events[t]
 
-    def default_types(self) -> list[str]:
-        """Selezione iniziale: i (massimo) due tipi con piu' eventi collegati, esclusi i trasversali, cosi' il
-        primo grafo e' leggibile."""
+    def default_types(self, preferred: list[str] | None = None) -> list[str]:
+        """Selezione iniziale. preferred: l'oggetto guida e gli oggetti necessari confermati prima del mapping
+        (quelli con eventi, al massimo quattro). Senza: i due tipi con piu' eventi collegati, esclusi i
+        trasversali, cosi' il primo grafo e' leggibile."""
+        chosen = [t for t in dict.fromkeys(preferred or []) if t in self.types and self.related_events.get(t)]
+        if chosen:
+            return chosen[:4]
         ranked = sorted((t for t in self.types if self.related_events[t]), key=lambda t: (-self.related_events[t], t))
         return ([t for t in ranked if not self.is_hub(t)] or ranked)[:2]
 

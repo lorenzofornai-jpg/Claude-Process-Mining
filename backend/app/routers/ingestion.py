@@ -1531,6 +1531,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
     ocel, skip_log, stats = build_ocel(sess["tables_data"], confirmed)
     dq_results = run_data_quality_checks(
         ocel, skip_log, stats, _main_object(workspace_id), _planned_events(confirmed, sess.get("tables_schema_objs") or []),
+        business_objects=sess.get("business_objects"),
     )
     object_defs, event_defs = compile_defs(confirmed)
     schema_fp = _schema_fingerprint(sess["tables_schema"])
@@ -1969,6 +1970,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
     db = SessionLocal()
     try:
         config = db.get(IngestionConfig, config_id)
+        confirmed_objects = (config.business_objects if config else None) or None
         last_run = (
             db.query(ExtractionRun)
             .filter_by(workspace_id=workspace_id, ingestion_config_id=config_id)
@@ -2044,6 +2046,7 @@ def _apply_update(request: Request, user, workspace_id: str, config_id: str, fil
     stats["update_mode"] = mode
     dq_results = run_data_quality_checks(
         ocel, skip_log, stats, _main_object(workspace_id), _planned_events(confirmed, tables_schema),
+        business_objects=confirmed_objects,
     )
 
     ocel_path = OUTPUT_DIR / f"{config_id}-{uuid.uuid4().hex[:8]}.ocel.json"

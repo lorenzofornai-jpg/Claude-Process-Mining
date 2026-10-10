@@ -178,3 +178,20 @@ def test_key_of_confirmed_object_from_another_host_table_is_rejected():
         {"name": "Order Item", "table": "items", "key": ["item_id"], "filter": None, "role": "context", "include": True}]
     out, rejected = bo.apply(proposals, confirmed, data)
     assert [(out[i].source_table, out[i].source_column) for i in rejected] == [("items", "order_id")]
+
+
+def test_needed_objects_link_check_follows_indirect_links():
+    """Posizione d'ordine (guida) -> fattura -> pagamento: il pagamento si raggiunge passando dalla fattura."""
+    from app.services.validation import _check_needed_links
+    objects = [{"id": f"I{i}", "type": "Item"} for i in range(4)] + [{"id": "F0", "type": "Invoice"}, {"id": "P0", "type": "Payment"},
+                                                                     {"id": "S0", "type": "Supplier"}]
+    events = [{"relationships": [{"objectId": "I0"}, {"objectId": "F0"}]}, {"relationships": [{"objectId": "I1"}, {"objectId": "F0"}]},
+              {"relationships": [{"objectId": "F0"}, {"objectId": "P0"}]}, {"relationships": [{"objectId": "I2"}]}]
+    bos = [{"name": "Item", "role": "lead", "include": True}, {"name": "Payment", "role": "needed", "include": True},
+           {"name": "Supplier", "role": "context", "include": True}]
+    [check] = _check_needed_links({"objects": objects, "events": events}, bos)
+    assert check["affected_count"] == 0 and check["passed"]            # 2 su 4: la meta', non meno
+    assert check["details"]["list"][0]["p"]["n"] == 2
+    bos[1]["name"] = "Supplier"; bos[2]["name"] = "Payment"           # nessuna posizione raggiunge il fornitore
+    [check] = _check_needed_links({"objects": objects, "events": events}, bos)
+    assert not check["passed"]

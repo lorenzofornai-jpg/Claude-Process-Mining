@@ -370,6 +370,8 @@ manuali, procedure) che la citano: usali per capire cosa rappresenta ogni tabell
   definisce oggetti (i suoi dati sono eventi o attributi). Un oggetto con only_rows_where e' solo una parte
   della sua tabella: definisci per quella tabella un solo object_type con il nome del primo oggetto (la
   divisione per valore viene aggiunta in automatico).
+  Il loro "role" (lead / needed / context) dice quali collegamenti contano: gli eventi devono raggiungere
+  l'oggetto guida (lead) e quelli necessari (needed).
 - Una tabella in copy_of ripete le righe di un'altra tabella (indice, vista, estrazione filtrata): non
   definisce object_types ne' event_types; oggetti ed eventi vengono dalla tabella indicata in "of".
 "already_defined_model", se presente, e' il modello gia' definito dalle altre tabelle del dataset
@@ -440,6 +442,12 @@ confermati e le altre colonne utili sono attributi (un riferimento a un'anagrafi
 es. il cliente, e' un "evt_attr" o "obj_attr": serve da dimensione). Per un oggetto con only_rows_where
 (solo una parte della tabella) la divisione per valore viene aggiunta in automatico: non proporre "split";
 un "relation" puo' puntare direttamente al nome di business (es. rel "Invoice").
+Il "role" di ogni oggetto confermato dice quanto contano i suoi collegamenti:
+- "lead" (oggetto guida, quello che gli obiettivi misurano) e "needed" (senza di lui la misura non si fa): gli
+  eventi devono raggiungerli. Proponi un "relation" verso di loro ogni volta che una colonna della tabella ne
+  contiene la chiave o il numero, anche con un altro nome (es. documento di pareggio, riferimento all'ordine o alla
+  riga d'ordine), con la confidenza onesta;
+- "context" (utile per spiegare, non per misurare): chiave e attributi utili; collegamenti solo se evidenti.
 
 Regole per contenere costi e lavoro di revisione:
 - Mappa SOLO le colonne utili al process mining: chiavi, date di processo, collegamenti, e gli

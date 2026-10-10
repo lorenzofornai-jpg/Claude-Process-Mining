@@ -125,6 +125,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   modello P2P, catalogo, nomi generici «Bkpf event») passano da `services/names_i18n.py`, nei due versi. I nomi
   scelti dall'utente non si cambiano. Plurali italiani con aggettivo finale («Partite cliente aperte»).
 
+## Ruoli degli oggetti di business con effetti concreti (10 ottobre 2026)
+- ✅ Spiegazione in testa alla pagina «Oggetti di business»: cosa cambiano inclusione, oggetto guida (rivedibile in
+  analisi, ma conta per il mapping), necessario e di contesto.
+- ✅ Mapping: gli eventi devono raggiungere guida e necessari (relation anche da colonne con altro nome); per quelli
+  di contesto solo collegamenti evidenti.
+- ✅ Controllo dopo la generazione «Collegamento agli oggetti necessari»: quanti oggetti guida raggiungono ogni
+  oggetto necessario, anche passando per altri oggetti (fino a 3 passaggi); avviso sotto la metà.
+- ✅ Process Explorer: all'apertura sono selezionati l'oggetto guida e i necessari (con eventi).
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

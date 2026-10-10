@@ -820,3 +820,10 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .cov-q { margin: 2px 0 6px; }
 .cov-unanswered { margin-top: 10px; }
 .as-action-line { margin: 2px 0; }
+
+/* Oggetti di business: cosa cambiano le scelte */
+.bo-help { margin: 12px 0 16px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg-soft); }
+.bo-help summary { cursor: pointer; font-weight: 600; }
+.bo-help dl { margin: 8px 0 0; }
+.bo-help dt { font-weight: 600; margin-top: 8px; font-size: 14px; }
+.bo-help dd { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }

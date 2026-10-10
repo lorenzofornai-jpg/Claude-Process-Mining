@@ -124,7 +124,7 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
         {
             "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
             "config": config, "run": run, "configs": configs,
-            "object_types": model.type_summary(), "default_types": model.default_types(),
+            "object_types": model.type_summary(), "default_types": model.default_types(business_focus(config)),
             "aliases": _aliases(user.id, config.id),
             "event_count": model.event_count,
         },
@@ -315,6 +315,13 @@ def _plurals(lang: str, types, aliases: dict) -> dict:
     from app.services.nouns import plural
     names = set(types) | set((aliases or {}).get("object_type", {}).values())
     return {n: plural(n, lang) for n in names}
+
+
+def business_focus(config) -> list[str]:
+    """Oggetto guida e oggetti necessari confermati prima del mapping, in quest'ordine (selezione iniziale)."""
+    objs = [o for o in (getattr(config, "business_objects", None) or []) if o.get("include")]
+    return ([o["name"] for o in objs if o.get("role") == "lead"]
+            + [o["name"] for o in objs if o.get("role") == "needed"])
 
 
 def business_lead(config_id: str) -> str | None:
