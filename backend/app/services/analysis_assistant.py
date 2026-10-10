@@ -47,11 +47,7 @@ nome di una linea la si vede da sola. Tipi «trasversali» (es. cliente): pochi 
 documenti diversi; di base la linea passa solo dagli eventi propri, un interruttore la mostra su tutti.
 Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi.
 
-Filtri (in Process Explorer e Process Overview, pannello ui_labels.filters): l'utente può limitare l'analisi ai
-casi con un valore di attributo (es. gli ordini di un cliente, gli eventi con un certo motivo). "filters" nei DATI
-dice quali filtri sono attivi: tutti i numeri della pagina valgono solo per quei casi; dillo quando rispondi.
-
-Dati: con query_rows e compare_columns leggi il dataset (con gli stessi filtri della pagina) in sola lettura. Tabelle:
+Dati: con query_rows e compare_columns leggi il dataset in sola lettura. Tabelle:
 una per tipo di oggetto (id, attributi, events, first, last, duration_days, activities = attività in ordine) e
 "events" (id, activity, time, objects, attributi dell'evento). Usale quando la risposta richiede numeri o elenchi che
 la pagina non mostra (es. quali ordini di un cliente sono ancora aperti, quanti oggetti hanno un'attività); fai poche
@@ -129,7 +125,7 @@ UI_LABELS = {
     "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
     "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
     "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
-    "cross_cutting_tag": "trasversale", "assistant": "Assistente", "filters": "Filtri",
+    "cross_cutting_tag": "trasversale", "assistant": "Assistente",
     "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",
     "business_objects_step": "Oggetti di business", "lead_object": "Oggetto guida",
     "throughput_time": "Tempo di attraversamento", "start_to_end": "Da inizio a fine", "object_only": "Solo l'oggetto",
@@ -193,8 +189,7 @@ def overview_view(ov: dict | None, focus: str | None) -> dict:
 
 
 def build_context(*, language: str, process_name: str, assessment: dict, dataset: dict, model, mapping: dict,
-                  page: str, view: dict, ui_labels: dict | None = None, objective: dict | None = None,
-                  filters: list | None = None) -> str:
+                  page: str, view: dict, ui_labels: dict | None = None, objective: dict | None = None) -> str:
     """Contesto in JSON per Claude: processo, dataset, provenienza, pagina e cosa mostra."""
     types = [{
         "name": t["name"], "objects": t["objects"], "objects_with_events": t["with_events"],
@@ -211,7 +206,6 @@ def build_context(*, language: str, process_name: str, assessment: dict, dataset
         # obiettivo misurabile salvato: oggetto, filtro, attivita' di inizio e fine (il tempo che conta per il business)
         "measurable_objective": objective,
         "view": view,
-        "filters": filters or [],
     }
     text = json.dumps(payload, ensure_ascii=False, default=list, separators=(",", ":"))
     return text[:60000]

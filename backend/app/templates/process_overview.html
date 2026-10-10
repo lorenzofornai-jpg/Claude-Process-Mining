@@ -40,7 +40,6 @@
     </div>
     <p class="tiny muted ov-scope-help" id="scope-help"></p>
   </div>
-  {% set filters_class = "ov-filters" %}{% include "_filters.html" %}
 
   <div id="ov-body" aria-live="polite">
     <p class="muted" id="ov-loading">{{ _("Calcolo in corso…") }}</p>
@@ -57,8 +56,6 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var TYPES = {{ object_types|tojson }};
-  // filtri per attributo (static/filters.js): gli stessi del Process Explorer
-  var flt = initFilters({ ws: WS, config: CONFIG, T: FLT_T, lang: LANG, onChange: function () { load(); } });
   var lead = {{ default_lead|tojson }}, scope = {{ ("objective" if has_objective else "object")|tojson }}, data = null, shown = 5;
   // i nomi arrivano corretti dall'ingestion: nessuna ridenominazione nell'analisi
   function tn(n) { return n; }
@@ -163,7 +160,6 @@
   function load() {
     document.getElementById("ov-body").style.opacity = 0.5;
     var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope });
-    if (flt.query()) q.set("filters", flt.query());
     fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
       .then(function (d) { data = d; lead = d.lead; render(); })
@@ -337,7 +333,7 @@
   // ---------- assistente dell'analisi (static/assistant.js): conosce oggetto guida e tempo scelti ----------
   initAssistant({
     ws: WS, config: CONFIG, page: "overview", lang: LANG, T: AS_T,
-    getView: function () { return { lead: lead, scope: scope, filters: flt.get() }; },
+    getView: function () { return { lead: lead, scope: scope }; },
     suggestions: function () {
       var sug = [T.asSugRead];
       if (data && data.throughput && data.throughput.stats) sug.push(fmt(T.asSugTime, { t: tn(lead) }));

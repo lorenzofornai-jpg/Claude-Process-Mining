@@ -140,11 +140,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   Process Explorer (internamente role = needed se incluso, context se escluso).
 
 ## Filtri per attributo e assistente dell'analisi con i dati (10 ottobre 2026)
-- ✅ Filtri per attributo in Process Explorer e Process Overview (`services/ocel_filter.py`, `static/filters.js`):
+- ⏸️ (tolti dall'interfaccia il 10 ottobre: da ripensare come entrano nelle analisi; il motore resta in
+  `services/ocel_filter.py` e `explorer.load_model(path, filters)`, con i test) Filtri per attributo in Process
+  Explorer e Process Overview:
   attributo di un tipo di oggetto o degli eventi, ricerca tra i valori (anche migliaia), più valori e più filtri.
   Restano i casi di partenza, gli oggetti collegati a loro (esclusi i trasversali) con tutta la loro storia.
   Stessi filtri nelle due pagine (per dataset, nella scheda del browser); colori e tipi trasversali stabili.
-- ✅ L'assistente dell'analisi legge il dataset con gli stessi filtri (tabelle per tipo di oggetto ed eventi,
+- ✅ L'assistente dell'analisi legge il dataset (senza filtri) (tabelle per tipo di oggetto ed eventi,
   `data_query.converse` comune con l'assistente della revisione): risponde a «quali ordini del cliente X sono
   ancora aperti?» con i numeri.
 

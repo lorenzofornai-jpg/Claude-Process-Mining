@@ -829,17 +829,3 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .bo-item.bo-new { box-shadow: 0 0 0 2px var(--brand); animation: bo-new-flash 1.6s ease-out 1; scroll-margin-top: 90px; }
 @keyframes bo-new-flash { from { background: var(--brand-soft); } }
 
-/* Filtri per attributo dell'analisi (_filters.html) */
-.flt .flt-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 6px; }
-.flt-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--brand-soft); color: var(--brand-dark);
-  border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12.5px; max-width: 100%; overflow-wrap: anywhere; }
-.flt-x { background: none; border: none; color: inherit; font-size: 16px; line-height: 1; padding: 0 6px; cursor: pointer; min-height: 0; }
-.flt-add summary { cursor: pointer; color: var(--brand); margin: 2px 0 6px; }
-.flt-add label { display: block; margin-bottom: 6px; }
-.flt-add select { width: 100%; margin-top: 3px; }
-.flt-values { max-height: 220px; overflow: auto; margin: 6px 0; }
-.flt-values label { display: flex; gap: 8px; align-items: center; }
-.flt-values .flt-v { flex: 1; overflow-wrap: anywhere; }
-.flt-note { margin: 4px 0 0; }
-.flt.flt-on .flt-note { color: var(--brand-dark); }
-.ov-filters { margin: 10px 0 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg-soft); }

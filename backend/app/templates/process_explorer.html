@@ -54,8 +54,6 @@
         {% endif %}
       </div>
 
-      <div class="side-block">{% set filters_class = "" %}{% include "_filters.html" %}</div>
-
       <input type="search" id="list-search" class="list-search" placeholder="{{ _("Cerca") }}" aria-label="{{ _("Cerca") }}">
 
       <div class="side-tabs" role="tablist">
@@ -131,8 +129,6 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var COLORS = {}, TYPES = {};
-  // filtri per attributo (static/filters.js): stessi filtri anche nella Process Overview
-  var flt = initFilters({ ws: WS, config: CONFIG, T: FLT_T, lang: LANG, onChange: function () { schedule(); } });
   {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};
   {% endfor %}
   // nomi personali dell'utente (solo nella sua analisi): tn = tipo di oggetto, an = attivita'
@@ -140,8 +136,6 @@
   function tn(name) { return name; }
   function an(name) { return name; }
   var T = {
-    noCases: {{ _("Nessun caso con questi filtri per i tipi di oggetto scelti: togli un filtro o scegli altri tipi.")|tojson }},
-    chooseSomething: {{ _("Scegli almeno un tipo di oggetto e un'attività per vedere il grafo.")|tojson }},
     nOfM: {{ _("{n} di {m}")|tojson }},
     top: {{ _("Le più frequenti: {n} di {m}")|tojson }},
     paths: {{ _("Percorsi più frequenti: {p}%")|tojson }},
@@ -271,7 +265,6 @@
                                   hub: hubAll && hubAll.checked ? "all" : "own" });
     types.forEach(function (t) { q.append("type", t); });
     if (actMode === "top") q.set("top", actTop); else actSet.forEach(function (a) { q.append("act", a); });
-    if (flt.query()) q.set("filters", flt.query());
     document.getElementById("graph-loading").hidden = false;
     fetch("/analysis/explorer/graph?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -355,8 +348,6 @@
     var edges = data.edges.filter(edgeVisible);
     var empty = document.getElementById("graph-empty");
     empty.hidden = edges.length > 0;
-    // con un filtro attivo il grafo vuoto vuol dire «nessun caso», non «scegli un tipo»
-    empty.textContent = flt.get().length && !data.activity_list.length ? T.noCases : T.chooseSomething;
     if (!edges.length) { renderLegend(); return; }
     var maxCount = Math.max.apply(null, edges.map(function (e) { return e.count; }));
     var byId = {}; data.nodes.forEach(function (n) { byId[n.id] = n; });
@@ -834,7 +825,7 @@
   function viewState() {
     var hubAll = document.getElementById("hub-all");
     return { types: selectedTypes(), acts: actMode, act: actSet || [], top: actTop, paths: Number(pathSlider.value),
-             hub: hubAll && hubAll.checked ? "all" : "own", filters: flt.get() };
+             hub: hubAll && hubAll.checked ? "all" : "own" };
   }
   var assistant = initAssistant({
     ws: WS, config: CONFIG, page: "explorer", lang: LANG, T: AS_T, getView: viewState,

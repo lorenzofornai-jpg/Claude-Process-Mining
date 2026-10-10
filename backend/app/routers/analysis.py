@@ -6,7 +6,6 @@ flussi object-centric di un dataset (services/explorer.py).
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -136,7 +135,7 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
 def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
                            type: list[str] = Query(default=[]), act: list[str] = Query(default=[]),
                            acts: str = "top", top: int | None = None, paths: int = 100,
-                           hub: str = "own", filters: str = ""):
+                           hub: str = "own"):
     """Grafo aggregato in JSON per i filtri scelti.
 
     type=...&type=...: tipi di oggetto. acts=top: le `top` attivita' piu' frequenti;
@@ -149,32 +148,10 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    model = explorer.load_model(run.ocel_file_path, _filters(filters))
+    model = explorer.load_model(run.ocel_file_path)
     activities = list(act) if acts == "list" else None
     return JSONResponse(explorer.build_graph(model, list(type), activities, top, paths,
                                              "all" if hub == "all" else "own"))
-
-
-def _filters(raw) -> list[dict]:
-    """Filtri per attributo dal browser: JSON [{kind, type, attribute, values}] (stringa o lista)."""
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw) if raw else []
-        except ValueError:
-            raw = []
-    return ocel_filter.clean(raw if isinstance(raw, list) else [])
-
-
-@router.get("/analysis/attributes")
-def analysis_attributes(request: Request, workspace_id: str, config_id: str):
-    """Attributi su cui filtrare (tipi di oggetto ed eventi), con i valori: per i filtri di Explorer e Overview."""
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
-    config, run, _ = _explorer_dataset(workspace_id, config_id)
-    if config is None or run is None or not Path(run.ocel_file_path).exists():
-        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    return JSONResponse({"attributes": ocel_filter.catalog(ocel_filter.load_raw(run.ocel_file_path))})
 
 
 # ---------- assistente dell'analisi ----------
@@ -205,8 +182,7 @@ async def analysis_assistant_ask(request: Request):
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
     view = body.get("view") or {}
-    filters = _filters(view.get("filters"))
-    model = explorer.load_model(run.ocel_file_path, filters)
+    model = explorer.load_model(run.ocel_file_path)
 
     page = "overview" if body.get("page") == "overview" else "explorer"
     focus = str(body.get("focus") or "")[:300] or None
@@ -244,7 +220,7 @@ async def analysis_assistant_ask(request: Request):
                  "objects": run.object_count, "events": run.event_count},
         model=model, mapping=mapping, page=page, view=page_view,
         ui_labels=ui_labels(lang, analysis_assistant.UI_LABELS),
-        objective=saved_objective(config.id), filters=filters,
+        objective=saved_objective(config.id),
     )
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     est = analysis_assistant.estimate(context, history)
@@ -252,8 +228,7 @@ async def analysis_assistant_ask(request: Request):
         return JSONResponse({"available": True, **est})
     try:
         # il dataset (con gli stessi filtri della pagina) come tabelle da interrogare in sola lettura
-        data = ocel_filter.tables(ocel_filter.apply(ocel_filter.load_raw(run.ocel_file_path), filters,
-                                                    {t_ for t_ in model.types if model.is_hub(t_)}))
+        data = ocel_filter.tables(ocel_filter.load_raw(run.ocel_file_path))
         result = await run_in_threadpool(analysis_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente dell'analisi non riuscito ({exc!r}).")
@@ -297,8 +272,7 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
 
 
 @router.get("/analysis/overview/data")
-def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "objective",
-                          filters: str = ""):
+def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "objective"):
     """Volumi, tempi e varianti visti dall'oggetto guida `lead`; scope=object|related per i tempi."""
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -306,7 +280,7 @@ def process_overview_data(request: Request, workspace_id: str, config_id: str, l
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    model = explorer.load_model(run.ocel_file_path, _filters(filters))
+    model = explorer.load_model(run.ocel_file_path)
     if lead not in overview.lead_options(model):
         lead = overview.default_lead(model)
     if lead is None:
