@@ -1040,3 +1040,5 @@ table.ov-acts td.strong { font-weight: 600; }
 .ct-ed-tools .ct-regen { margin: 0; padding: 0; border: 0; }
 .ct-translate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .ct-translate .ct-claude-out { margin-top: 0; }
+.ct-detail .ct-crumbs { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--border); }
+.ct-detail .ct-section-open { margin-top: 0; padding-top: 0; }

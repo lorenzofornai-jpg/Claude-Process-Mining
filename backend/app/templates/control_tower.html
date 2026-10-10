@@ -3,7 +3,7 @@
 {% block main_class %}content-wide{% endblock %}
 {% block content %}
 <div class="card wide ct-card">
-  <div class="explorer-head">
+  <div class="explorer-head" id="ct-head">
     <div>
       <p class="eyebrow">{{ _("Vista per il management") }}</p>
       <h1>Control Tower</h1>
@@ -73,6 +73,7 @@
     summary: {{ _("Sintesi")|tojson }},
     openDetail: {{ _("Apri il dettaglio")|tojson }},
     backSummary: {{ _("Sintesi")|tojson }},
+    assistant: {{ _("Assistente")|tojson }},
     questionOf: {{ _("Domanda {n} di {m}")|tojson }},
     prevQ: {{ _("Domanda precedente")|tojson }}, nextQ: {{ _("Domanda successiva")|tojson }},
     noKpis: {{ _("Nessun KPI per questa domanda.")|tojson }},
@@ -356,11 +357,15 @@
     var eb = document.getElementById("ct-edit-btn"); eb.hidden = !has;
     eb.textContent = editing ? T.close : T.edTitle; eb.setAttribute("aria-pressed", editing ? "true" : "false");
     renderStatus();
+    // secondo livello: la pagina parte dalla domanda (niente intestazione, stato e periodo, che restano quelli
+    // scelti nella sintesi); in fondo i comandi per tornare alla sintesi, cambiare domanda e l'assistente
+    var sec = has && !editing ? openSection() : null;
+    document.getElementById("ct-head").hidden = !!sec;
+    document.getElementById("ct-status").hidden = !!sec;
     var body = document.getElementById("ct-body"); body.textContent = "";
     if (!has) { body.appendChild(emptyState()); return; }
     if (editing) { body.appendChild(editor()); return; }
-    var sec = openSection();
-    body.appendChild(periodNote());
+    if (!sec) body.appendChild(periodNote());
     if (sec) { body.appendChild(detail(sec)); drawCharts(); }
     else { body.appendChild(summaryView()); drawSparks(); }
     if (assistant) assistant.refresh();
@@ -458,7 +463,7 @@
     var prev = button("‹", "secondary", function () { go(spec.sections[idx - 1].id); }); prev.title = T.prevQ; prev.setAttribute("aria-label", T.prevQ); prev.disabled = idx === 0;
     var next = button("›", "secondary", function () { go(spec.sections[idx + 1].id); }); next.title = T.nextQ; next.setAttribute("aria-label", T.nextQ); next.disabled = idx === n - 1;
     pn.appendChild(prev); pn.appendChild(next); nav.appendChild(pn);
-    wrap.appendChild(nav);
+    if (assistant) nav.appendChild(button("✦ " + T.assistant, "secondary", function () { assistant.open(); }));
     var sec = el("section", "ct-section ct-section-open");
     var head = el("div", "ct-section-head");
     head.appendChild(el("span", "ct-section-n", String(idx + 1)));
@@ -487,6 +492,7 @@
       sec.appendChild(cg);
     }
     wrap.appendChild(sec);
+    wrap.appendChild(nav);
     return wrap;
   }
 
