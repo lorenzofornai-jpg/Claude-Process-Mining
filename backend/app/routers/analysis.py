@@ -20,7 +20,7 @@ from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.models import AnalysisObjective, ControlTower, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
 from app.routers.assessment import load_assessment
-from app.services import analysis_assistant, control_tower, explain, explorer, objectives, ocel_filter, overview
+from app.services import analysis_assistant, control_tower, control_tower_assistant, explain, explorer, objectives, ocel_filter, overview
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -624,8 +624,10 @@ async def control_tower_save(request: Request):
                 for c in s["charts"]:
                     c.pop("issues", None)
             if clean != row.spec:
+                # domande e KPI (come si calcolano, obiettivi) tornano da approvare; grafici e sintesi no
+                if control_tower.definitions_part(clean) != control_tower.definitions_part(row.spec):
+                    row.status, row.approved_by, row.approved_at = "draft", None, None
                 row.spec, row.updated_by, row.updated_at = clean, user.name, now
-                row.status, row.approved_by, row.approved_at = "draft", None, None
         if body.get("approve"):
             row.status, row.approved_by, row.approved_at = "approved", user.name, now
         db.add(row)
@@ -633,3 +635,81 @@ async def control_tower_save(request: Request):
         return JSONResponse({"saved": True, "status": row.status})
     finally:
         db.close()
+
+
+@router.post("/analysis/control-tower/apply")
+async def control_tower_apply(request: Request):
+    """Applica alle definizioni in corso (non salvate) le modifiche proposte dall'assistente: ritorna le definizioni
+    nuove, da vedere in anteprima e poi salvare."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    spec, skipped = control_tower.apply_operations(body.get("spec") or {}, body.get("operations") or [])
+    clean, _ = control_tower.validate(spec, explorer.load_model(run.ocel_file_path))
+    for s in clean["sections"]:
+        for c in s["charts"]:
+            c.pop("issues", None)
+    return JSONResponse({"spec": clean, "skipped": [render(lang, x) for x in skipped]})
+
+
+@router.post("/analysis/control-tower/assistant")
+async def control_tower_assistant_ask(request: Request):
+    """Domanda all'assistente della Control Tower. Con estimate=true solo il costo indicativo."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    if not explain.available():
+        return JSONResponse({"available": False, "error": t(
+            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    answers, _ = load_assessment(workspace_id)
+    lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
+    db = SessionLocal()
+    try:
+        ws = db.get(ProcessWorkspace, workspace_id)
+        row = _tower_row(db, config.id)
+    finally:
+        db.close()
+    view = body.get("view") if isinstance(body.get("view"), dict) else {}
+    # le definizioni che l'utente sta guardando (anche modifiche non ancora salvate)
+    spec = view.pop("spec", None) if isinstance(view.get("spec"), dict) else (row.spec if row else None)
+    view.pop("spec", None)
+    period = str(view.get("period") or "12")
+    values = None
+    if spec:
+        spec, _ = control_tower.validate(spec, model)
+        values = await run_in_threadpool(control_tower.compute, spec, model, period)
+        for k in values["kpis"].values():
+            if k.get("issues"):
+                k["issues"] = [render(lang, x) for x in k["issues"]]
+    view["focus"] = str(body.get("focus") or "")[:300] or None
+    context = control_tower_assistant.build_context(
+        language=lang, process_name=ws.process_name, assessment=answers, cat=control_tower.catalog(model, lead),
+        spec=spec, values=values, view=view)
+    history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
+    est = control_tower_assistant.estimate(context, history)
+    if body.get("estimate"):
+        return JSONResponse({"available": True, **est})
+    try:
+        data = ocel_filter.tables(ocel_filter.load_raw(run.ocel_file_path))
+        result = await run_in_threadpool(control_tower_assistant.ask, context, history, data)
+    except Exception as exc:
+        print(f"Assistente della Control Tower non riuscito ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+                             + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
+    if result.get("truncated"):
+        result["answer"] = (result.get("answer") or "").rstrip() + "…\n\n" + t(
+            lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")
+    return JSONResponse({"available": True, **result})

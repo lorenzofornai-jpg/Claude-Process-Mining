@@ -1012,3 +1012,29 @@ table.ov-acts td.strong { font-weight: 600; }
   #ct-period-box .segmented .seg { padding: 7px 10px; white-space: nowrap; }
   .ct-hbar-value .muted { display: none; }   /* il dettaglio resta nel suggerimento della riga */
 }
+/* Control Tower: sintesi (primo livello) e dettaglio di una domanda (secondo livello) */
+.ct-qcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 16px; margin-top: 14px; }
+.ct-qcard { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--card-bg); color: var(--text); text-decoration: none; box-shadow: var(--shadow-sm); transition: border-color .15s ease, box-shadow .15s ease; }
+.ct-qcard:hover, .ct-qcard:focus-visible { border-color: var(--brand); box-shadow: var(--shadow-md); }
+.ct-qcard .ct-h { font-size: 16px; }
+.ct-qkpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ct-qkpis .ct-kpi-big .ct-kpi-value { font-size: 30px; }
+.ct-spark { display: flex; flex-direction: column; gap: 2px; }
+.ct-spark svg { width: 100%; }
+.ct-qmissing { margin: 0; color: var(--warn); }
+.ct-qmore { margin-top: auto; font-size: 13px; font-weight: 600; color: var(--brand); }
+.ct-crumbs { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.ct-crumbs button { margin: 0; }
+.ct-prevnext { margin-left: auto; display: flex; gap: 6px; }
+.ct-prevnext button { min-width: 40px; font-size: 18px; padding: 4px 12px; }
+.ct-section-open { border-top: 0; padding-top: 6px; margin-top: 10px; }
+.ct-h-big { font-size: 21px; }
+.ct-ed-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; margin: 10px 0 4px; }
+.ct-ed-tools > button { margin: 0; }
+.ct-regen summary { cursor: pointer; color: var(--muted); padding-top: 9px; }
+.ct-desc { margin: 2px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--card-bg-soft); border: 1px solid var(--border); font-size: 14px; line-height: 1.45; }
+.as-action-buttons { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.as-action-buttons button { margin: 0; }
+.as-action-title { font-weight: 650; font-size: 13px; }
+.ct-ed-tools .ct-regen { margin: 0; padding: 0; border: 0; }

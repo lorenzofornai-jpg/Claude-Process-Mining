@@ -178,8 +178,15 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   da data base + giorni). Claude le propone una volta per dataset (costo mostrato prima, ~0,10-0,25 $); il Data
   Analyst le modifica con l'editor o con «Rivedi con Claude» e le approva; i valori li calcola l'app.
 - Dati mancanti: un KPI che usa attività o attributi che il dataset non ha mostra «Dato mancante» e il perché.
-- Da fare: assistente anche nella Control Tower; esportazione PDF/immagine per il management; KPI per gruppo
-  di clienti o società con filtro in testata; avvisi quando un KPI esce dall'obiettivo.
+- ✅ Due livelli: la sintesi (una card per domanda con i KPI scelti per la sintesi e l'andamento mensile) e, toccando
+  una card, il dettaglio della domanda con tutti i KPI e i grafici (#q=<id>: il pulsante Indietro torna alla sintesi).
+- ✅ «Definizioni dei KPI» ridotte a domande di business, KPI e come si calcolano (testi, KPI della sintesi,
+  eliminazioni); come si calcola un KPI, nuove domande e nuovi KPI si chiedono a Claude.
+- ✅ Assistente della Control Tower: spiega i numeri e propone modifiche (grafici, statistiche, obiettivi, domande,
+  KPI) come operazioni che l'app applica in anteprima; si salvano dalla barra in alto. Cambiare grafici e sintesi
+  lascia l'approvazione; cambiare domande e KPI (anche gli obiettivi) le rimette da approvare.
+- Da fare: esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
+  esce dall'obiettivo.
 
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio

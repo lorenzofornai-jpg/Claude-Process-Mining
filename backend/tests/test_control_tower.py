@@ -186,3 +186,36 @@ def test_propose_reads_tool_or_text_and_reports_errors(monkeypatch):
         raise AssertionError("doveva fallire")
     except ct.ProposalError as exc:
         assert "400" in render("en", exc.reason)
+
+
+def test_assistant_operations_and_approval_scope():
+    """Le modifiche proposte dall'assistente: KPI nuovo usato subito in un grafico (anche con id gia' preso),
+    grafici cambiati e tolti, KPI della sintesi; solo domande e KPI chiedono una nuova approvazione."""
+    base = _spec()
+    ops = [
+        {"type": "add_kpi", "section_id": "s1", "summary": True,
+         "kpi": {"id": "k1", "name": "Bloccate", "object_type": "Fattura", "measure": "count",
+                 "condition": {"op": "activity", "activities": ["Imposta blocco sollecito"]}}},
+        {"type": "add_chart", "section_id": "s1", "chart": {"kind": "trend", "kpi": "k1", "title": "Bloccate per mese"}},
+        {"type": "update_chart", "chart_id": "s1c3", "changes": {"title": "Per cliente"}},
+        {"type": "remove_chart", "chart_id": "s1c4"},
+        {"type": "set_summary", "section_id": "s1", "kpi_ids": ["k2"]},
+        {"type": "remove_chart", "chart_id": "nope"},
+    ]
+    spec, _ = ct.validate(base, ExplorerModel(_ocel()))   # id dei grafici assegnati come nella pagina
+    new, skipped = ct.apply_operations(spec, ops)
+    added = new["kpis"][-1]
+    assert added["id"] == "k6" and added["name"] == "Bloccate"            # k1 era gia' preso
+    charts = new["sections"][0]["charts"]
+    assert charts[-1]["kpi"] == "k6" and charts[-1]["title"] == "Bloccate per mese"
+    assert [c["id"] for c in charts if c.get("title") == "Per cliente"] == ["s1c3"]
+    assert "s1c4" not in [c["id"] for c in charts]
+    assert new["headline"] == ["k2"] and len(skipped) == 1
+    r = ct.compute(new, ExplorerModel(_ocel()), "all")
+    assert r["kpis"]["k6"]["value"] == 1
+    # solo grafici e sintesi cambiati: le definizioni da approvare restano uguali
+    only_charts, _ = ct.apply_operations(spec, ops[2:5])
+    assert ct.definitions_part(only_charts) == ct.definitions_part(spec)
+    assert ct.definitions_part(new) != ct.definitions_part(spec)
+    changed_target, _ = ct.apply_operations(spec, [{"type": "update_kpi", "kpi_id": "k1", "changes": {"target": {"op": "<=", "value": 20}}}])
+    assert ct.definitions_part(changed_target) != ct.definitions_part(spec)

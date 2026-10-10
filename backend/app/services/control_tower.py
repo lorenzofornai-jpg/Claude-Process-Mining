@@ -734,19 +734,7 @@ def compute(spec: dict, model, period: str = "12") -> dict:
 MAX_OUTPUT_TOKENS = 16000   # anche il ragionamento del modello consuma token di output
 TYPICAL_OUTPUT_TOKENS = 5000
 
-SYSTEM_PROMPT = """\
-Sei un esperto di process mining e di controllo di gestione. Progetti la «Control Tower» di un processo: una vista
-per il management (C-level) che risponde alle domande di business indicate nell'assessment con KPI misurati sul
-dataset object-centric (OCEL 2.0) del processo. L'app calcola i valori in modo deterministico a partire dalle tue
-definizioni: tu scrivi SOLO definizioni nel vocabolario qui sotto, usando esattamente i nomi di tipi di oggetto,
-attività e attributi del catalogo ("catalog"). Non inventare nomi.
-
-Struttura (strumento control_tower):
-- sections: una per domanda di business (al massimo 6; unisci domande molto simili). question = la domanda,
-  riformulata in modo chiaro per un dirigente; why = perché conta (valore economico, rischio) in una frase;
-  kpis = id dei KPI della sezione (2-4); charts = 1-3 grafici; missing = se la domanda non si può misurare
-  (del tutto o in parte) con questi dati, cosa manca e quale tabella o campo servirebbe; altrimenti "".
-- headline: 3-4 id dei KPI più importanti, mostrati in alto come sintesi.
+GRAMMAR = """\
 - kpis: id breve (k1, k2...), name (breve, da cruscotto), description (come si calcola, in parole semplici),
   object_type (di solito l'oggetto guida), measure, e i campi della misura:
   * share: quota degli oggetti della population che soddisfano condition (es. % fatture con intervento manuale).
@@ -789,6 +777,23 @@ Struttura (strumento control_tower):
   Preferisci per ogni sezione: un trend del KPI principale, una scomposizione (bars o table) per la dimensione che
   spiega il fenomeno (cliente, utente, tipo di intervento) e, se utile, un donut della composizione.
 
+"""
+
+SYSTEM_PROMPT = """\
+Sei un esperto di process mining e di controllo di gestione. Progetti la «Control Tower» di un processo: una vista
+per il management (C-level) che risponde alle domande di business indicate nell'assessment con KPI misurati sul
+dataset object-centric (OCEL 2.0) del processo. L'app calcola i valori in modo deterministico a partire dalle tue
+definizioni: tu scrivi SOLO definizioni nel vocabolario qui sotto, usando esattamente i nomi di tipi di oggetto,
+attività e attributi del catalogo ("catalog"). Non inventare nomi.
+
+Struttura (strumento control_tower):
+- sections: una per domanda di business (al massimo 6; unisci domande molto simili). question = la domanda,
+  riformulata in modo chiaro per un dirigente; why = perché conta (valore economico, rischio) in una frase;
+  kpis = id dei KPI della sezione (2-4); charts = 1-3 grafici; missing = se la domanda non si può misurare
+  (del tutto o in parte) con questi dati, cosa manca e quale tabella o campo servirebbe; altrimenti "".
+- headline: id dei KPI mostrati nella sintesi (primo livello della Control Tower), sulla card della loro domanda:
+  1-2 per domanda, i più importanti.
+""" + GRAMMAR + """
 Regole:
 - Leggi con attenzione il catalogo: attività con quanti oggetti, attributi con tipo (number, date, text) ed esempi,
   attributi degli eventi per attività. Un importo deve essere un attributo "number"; una data un attributo "date".
@@ -968,3 +973,143 @@ def library_hints(process_name: str, process_type: str) -> list[dict]:
         if fam in LIBRARY and any(w in f" {text}" for w in words):
             out += [{"family": fam, **x} for x in LIBRARY[fam]]
     return out[:20]
+
+
+# ---------- modifiche proposte dall'assistente ----------
+
+OPERATIONS = ("add_section", "update_section", "remove_section", "add_kpi", "update_kpi", "remove_kpi",
+              "add_chart", "update_chart", "remove_chart", "set_summary")
+
+
+def definitions_part(spec: dict | None) -> dict:
+    """La parte che il Data Analyst approva: domande e KPI (con come si calcolano e obiettivi). I grafici e la
+    scelta dei KPI della sintesi no: cambiarli non chiede una nuova approvazione."""
+    spec = spec or {}
+    return {"kpis": spec.get("kpis") or [],
+            "sections": [{"id": s.get("id"), "kpis": list(s.get("kpis") or []),
+                          **{k: s.get(k) or "" for k in ("question", "why", "missing")}}
+                         for s in spec.get("sections") or [] if isinstance(s, dict)]}
+
+
+def _new_id(prefix: str, taken: set[str]) -> str:
+    i = 1
+    while f"{prefix}{i}" in taken:
+        i += 1
+    return f"{prefix}{i}"
+
+
+def apply_operations(spec: dict, operations: list) -> tuple[dict, list[dict]]:
+    """Applica le modifiche proposte (aggiungi, cambia, togli domande, KPI e grafici). Ritorna le definizioni nuove
+    e le operazioni non applicate (messaggi da tradurre). Un id gia' usato riceve un id nuovo, e i riferimenti
+    successivi nella stessa proposta lo seguono."""
+    spec = normalize(copy.deepcopy(spec or {}))
+    spec.setdefault("kpis", [])
+    spec.setdefault("sections", [])
+    spec.setdefault("headline", [])
+    skipped: list[dict] = []
+    remap: dict[str, str] = {}
+
+    def sec(sid):
+        return next((s for s in spec["sections"] if s.get("id") == remap.get(str(sid), str(sid))), None)
+
+    def kpi(kid):
+        return next((k for k in spec["kpis"] if k.get("id") == remap.get(str(kid), str(kid))), None)
+
+    def charts():
+        return [c for s in spec["sections"] for c in s.get("charts") or []]
+
+    for op in operations or []:
+        if not isinstance(op, dict) or op.get("type") not in OPERATIONS:
+            skipped.append(msg("Modifica non riconosciuta: «{m}».", m=str((op or {}).get("type") if isinstance(op, dict) else op)))
+            continue
+        t = op["type"]
+        changes = op.get("changes") if isinstance(op.get("changes"), dict) else {}
+        if t == "add_section":
+            s = dict(op.get("section") or {})
+            want = str(s.get("id") or "")
+            sid = want if want and not sec(want) else _new_id("s", {x["id"] for x in spec["sections"]})
+            if want and want != sid:
+                remap[want] = sid
+            s.update(id=sid, kpis=[remap.get(str(x), str(x)) for x in s.get("kpis") or []],
+                     charts=[c for c in s.get("charts") or [] if isinstance(c, dict)])
+            s.setdefault("question", "")
+            s.setdefault("why", "")
+            s.setdefault("missing", "")
+            spec["sections"].append(s)
+            continue
+        if t in ("update_section", "remove_section", "add_kpi", "add_chart", "set_summary"):
+            s = sec(op.get("section_id"))
+            if s is None:
+                skipped.append(msg("La domanda «{s}» non c'è.", s=str(op.get("section_id"))))
+                continue
+        if t == "update_section":
+            for k in ("question", "why", "missing"):
+                if k in changes:
+                    s[k] = changes[k] or ""
+        elif t == "remove_section":
+            spec["sections"].remove(s)
+            used = {k for x in spec["sections"] for k in x.get("kpis") or []}
+            spec["kpis"] = [k for k in spec["kpis"] if k["id"] in used]
+        elif t == "add_kpi":
+            k = dict(op.get("kpi") or {})
+            want = str(k.get("id") or "")
+            kid = want if want and not kpi(want) else _new_id("k", {x["id"] for x in spec["kpis"]})
+            if want and want != kid:
+                remap[want] = kid
+            k["id"] = kid
+            spec["kpis"].append(k)
+            s.setdefault("kpis", []).append(kid)
+            if op.get("summary"):
+                spec["headline"].append(kid)
+        elif t == "update_kpi":
+            k = kpi(op.get("kpi_id"))
+            if k is None:
+                skipped.append(msg("Il KPI «{k}» non c'è.", k=str(op.get("kpi_id"))))
+                continue
+            for key, v in changes.items():
+                if key == "id":
+                    continue
+                if v is None:
+                    k.pop(key, None)
+                else:
+                    k[key] = v
+        elif t == "remove_kpi":
+            k = kpi(op.get("kpi_id"))
+            if k is None:
+                skipped.append(msg("Il KPI «{k}» non c'è.", k=str(op.get("kpi_id"))))
+                continue
+            spec["kpis"].remove(k)
+            spec["headline"] = [x for x in spec["headline"] if x != k["id"]]
+            for x in spec["sections"]:
+                x["kpis"] = [i for i in x.get("kpis") or [] if i != k["id"]]
+                x["charts"] = [c for c in x.get("charts") or [] if c.get("kpi") != k["id"]]
+        elif t == "add_chart":
+            c = dict(op.get("chart") or {})
+            c["kpi"] = remap.get(str(c.get("kpi")), str(c.get("kpi")))
+            want = str(c.get("id") or "")
+            taken = {x.get("id") for x in charts()}
+            c["id"] = want if want and want not in taken else _new_id(s["id"] + "c", taken)
+            lst = s.setdefault("charts", [])
+            pos = op.get("position")
+            lst.insert(int(pos) if isinstance(pos, int) and 0 <= pos <= len(lst) else len(lst), c)
+        elif t in ("update_chart", "remove_chart"):
+            owner = next((x for x in spec["sections"] for c in x.get("charts") or [] if c.get("id") == op.get("chart_id")), None)
+            if owner is None:
+                skipped.append(msg("Il grafico «{c}» non c'è.", c=str(op.get("chart_id"))))
+                continue
+            c = next(c for c in owner["charts"] if c.get("id") == op.get("chart_id"))
+            if t == "remove_chart":
+                owner["charts"].remove(c)
+            else:
+                for key, v in changes.items():
+                    if key == "id":
+                        continue
+                    if v is None:
+                        c.pop(key, None)
+                    else:
+                        c[key] = remap.get(str(v), v) if key == "kpi" else v
+        elif t == "set_summary":
+            ids = [remap.get(str(x), str(x)) for x in op.get("kpi_ids") or []]
+            mine = set(s.get("kpis") or [])
+            spec["headline"] = [x for x in spec["headline"] if x not in mine] + [x for x in ids if x in mine]
+    return spec, skipped
