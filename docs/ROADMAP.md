@@ -168,7 +168,8 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 
 ## Control Tower (10 ottobre 2026)
 - Terza analisi, seconda nell'elenco dopo la Process Overview: la vista per il management sulle domande di business
-  dell'assessment. Intestazione con periodo (3, 6, 12 mesi, tutto; confronto con il periodo precedente), «In sintesi»
+  dell'assessment. Intestazione con il periodo scelto con due cursori tra il primo e l'ultimo mese dei dati (confronto con
+  i mesi precedenti della stessa lunghezza, se il dataset li copre), «In sintesi»
   con i KPI principali, poi una sezione per domanda: KPI con valore, ▲▼ rispetto al periodo precedente (verde se
   migliora) e obiettivo (verde/rosso), grafici (andamento mensile con la linea dell'obiettivo, barre e tabelle per
   gruppo, ciambella della composizione), cosa manca nei dati.

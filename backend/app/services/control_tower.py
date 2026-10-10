@@ -520,18 +520,43 @@ def aggregate(kpi: dict, rows: list[tuple]) -> dict:
     return out
 
 
+def parse_range(period: str) -> tuple[str, str] | None:
+    """«2026-02..2026-05» -> ("2026-02", "2026-05"); None se non e' un intervallo di mesi."""
+    import re as _re
+    m = _re.fullmatch(r"(\d{4}-\d{2})\.\.(\d{4}-\d{2})", str(period or ""))
+    if not m:
+        return None
+    a, b = m.groups()
+    return (a, b) if a <= b else (b, a)
+
+
 def period_months(ctx: _Ctx, period: str, last: str | None = None,
                   first: str | None = None) -> tuple[list[str] | None, list[str] | None]:
-    """Mesi del periodo scelto (da `first` al mese `last`) e del periodo precedente (None con «tutto»)."""
-    n = PERIODS.get(period)
+    """Mesi del periodo scelto e del periodo precedente della stessa lunghezza (None se il dataset non lo copre).
+    period: un intervallo «AAAA-MM..AAAA-MM» (il cursore della pagina, dentro i mesi del dataset), gli ultimi
+    3, 6, 12 mesi fino a `last`, oppure «all» (tutto: nessun confronto)."""
     last = last or ctx.last_month
     first = first or ctx.first_month
+    rng = parse_range(period)
+    if rng:
+        a, b = rng
+        if first:
+            a, b = max(a, first), max(min(b, last or b), first)
+        if last:
+            a = min(a, last)
+        cur = _months(a, b)
+        n = len(cur)
+        prev = [_shift(a, -i) for i in range(n, 0, -1)]
+        if not first or prev[0] < first:
+            prev = None   # il dataset non copre il periodo precedente: nessun confronto
+        return cur, prev
+    n = PERIODS.get(period)
     if n is None or last is None:
         return None, None
     cur = [_shift(last, -i) for i in range(n - 1, -1, -1)]
     prev = [_shift(cur[0], -i) for i in range(n, 0, -1)]
-    if first and prev[-1] < first:
-        prev = None   # il dataset non copre il periodo precedente: nessun confronto
+    if first and prev[0] < first:
+        prev = None
     if first:
         cur = [m for m in cur if m >= first] or cur[-1:]   # niente mesi vuoti prima dell'inizio dei dati
     return cur, prev
@@ -699,10 +724,10 @@ def compute(spec: dict, model, period: str = "12") -> dict:
     """Valori dei KPI e dati dei grafici per il periodo scelto."""
     spec, issues = validate(spec, model)
     ctx = context(model)
-    period = period if period in PERIODS else "12"
+    period = period if period in PERIODS or parse_range(period) else "all"
     types = {k.get("object_type") for k in spec["kpis"] if k.get("object_type")}
-    last = ctx.last_start(types)
-    cur, prev = period_months(ctx, period, last, ctx.first_start(types))
+    last, first = ctx.last_start(types), ctx.first_start(types)
+    cur, prev = period_months(ctx, period, last, first)
     kpis = {}
     for k in spec["kpis"]:
         if k["id"] in issues:
@@ -725,8 +750,9 @@ def compute(spec: dict, model, period: str = "12") -> dict:
             else:
                 charts.append(chart(ctx, k, c, cur))
         sections.append({"id": s["id"], "charts": charts})
+    # first_month / last_month: primo e ultimo mese in cui iniziano gli oggetti dei KPI (estremi del cursore)
     return {"period": period, "months": cur, "previous_months": prev, "last_month": last,
-            "first_month": ctx.first_month, "kpis": kpis, "sections": sections}
+            "first_month": first, "kpis": kpis, "sections": sections}
 
 
 # ---------- proposta con Claude ----------

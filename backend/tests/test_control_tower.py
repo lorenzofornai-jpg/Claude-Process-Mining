@@ -242,3 +242,18 @@ def test_texts_in_two_languages():
     assert ct.definitions_part(done) == ct.definitions_part(spec)
     charts = {c["id"]: c for c in ct.compute(done, ExplorerModel(_ocel()), "all")["sections"][0]["charts"]}
     assert charts["s1c2"]["items"][0] == {"label": {"it": "Blocco", "en": "Block"}, "value": 1.0}
+
+
+def test_period_as_month_range():
+    """Periodo scelto con i due cursori: mesi dall'inizio alla fine, confronto con i mesi precedenti della stessa
+    lunghezza solo se il dataset li copre; gli estremi sono i mesi della prima e dell'ultima fattura."""
+    m = ExplorerModel(_ocel())
+    r = ct.compute(_spec(), m, "2026-02..2026-03")
+    assert r["months"] == ["2026-02", "2026-03"] and r["previous_months"] is None   # dic-gen: dicembre manca
+    assert (r["first_month"], r["last_month"]) == ("2026-01", "2026-03")
+    assert (r["kpis"]["k1"]["num"], r["kpis"]["k1"]["den"]) == (2, 3)
+    r = ct.compute(_spec(), m, "2026-02..2026-02")
+    assert r["previous_months"] == ["2026-01"] and r["kpis"]["k1"]["previous"] == 0.0 and r["kpis"]["k1"]["value"] == 1.0
+    r = ct.compute(_spec(), m, "2025-01..2027-01")      # fuori dai dati: si restringe ai mesi del dataset
+    assert r["months"] == ["2026-01", "2026-02", "2026-03"]
+    assert ct.compute(_spec(), m, "bad")["months"] is None   # valore non valido: tutto

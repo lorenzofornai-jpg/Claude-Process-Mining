@@ -13,20 +13,24 @@
       </p>
     </div>
     <div class="explorer-head-tools">
-      <div id="ct-period-box" hidden>
-        <div class="tiny muted ov-control-label">{{ _("Periodo") }}</div>
-        <div class="segmented" role="group" aria-label="{{ _("Periodo") }}">
-          <button type="button" class="seg" data-period="3">{{ _("3 mesi") }}</button>
-          <button type="button" class="seg" data-period="6">{{ _("6 mesi") }}</button>
-          <button type="button" class="seg" data-period="12">{{ _("12 mesi") }}</button>
-          <button type="button" class="seg" data-period="all">{{ _("Tutto") }}</button>
-        </div>
-      </div>
       <button type="button" class="secondary" id="ct-edit-btn" hidden>{{ _("Definizioni dei KPI") }}</button>
       <button type="button" class="secondary as-open-btn" id="ct-assistant-btn" hidden>✦ {{ _("Assistente") }}</button>
     </div>
   </div>
 
+  <div id="ct-period-box" class="ct-period" hidden>
+    <div class="ct-period-head">
+      <span class="ct-field-label">{{ _("Periodo") }}</span>
+      <strong id="ct-period-label"></strong>
+      <button type="button" class="link-btn" id="ct-period-all">{{ _("Tutto il periodo") }}</button>
+    </div>
+    <div class="ct-range">
+      <div class="ct-range-track"><div class="ct-range-fill" id="ct-range-fill"></div></div>
+      <input type="range" id="ct-from" min="0" max="0" step="1" value="0" aria-label="{{ _("Inizio del periodo") }}">
+      <input type="range" id="ct-to" min="0" max="0" step="1" value="0" aria-label="{{ _("Fine del periodo") }}">
+    </div>
+    <div class="ct-range-ends tiny muted"><span id="ct-range-min"></span><span id="ct-range-max"></span></div>
+  </div>
   <div id="ct-status" aria-live="polite"></div>
   <div id="ct-body" aria-live="polite"><p class="muted">{{ _("Calcolo in corso…") }}</p></div>
 
@@ -136,8 +140,10 @@
   };
   var COLORS = ["#3b63e0", "#e08a3b", "#2fa36b", "#c2457a", "#7a5be0", "#2a9fb8", "#a6720a", "#68707e"];
 
-  var data = null, spec = null, editing = false, dirty = false, previewing = false, period = "12", assistant = null;
-  try { period = localStorage.getItem("pm-ct-period") || "12"; } catch (e) {}
+  // periodo: «AAAA-MM..AAAA-MM» scelto con il cursore, oppure «all» (tutti i mesi del dataset)
+  var PERIOD_KEY = "pm-ct-period-" + CONFIG;
+  var data = null, spec = null, editing = false, dirty = false, previewing = false, period = "all", assistant = null;
+  try { period = localStorage.getItem(PERIOD_KEY) || "all"; } catch (e) {}
 
   // ---------- utilita' ----------
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
@@ -227,14 +233,59 @@
   }
   function refresh() { return previewing || dirty ? load(spec) : load(); }
 
-  document.querySelectorAll(".seg[data-period]").forEach(function (b) {
-    b.addEventListener("click", function () {
-      period = b.dataset.period; try { localStorage.setItem("pm-ct-period", period); } catch (e) {}
-      markPeriod(); refresh();
-    });
+  // cursore del periodo: agli estremi il mese della prima e dell'ultima fattura (oggetti dei KPI) del dataset
+  var rFrom = document.getElementById("ct-from"), rTo = document.getElementById("ct-to"), MONTHS = [];
+  function monthsBetween(a, b) {
+    var out = [], y = +a.slice(0, 4), m = +a.slice(5, 7);
+    while (out.length < 600) {
+      var k = y + "-" + (m < 10 ? "0" : "") + m; out.push(k); if (k >= b) break;
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return out;
+  }
+  function setupRange() {
+    var v = data && data.values;
+    if (!v || !v.first_month || !v.last_month) return;
+    var months = monthsBetween(v.first_month, v.last_month);
+    var same = months.join() === MONTHS.join();
+    MONTHS = months;
+    rFrom.max = rTo.max = String(MONTHS.length - 1);
+    if (!same || !rFrom.dataset.ready) {
+      var a = 0, b = MONTHS.length - 1;
+      if (v.months && v.months.length) { a = Math.max(0, MONTHS.indexOf(v.months[0])); b = MONTHS.indexOf(v.months[v.months.length - 1]); if (b < 0) b = MONTHS.length - 1; }
+      rFrom.value = String(a); rTo.value = String(b); rFrom.dataset.ready = "1";
+    }
+    document.getElementById("ct-range-min").textContent = monthLabel(MONTHS[0]);
+    document.getElementById("ct-range-max").textContent = monthLabel(MONTHS[MONTHS.length - 1]);
+    paintRange();
+  }
+  function paintRange() {
+    var a = +rFrom.value, b = +rTo.value, n = Math.max(1, MONTHS.length - 1);
+    var fill = document.getElementById("ct-range-fill");
+    fill.style.left = (100 * a / n) + "%"; fill.style.right = (100 - 100 * b / n) + "%";
+    document.getElementById("ct-period-label").textContent = MONTHS.length ? (a === b ? monthLabel(MONTHS[a]) : monthLabel(MONTHS[a]) + " – " + monthLabel(MONTHS[b])) : "";
+    document.getElementById("ct-period-all").hidden = a === 0 && b === MONTHS.length - 1;
+  }
+  function moved(which) {
+    // i due cursori non si scavalcano; quello appena mosso sta sopra (se coincidono si riesce a spostarli)
+    if (+rFrom.value > +rTo.value) { if (which === rFrom) rFrom.value = rTo.value; else rTo.value = rFrom.value; }
+    rFrom.style.zIndex = which === rFrom ? 3 : 2; rTo.style.zIndex = which === rTo ? 3 : 2;
+    paintRange();
+  }
+  function applyRange() {
+    var a = +rFrom.value, b = +rTo.value;
+    period = a === 0 && b === MONTHS.length - 1 ? "all" : MONTHS[a] + ".." + MONTHS[b];
+    try { localStorage.setItem(PERIOD_KEY, period); } catch (e) {}
+    refresh();
+  }
+  [rFrom, rTo].forEach(function (r) {
+    r.addEventListener("input", function () { moved(r); });
+    r.addEventListener("change", applyRange);
   });
-  function markPeriod() { document.querySelectorAll(".seg[data-period]").forEach(function (x) { x.classList.toggle("active", x.dataset.period === period); }); }
-  markPeriod();
+  document.getElementById("ct-period-all").addEventListener("click", function () {
+    rFrom.value = "0"; rTo.value = String(MONTHS.length - 1); paintRange(); applyRange();
+  });
+
   document.getElementById("ct-edit-btn").addEventListener("click", function () {
     editing = !editing;
     if (!editing && dirty) { load(spec); return; }   // chiudendo le definizioni si vede l'anteprima delle modifiche
@@ -352,7 +403,8 @@
   // ---------- disegno ----------
   function render() {
     var has = !!data.spec;
-    document.getElementById("ct-period-box").hidden = !has || editing;
+    document.getElementById("ct-period-box").hidden = !has || editing || !!(has && !editing && openSection());
+    if (has) setupRange();
     document.getElementById("ct-assistant-btn").hidden = !has;
     var eb = document.getElementById("ct-edit-btn"); eb.hidden = !has;
     eb.textContent = editing ? T.close : T.edTitle; eb.setAttribute("aria-pressed", editing ? "true" : "false");

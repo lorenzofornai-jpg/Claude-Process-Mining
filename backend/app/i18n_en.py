@@ -1487,4 +1487,8 @@ EN: dict[str, str] = {
     "Traduzione in corso…": "Translating…",
     "Un testo delle definizioni è in una lingua sola: traducilo per vederlo anche in italiano e in inglese.": "One text in the definitions is in a single language: translate it to see it in both Italian and English.",
     "{n} testi delle definizioni sono in una lingua sola: traducili per vederli anche in italiano e in inglese.": "{n} texts in the definitions are in a single language: translate them to see them in both Italian and English.",
+    # Control Tower: cursore del periodo
+    "Fine del periodo": "End of the period",
+    "Inizio del periodo": "Start of the period",
+    "Tutto il periodo": "Whole period",
 }

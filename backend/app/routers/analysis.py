@@ -548,7 +548,7 @@ async def control_tower_data(request: Request):
     finally:
         db.close()
     spec = body.get("spec") if isinstance(body.get("spec"), dict) else (row.spec if row else None)
-    period = str(body.get("period") or "12")
+    period = str(body.get("period") or "all")
     return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead))
 
 
@@ -699,7 +699,7 @@ async def control_tower_assistant_ask(request: Request):
     # le definizioni che l'utente sta guardando (anche modifiche non ancora salvate)
     spec = view.pop("spec", None) if isinstance(view.get("spec"), dict) else (row.spec if row else None)
     view.pop("spec", None)
-    period = str(view.get("period") or "12")
+    period = str(view.get("period") or "all")
     values = None
     if spec:
         spec, _ = control_tower.validate(spec, model)
