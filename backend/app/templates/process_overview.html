@@ -86,16 +86,12 @@
     tpOver: {{ _("oltre {a}: {n} oggetti")|tojson }},
     tpBar1: {{ _("{a}–{b}: 1 oggetto")|tojson }},
     tpOver1: {{ _("oltre {a}: 1 oggetto")|tojson }},
-    tpStats: {{ _("Mediana {m} · media {a} · minimo {lo} · massimo {hi}")|tojson }},
-    happyTitle: {{ _("Happy path")|tojson }},
-    happyDesc: {{ _("La variante più frequente: la sequenza di attività seguita dal maggior numero di {tp}.")|tojson }},
-    happyPct: {{ _("Oggetti che seguono l'happy path")|tojson }},
-    happyAbs: {{ _("{n} su {m}")|tojson }},
-    happyTime: {{ _("Tempo mediano: happy path e tutti")|tojson }},
     vs: {{ _("contro {d}")|tojson }},
     varTitle: {{ _("Varianti")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
+    chartScope: {{ _("Grafici delle prime {n} varianti: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.")|tojson }},
+    chartScope1: {{ _("Grafici della variante più frequente: {o} oggetti ({p} dei casi). Sposta il cursore delle varianti per cambiarli.")|tojson }},
     varSlider: {{ _("Varianti mostrate: {n} di {m} · copertura: {p} dei casi")|tojson }},
     varCount: {{ _("{n} oggetti · {p}")|tojson }},
     varCount1: {{ _("1 oggetto · {p}")|tojson }},
@@ -144,12 +140,28 @@
 
   function load() {
     document.getElementById("ov-body").style.opacity = 0.5;
-    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope });
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope, variants: shown });
     fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
       .then(function (d) { data = d; lead = d.lead; render(); })
       .catch(function (e) { var b = document.getElementById("ov-body"); b.textContent = ""; b.appendChild(el("p", "as-error", e.message || T.error)); })
       .finally(function () { document.getElementById("ov-body").style.opacity = 1; });
+  }
+
+  // istogrammi ricalcolati sulle varianti mostrate (cursore delle varianti), senza ridisegnare il resto
+  var chartTimer = null;
+  function reloadCharts() {
+    clearTimeout(chartTimer);
+    chartTimer = setTimeout(function () {
+      var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, lead: lead || "", scope: scope, variants: shown });
+      fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.lead !== lead) return;
+          data.volumes.months = d.volumes.months; data.throughput.histogram = d.throughput.histogram;
+          data.chart_scope = d.chart_scope; renderCharts();
+        });
+    }, 250);
   }
 
   // ---------- disegno ----------
@@ -191,6 +203,26 @@
     return box;
   }
 
+  function renderCharts() {
+    var box = document.getElementById("ov-charts"); if (!box) return;
+    box.textContent = "";
+    var st = data.throughput.stats, vol = data.volumes, cs = data.chart_scope;
+    if (cs) box.appendChild(el("p", "tiny ov-filter-note", fmt(cs.variants === 1 ? T.chartScope1 : T.chartScope,
+      { n: cs.variants, o: num(cs.objects), p: pct(cs.share) })));
+    // volumi e tempi
+    var grid = el("div", "ov-grid ov-stack");
+    var s1 = section(fmt(T.volTitle, { tp: tp(lead) }));
+    s1.appendChild(scroller(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); })));
+    grid.appendChild(s1);
+    var s2 = section(T.tpTitle);
+    s2.appendChild(scroller(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
+      function (b) { var one = b.count === 1;
+        return b.overflow ? fmt(one ? T.tpOver1 : T.tpOver, { a: days(b.from), n: num(b.count) })
+                          : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); })));
+    grid.appendChild(s2);
+    box.appendChild(grid);
+  }
+
   function render() {
     fillSelect(data.lead_options);
     if (data.scope !== scope) scope = data.scope;
@@ -224,32 +256,6 @@
       body.appendChild(rel);
     }
 
-    // volumi e tempi
-    var grid = el("div", "ov-grid ov-stack");
-    var s1 = section(fmt(T.volTitle, { tp: tp(lead) }));
-    s1.appendChild(scroller(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); })));
-    grid.appendChild(s1);
-    var s2 = section(T.tpTitle);
-    s2.appendChild(scroller(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
-      function (b) { var one = b.count === 1;
-        return b.overflow ? fmt(one ? T.tpOver1 : T.tpOver, { a: days(b.from), n: num(b.count) })
-                          : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); })));
-    if (st) s2.appendChild(el("p", "tiny muted", fmt(T.tpStats, { m: dur(st.median), a: dur(st.mean), lo: dur(st.min), hi: dur(st.max) })));
-    grid.appendChild(s2);
-    body.appendChild(grid);
-
-    // happy path
-    var hp = data.happy_path;
-    if (hp) {
-      var s3 = section(T.happyTitle, fmt(T.happyDesc, { tp: tp(lead) }));
-      var hk = el("div", "ov-kpis");
-      var pk = kpi(T.happyPct, pct(hp.share)); var ring = el("div", "ov-ring"); ring.style.setProperty("--p", (hp.share * 100).toFixed(1)); pk.insertBefore(ring, pk.firstChild); hk.appendChild(pk);
-      hk.appendChild(kpi(T.objects, num(hp.count), fmt(T.happyAbs, { n: num(hp.count), m: num(vol.objects) })));
-      hk.appendChild(kpi(T.happyTime, dur(hp.median), st ? fmt(T.vs, { d: dur(st.median) }) : ""));
-      s3.appendChild(hk);
-      s3.appendChild(chain(hp.steps));
-      body.appendChild(s3);
-    }
 
     // varianti con cursore
     var s4 = section(T.varTitle, fmt(scope === "related" ? T.varDescRelated : T.varDesc, { t: L }));
@@ -273,9 +279,11 @@
       var cov = data.variants[shown - 1] ? data.variants[shown - 1].cum_share : 0;
       lt.textContent = fmt(T.varSlider, { n: shown, m: num(data.variants_total), p: pct(cov) });
     }
-    sl.addEventListener("input", function () { shown = Number(sl.value); drawVariants(); });
+    sl.addEventListener("input", function () { shown = Number(sl.value); drawVariants(); reloadCharts(); });
     drawVariants();
     body.appendChild(s4);
+    var charts = el("div"); charts.id = "ov-charts"; body.appendChild(charts);
+    renderCharts();
 
   }
 

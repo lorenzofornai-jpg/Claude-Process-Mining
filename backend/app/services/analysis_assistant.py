@@ -33,8 +33,9 @@ Process Overview (page = overview): volumi, tempi e varianti visti da un «Ogget
 scelto dall'utente nel menu, es. la fattura). Il «Tempo di attraversamento» si misura in due modi: «Solo l'oggetto»
 (dal primo all'ultimo evento dell'oggetto) e «Con gli oggetti collegati» (anche gli eventi degli oggetti collegati,
 esclusi i tipi trasversali; con questa scelta anche varianti e happy path comprendono le loro attività). Gli
-istogrammi mostrano gli oggetti per mese di inizio e la distribuzione dei tempi. Le varianti sono le sequenze di
-attività (ripetizioni consecutive raggruppate); l'happy path è la più frequente. L'obiettivo misurabile si verifica
+varianti sono le sequenze di attività (ripetizioni consecutive raggruppate; la prima è la più frequente); il cursore
+sceglie quante mostrarne e i due istogrammi sotto (oggetti per mese di inizio, distribuzione dei tempi) contano solo
+gli oggetti delle varianti mostrate. L'obiettivo misurabile si verifica
 nella preparazione del dataset (pagina del risultato) e non compare nella Overview.
 
 Process Explorer (page = explorer): mappa a linee di metropolitana. Ogni tipo di oggetto è una linea colorata che

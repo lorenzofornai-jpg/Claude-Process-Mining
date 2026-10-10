@@ -68,20 +68,22 @@ def _stats(values: list[float]) -> dict | None:
             "min": values[0], "max": values[-1], "p90": p90, "n": len(values)}
 
 
-def _histogram(values: list[float]) -> list[dict]:
+def _histogram(values: list[float], only: list[float] | None = None) -> list[dict]:
     """Distribuzione dei tempi in giorni: classi di uguale ampiezza fino al 95° percentile, poi una
-    classe finale «oltre» per non schiacciare il grafico con pochi casi lunghissimi."""
+    classe finale «oltre» per non schiacciare il grafico con pochi casi lunghissimi.
+    only: se dato, si contano solo questi valori nelle classi calcolate su tutti (stesse classi per confrontare)."""
     values = sorted(_finite(values))
     if not values:
         return []
     days = [v / 86400 for v in values]
+    counted = days if only is None else [v / 86400 for v in _finite(only)]
     top = days[min(len(days) - 1, int(0.95 * (len(days) - 1)))]
     if top <= 0:
-        return [{"from": 0, "to": 0, "count": len(days), "overflow": False}]
+        return [{"from": 0, "to": 0, "count": len(counted), "overflow": False}]
     width = top / HIST_BINS
     bins = [{"from": i * width, "to": (i + 1) * width, "count": 0, "overflow": False} for i in range(HIST_BINS)]
     over = {"from": top, "to": days[-1], "count": 0, "overflow": True}
-    for d in days:
+    for d in counted:
         if d > top:
             over["count"] += 1
         else:
@@ -100,7 +102,8 @@ def _steps(acts: list[str]) -> tuple:
     return tuple(out)
 
 
-def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objective: dict | None = None) -> dict:
+def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objective: dict | None = None,
+                   top_variants: int | None = None) -> dict:
     """scope: object | related | objective (da inizio a fine dell'obiettivo misurabile, se e' su questo tipo).
     Con un obiettivo sul tipo guida si analizzano solo gli oggetti del suo filtro (es. solo le fatture)."""
     hubs = {t for t in model.types if model.is_hub(t)}
@@ -174,23 +177,30 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
 
     related_adds = [0]   # quanti oggetti guida hanno eventi in piu' dagli oggetti collegati
     tps: dict[str, float | None] = {oid: throughput(oid, seq) for oid, seq in seqs}
-    months: Counter = Counter()
-    for oid, seq in seqs:
-        ts = _finite([x[0] for x in seq])
-        if ts:
-            months[datetime.fromtimestamp(ts[0], tz=timezone.utc).strftime("%Y-%m")] += 1
-    month_list = []
-    if months:
-        y, m = map(int, min(months).split("-"))
-        last = max(months)
-        while True:
-            key = f"{y:04d}-{m:02d}"
-            month_list.append({"month": key, "count": months.get(key, 0)})
-            if key == last:
-                break
-            m += 1
-            if m > 12:
-                y, m = y + 1, 1
+    def month_counts(pairs) -> Counter:
+        c: Counter = Counter()
+        for oid, seq in pairs:
+            ts = _finite([x[0] for x in seq])
+            if ts:
+                c[datetime.fromtimestamp(ts[0], tz=timezone.utc).strftime("%Y-%m")] += 1
+        return c
+    months = month_counts(seqs)
+
+    def month_list_of(counts: Counter) -> list[dict]:
+        out = []
+        if months:   # stesso asse dei mesi di tutti gli oggetti, anche quando si contano solo alcune varianti
+            y, m = map(int, min(months).split("-"))
+            last = max(months)
+            while True:
+                key = f"{y:04d}-{m:02d}"
+                out.append({"month": key, "count": counts.get(key, 0)})
+                if key == last:
+                    break
+                m += 1
+                if m > 12:
+                    y, m = y + 1, 1
+        return out
+    month_list = month_list_of(months)
 
     # ---------- varianti ----------
     # con «oggetti collegati» la sequenza comprende anche gli eventi degli oggetti collegati (esclusi i trasversali),
@@ -220,6 +230,17 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
                          "median": st["median"] if st else None, "mean": st["mean"] if st else None})
     happy = variants[0] if variants else None
 
+    # istogrammi solo per le prime `top_variants` varianti (quelle mostrate nell'elenco): stesse classi e stessi mesi
+    chart_scope = None
+    all_tp = [tps[o] for o, _ in seqs]
+    histogram = _histogram(all_tp)
+    if top_variants and 0 < top_variants < len(variants):
+        ordered = [oids for _, oids in sorted(groups.items(), key=lambda kv: (-len(kv[1]), len(kv[0]), kv[0]))]
+        chosen = {o for oids in ordered[:top_variants] for o in oids}
+        month_list = month_list_of(month_counts([(o, sq) for o, sq in seqs if o in chosen]))
+        histogram = _histogram(all_tp, [tps[o] for o in chosen])
+        chart_scope = {"variants": top_variants, "objects": len(chosen), "share": len(chosen) / n_obj if n_obj else 0}
+
     # ---------- altre attivita' frequenti ----------
     happy_acts = {s["activity"] for s in happy["steps"]} if happy else set()
     act_objs: dict[str, set] = defaultdict(set)
@@ -231,7 +252,6 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
     others = sorted(({"activity": a, "objects": len(o), "share": len(o) / n_obj, "events": act_events[a]}
                      for a, o in act_objs.items() if a not in happy_acts), key=lambda x: -x["objects"])
 
-    all_tp = [tps[o] for o, _ in seqs]
     # pratiche aperte: iniziate e non finite, con l'eta' all'ultimo evento del dataset
     open_info = None
     if obj:
@@ -258,7 +278,8 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
         "volumes": {"objects": n_obj, "events": len({idx for _, s in seqs for _, _, idx in s}),
                     "events_per_object": (sum(len(s) for _, s in seqs) / n_obj) if n_obj else 0,
                     "months": month_list},
-        "throughput": {"stats": _stats(all_tp), "histogram": _histogram(all_tp)},
+        "throughput": {"stats": _stats(all_tp), "histogram": histogram},
+        "chart_scope": chart_scope,
         "variants": variants[:MAX_VARIANTS], "variants_total": len(variants),
         "happy_path": happy,
         "other_activities": others[:12],

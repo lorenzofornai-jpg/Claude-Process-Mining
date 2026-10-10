@@ -288,7 +288,8 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
 
 
 @router.get("/analysis/overview/data")
-def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "objective"):
+def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "objective",
+                          variants: int | None = None):
     """Volumi, tempi e varianti visti dall'oggetto guida `lead`; scope=object|related per i tempi."""
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -305,7 +306,7 @@ def process_overview_data(request: Request, workspace_id: str, config_id: str, l
     # l'obiettivo misurabile si verifica nella preparazione del dataset; nella Overview i tempi sono dell'oggetto
     # o con gli oggetti collegati
     scope = scope if scope in ("object", "related") else "object"
-    return JSONResponse(overview.build_overview(model, lead, scope, None))
+    return JSONResponse(overview.build_overview(model, lead, scope, None, variants))
 
 
 # ---------- obiettivo misurabile (pagina Risultato del Data Engineer e Process Overview) ----------
