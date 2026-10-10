@@ -241,6 +241,38 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
         month_list = month_list_of(month_counts([(o, sq) for o, sq in seqs if o in chosen]))
         histogram = _histogram(all_tp, [tps[o] for o in chosen])
         chart_scope = {"variants": len(picked), "objects": len(chosen), "share": len(chosen) / n_obj if n_obj else 0}
+    else:
+        chosen = {o for o, _ in seqs}
+
+    # ---------- tempi del processo e delle attivita' (sugli oggetti delle varianti scelte) ----------
+    proc = _stats([tps[o] for o in chosen])
+    process_stats = {"objects": len(chosen), "median": proc["median"] if proc else None,
+                     "mean": proc["mean"] if proc else None, "p90": proc["p90"] if proc else None}
+    acts: dict[str, dict] = {}
+    for oid, seq in vseqs:
+        if oid not in chosen:
+            continue
+        t0 = next((ts for ts, _, _ in seq if not math.isnan(ts)), None)
+        prev = None
+        for ts, a, _ in seq:
+            x = acts.setdefault(a, {"objects": set(), "events": 0, "wait": [], "from_start": []})
+            x["objects"].add(oid)
+            x["events"] += 1
+            if not math.isnan(ts):
+                if prev is not None:
+                    x["wait"].append(ts - prev)   # dal passo precedente dello stesso oggetto
+                if t0 is not None:
+                    x["from_start"].append(ts - t0)
+                prev = ts
+    activity_stats = []
+    for a, x in acts.items():
+        w, f = _stats(x["wait"]), _stats(x["from_start"])
+        activity_stats.append({"activity": a, "objects": len(x["objects"]),
+                               "share": len(x["objects"]) / len(chosen) if chosen else 0, "events": x["events"],
+                               "wait_median": w["median"] if w else None, "wait_mean": w["mean"] if w else None,
+                               "start_median": f["median"] if f else None})
+    # nell'ordine in cui le attivita' avvengono di solito (tempo mediano dall'inizio), poi per frequenza
+    activity_stats.sort(key=lambda r: (r["start_median"] if r["start_median"] is not None else math.inf, -r["objects"]))
 
     # ---------- altre attivita' frequenti ----------
     happy_acts = {s["activity"] for s in happy["steps"]} if happy else set()
@@ -281,6 +313,7 @@ def build_overview(model: ExplorerModel, lead: str, scope: str = "object", objec
                     "months": month_list},
         "throughput": {"stats": _stats(all_tp), "histogram": histogram},
         "chart_scope": chart_scope,
+        "process_stats": process_stats, "activity_stats": activity_stats,
         "variants": variants[:MAX_VARIANTS], "variants_total": len(variants),
         "happy_path": happy,
         "other_activities": others[:12],

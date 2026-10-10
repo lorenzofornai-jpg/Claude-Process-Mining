@@ -90,6 +90,20 @@
     varTitle: {{ _("Varianti")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
+    timesTitle: {{ _("Tempi del processo e delle attività")|tojson }},
+    timesDesc: {{ _("Calcolati sulle {tp} delle varianti spuntate.")|tojson }},
+    procObjects: {{ _("Oggetti · {tp}")|tojson }},
+    procMedian: {{ _("Tempo mediano")|tojson }}, procMedianSub: {{ _("metà degli oggetti ci mette meno")|tojson }},
+    procMean: {{ _("Tempo medio")|tojson }}, procMeanSub: {{ _("risente dei casi molto lunghi")|tojson }},
+    procP90: {{ _("9 oggetti su 10 entro")|tojson }}, procP90Sub: {{ _("il tempo che copre quasi tutti i casi")|tojson }},
+    colActivity: {{ _("Attività")|tojson }}, colEvents: {{ _("Eventi")|tojson }}, colCases: {{ _("Oggetti")|tojson }},
+    colWaitMedian: {{ _("Attesa mediana")|tojson }}, colWaitMean: {{ _("Attesa media")|tojson }},
+    colFromStart: {{ _("Dall'inizio (mediana)")|tojson }},
+    casesCell: {{ _("{n} · {p}")|tojson }},
+    firstStep: {{ _("primo passo")|tojson }},
+    repeats: {{ _("+{n} ripetizioni")|tojson }}, repeats1: {{ _("+1 ripetizione")|tojson }},
+    repeatsTip: {{ _("Eventi oltre il primo per lo stesso oggetto: l'attività viene ripetuta (rilavorazione, consegne parziali...).")|tojson }},
+    timesNote: {{ _("Attesa: tempo dal passo precedente dello stesso oggetto fino a questa attività. Dall'inizio: tempo dal primo evento dell'oggetto. Le attività sono nell'ordine in cui avvengono di solito.")|tojson }},
     chartScope: {{ _("Grafici delle {n} varianti spuntate: {o} oggetti ({p} dei casi).")|tojson }},
     chartScope1: {{ _("Grafici della variante spuntata: {o} oggetti ({p} dei casi).")|tojson }},
     varAll: {{ _("tutte")|tojson }}, varNone: {{ _("nessuna")|tojson }}, varTop: {{ _("solo la più frequente")|tojson }},
@@ -163,7 +177,8 @@
         .then(function (d) {
           if (d.lead !== lead) return;
           data.volumes.months = d.volumes.months; data.throughput.histogram = d.throughput.histogram;
-          data.chart_scope = d.chart_scope; renderCharts();
+          data.chart_scope = d.chart_scope; data.process_stats = d.process_stats; data.activity_stats = d.activity_stats;
+          renderCharts();
         });
     }, 250);
   }
@@ -225,6 +240,51 @@
                           : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); })));
     grid.appendChild(s2);
     box.appendChild(grid);
+    box.appendChild(timesSection());
+  }
+
+  // tempi del processo e delle attivita' (sugli oggetti delle varianti spuntate)
+  function timesSection() {
+    var ps = data.process_stats, rows = data.activity_stats || [];
+    var s = section(T.timesTitle, fmt(T.timesDesc, { tp: tp(lead) }));
+    var k = el("div", "ov-kpis ov-kpis-compact");
+    k.appendChild(kpi(fmt(T.procObjects, { tp: tp(lead) }), num(ps.objects)));
+    k.appendChild(kpi(T.procMedian, ps.median !== null ? dur(ps.median) : "—", T.procMedianSub));
+    k.appendChild(kpi(T.procMean, ps.mean !== null ? dur(ps.mean) : "—", T.procMeanSub));
+    k.appendChild(kpi(T.procP90, ps.p90 !== null ? dur(ps.p90) : "—", T.procP90Sub));
+    s.appendChild(k);
+    if (!rows.length) return s;
+    var maxWait = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.wait_median || 0; })));
+    var table = el("table", "ov-acts");
+    var head = el("tr");
+    [T.colActivity, T.colEvents, T.colCases, T.colWaitMedian, T.colWaitMean, T.colFromStart].forEach(function (h, i) {
+      var th = el("th", i ? "num" : "", h); head.appendChild(th);
+    });
+    var thead = el("thead"); thead.appendChild(head); table.appendChild(thead);
+    var tbody = el("tbody");
+    rows.forEach(function (r) {
+      var tr = el("tr");
+      var name = el("td", "ov-act-name"); name.appendChild(el("span", "", an(r.activity)));
+      var extra = r.events - r.objects;   // eventi oltre il primo per oggetto: l'attivita' si ripete
+      if (extra > 0) { var rep = el("span", "ov-act-rep tiny", fmt(extra === 1 ? T.repeats1 : T.repeats, { n: num(extra) })); rep.title = T.repeatsTip; name.appendChild(rep); }
+      tr.appendChild(name);
+      tr.appendChild(el("td", "num strong", num(r.events)));
+      tr.appendChild(el("td", "num", fmt(T.casesCell, { n: num(r.objects), p: pct(r.share) })));
+      var wm = el("td", "num");
+      if (r.wait_median !== null) {
+        var cell = el("div", "ov-wait-cell"), track = el("span", "ov-wait-track"), bar = el("span", "ov-wait-bar");
+        bar.style.width = Math.max(3, 100 * r.wait_median / maxWait) + "%"; track.appendChild(bar);
+        cell.appendChild(track); cell.appendChild(el("span", "ov-wait-val", dur(r.wait_median))); wm.appendChild(cell);
+      } else wm.appendChild(el("span", "muted", T.firstStep));
+      tr.appendChild(wm);
+      tr.appendChild(el("td", "num muted", r.wait_mean !== null ? dur(r.wait_mean) : "—"));
+      tr.appendChild(el("td", "num muted", r.start_median !== null ? dur(r.start_median) : "—"));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    s.appendChild(scroller(table));
+    s.appendChild(el("p", "tiny muted", T.timesNote));
+    return s;
   }
 
   function render() {
@@ -316,7 +376,7 @@
   // ---------- assistente dell'analisi (static/assistant.js): conosce oggetto guida e tempo scelti ----------
   initAssistant({
     ws: WS, config: CONFIG, page: "overview", lang: LANG, T: AS_T,
-    getView: function () { return { lead: lead, scope: scope }; },
+    getView: function () { return { lead: lead, scope: scope, var: picked }; },
     suggestions: function () {
       var sug = [T.asSugRead];
       if (data && data.throughput && data.throughput.stats) sug.push(fmt(T.asSugTime, { t: tn(lead) }));

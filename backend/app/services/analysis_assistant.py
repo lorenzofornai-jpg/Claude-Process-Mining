@@ -33,9 +33,10 @@ Process Overview (page = overview): volumi, tempi e varianti visti da un «Ogget
 scelto dall'utente nel menu, es. la fattura). Il «Tempo di attraversamento» si misura in due modi: «Solo l'oggetto»
 (dal primo all'ultimo evento dell'oggetto) e «Con gli oggetti collegati» (anche gli eventi degli oggetti collegati,
 esclusi i tipi trasversali; con questa scelta anche varianti e happy path comprendono le loro attività). Gli
-varianti sono le sequenze di attività (ripetizioni consecutive raggruppate; la prima è la più frequente); il cursore
-sceglie quante mostrarne e i due istogrammi sotto (oggetti per mese di inizio, distribuzione dei tempi) contano solo
-gli oggetti delle varianti mostrate. L'obiettivo misurabile si verifica
+varianti sono le sequenze di attività (ripetizioni consecutive raggruppate; la prima è la più frequente), ognuna
+con una casella: i due istogrammi sotto (oggetti per mese di inizio, distribuzione dei tempi) e la tabella «Tempi del
+processo e delle attività» (eventi, oggetti, attesa mediana e media dal passo precedente, tempo dall'inizio) contano
+solo gli oggetti delle varianti spuntate. L'obiettivo misurabile si verifica
 nella preparazione del dataset (pagina del risultato) e non compare nella Overview.
 
 Process Explorer (page = explorer): mappa a linee di metropolitana. Ogni tipo di oggetto è una linea colorata che
@@ -183,9 +184,13 @@ def overview_view(ov: dict | None, focus: str | None) -> dict:
         "top_variants": [{"steps": [x["activity"] + (" ×" if x["repeated"] else "") for x in v["steps"]],
                           "objects": v["count"], "share": round(v["share"], 3), "median_days": days(v["median"])}
                          for v in ov["variants"][:12]],
-        "happy_path": [x["activity"] for x in ov["happy_path"]["steps"]] if ov.get("happy_path") else None,
-        "other_frequent_activities": [{"activity": a["activity"], "objects": a["objects"], "share": round(a["share"], 3)}
-                                      for a in ov["other_activities"]],
+        # tabella «Tempi del processo e delle attivita'» (sugli oggetti delle varianti spuntate; attesa = dal passo
+        # precedente dello stesso oggetto)
+        "process_times_days": ({k: days(ov["process_stats"].get(k)) for k in ("median", "mean", "p90")}
+                               | {"objects": ov["process_stats"]["objects"]}) if ov.get("process_stats") else None,
+        "activity_times": [{"activity": r["activity"], "events": r["events"], "objects": r["objects"],
+                            "median_wait_days": days(r["wait_median"]), "mean_wait_days": days(r["wait_mean"]),
+                            "median_from_start_days": days(r["start_median"])} for r in ov.get("activity_stats") or []],
         "object_types": [{"name": t["name"], "objects": t["objects"], "cross_cutting": t["hub"],
                           "median_lifetime_days": days(t["median_lifetime"])} for t in ov["types"]],
         "user_is_looking_at": focus or None,

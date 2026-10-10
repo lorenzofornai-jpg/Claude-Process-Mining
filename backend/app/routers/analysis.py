@@ -208,7 +208,9 @@ async def analysis_assistant_ask(request: Request):
         lead = view.get("lead") if view.get("lead") in options else (options[0] if options else None)
         scope = view.get("scope") if view.get("scope") in ("object", "related") else "object"
         page_view = analysis_assistant.overview_view(
-            overview.build_overview(model, lead, scope, None) if lead else None, focus)
+            overview.build_overview(model, lead, scope, None,
+                                    [int(x) for x in view["var"] if str(x).isdigit()] if isinstance(view.get("var"), list) else None)
+            if lead else None, focus)
     else:
         acts = view.get("act") if view.get("acts") == "list" else None
         top = view.get("top")

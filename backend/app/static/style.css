@@ -875,3 +875,20 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .ov-variants-check .ov-variant-main { flex: 1; min-width: 0; }
 .ov-variants-check .ov-variant.off { opacity: 0.5; }
 .ov-var-tools .ov-var-cover { font-size: inherit; }
+
+/* Process Overview: tempi del processo e delle attivita' */
+.ov-kpis-compact { margin-top: 8px; }
+.ov-kpis-compact .ov-kpi-value { font-size: 24px; }
+table.ov-acts { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px; margin-top: 14px; }
+table.ov-acts th { text-align: left; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .03em; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--card-bg-soft); white-space: nowrap; }
+table.ov-acts td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.ov-acts tbody tr:hover { background: var(--card-bg-soft); }
+table.ov-acts .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.ov-acts td.strong { font-weight: 600; }
+.ov-act-name { min-width: 170px; }
+.ov-act-rep { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+.ov-wait-cell { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.ov-wait-track { width: 90px; height: 8px; border-radius: 4px; background: var(--card-bg-soft); border: 1px solid var(--border); overflow: hidden; flex: none; }
+.ov-wait-bar { display: block; height: 100%; background: var(--brand); opacity: .75; border-radius: 4px; }
+.ov-wait-val { font-weight: 600; min-width: 52px; text-align: right; }
