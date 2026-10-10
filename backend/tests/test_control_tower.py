@@ -219,3 +219,26 @@ def test_assistant_operations_and_approval_scope():
     assert ct.definitions_part(new) != ct.definitions_part(spec)
     changed_target, _ = ct.apply_operations(spec, [{"type": "update_kpi", "kpi_id": "k1", "changes": {"target": {"op": "<=", "value": 20}}}])
     assert ct.definitions_part(changed_target) != ct.definitions_part(spec)
+
+
+def test_texts_in_two_languages():
+    """Testi delle definizioni in italiano e in inglese: quelli in una lingua sola si riconoscono e si completano;
+    le etichette delle categorie possono essere testi nelle due lingue; tradurre non cambia cosa e' approvato."""
+    spec = _spec()
+    spec["sections"][0]["question"] = {"it": "Quante fatture a mano?", "en": "How many invoices by hand?"}
+    spec["sections"][0]["charts"][1]["categories"][0]["label"] = {"it": "Blocco", "en": "Block"}
+    spec["kpis"][0]["name"] = {"it": "Manuali"}            # corretto a mano in italiano: manca l'inglese
+    todo = ct.untranslated(spec, "it")
+    texts = {v["text"] for v in todo["texts"].values()}
+    assert "Manuali" in texts and "Q" not in texts and "Puntuali" in texts
+    assert "Quante fatture a mano?" not in texts and todo["object_types"] == ["Fattura"]
+    # risposta simulata: le traduzioni per posizione
+    out = {"texts": {i: {"it": v["text"], "en": "EN " + v["text"]} for i, v in todo["texts"].items()},
+           "object_names": {"Fattura": {"it": {"one": "fattura", "many": "fatture"}, "en": {"one": "invoice", "many": "invoices"}}}}
+    done = ct.merge_translations(spec, out, "it")
+    assert done["kpis"][0]["name"] == {"it": "Manuali", "en": "EN Manuali"}
+    assert done["kpis"][2]["name"] == {"it": "Puntuali", "en": "EN Puntuali"}
+    assert ct.untranslated(done, "it") == {"texts": {}, "object_types": []}
+    assert ct.definitions_part(done) == ct.definitions_part(spec)
+    charts = {c["id"]: c for c in ct.compute(done, ExplorerModel(_ocel()), "all")["sections"][0]["charts"]}
+    assert charts["s1c2"]["items"][0] == {"label": {"it": "Blocco", "en": "Block"}, "value": 1.0}

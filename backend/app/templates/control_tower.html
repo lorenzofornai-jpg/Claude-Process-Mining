@@ -42,7 +42,7 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var LEAD = {{ lead|tojson }}, QUESTIONS = {{ questions|tojson }}, CLAUDE = {{ claude|tojson }};
-  var PLURALS = {{ plurals|tojson }};
+  var TYPE_NAMES = {{ type_names|tojson }};   // tipi di oggetto nelle frasi, nella lingua attiva
   var T = {
     intro: {{ _("La Control Tower traduce le domande di business dell'assessment in KPI misurati sul dataset: per ogni domanda i numeri chiave con obiettivo, l'andamento nel tempo e dove si concentra il fenomeno. Claude propone le definizioni una volta sola; tu le controlli, le modifichi se serve e le approvi. I valori li calcola l'app, senza altre chiamate a Claude.")|tojson }},
     questions: {{ _("Domande di business dell'assessment")|tojson }},
@@ -62,7 +62,10 @@
     previewing: {{ _("Stai vedendo un'anteprima con le modifiche non salvate.")|tojson }},
     save: {{ _("Salva")|tojson }}, saveApprove: {{ _("Salva e approva")|tojson }}, discard: {{ _("Annulla le modifiche")|tojson }},
     preview: {{ _("Anteprima")|tojson }}, close: {{ _("Chiudi le definizioni")|tojson }},
-    otherLang: {{ _("Le definizioni sono state scritte in un'altra lingua: per averle in questa lingua chiedilo all'assistente.")|tojson }},
+    oneLang: {{ _("{n} testi delle definizioni sono in una lingua sola: traducili per vederli anche in italiano e in inglese.")|tojson }},
+    oneLang1: {{ _("Un testo delle definizioni è in una lingua sola: traducilo per vederlo anche in italiano e in inglese.")|tojson }},
+    translate: {{ _("Traduci")|tojson }},
+    translating: {{ _("Traduzione in corso…")|tojson }},
     claudeNote: {{ _("Nota di Claude")|tojson }},
     periodNote: {{ _("Periodo: {tp} con il primo evento da {a} a {b}, confronto con i {n} mesi precedenti.")|tojson }},
     periodNoPrev: {{ _("Periodo: {tp} con il primo evento da {a} a {b} (il dataset non copre il periodo precedente: nessun confronto).")|tojson }},
@@ -150,7 +153,20 @@
   }
   function days(v) { return fmt(T.days, { n: Number(v).toLocaleString(LANG, { maximumFractionDigits: 1 }) }); }
   // nome del tipo dentro una frase: minuscolo («170 di 1.000 fatture»), tranne le sigle («SAP Document»)
-  function tp(t, n) { var w = n === 1 ? t : (PLURALS[t] || t); return /^[A-ZÀ-Ý][a-zà-ÿ]/.test(w) ? w.charAt(0).toLowerCase() + w.slice(1) : w; }
+  function tp(t, n) {
+    var own = spec && spec.object_names && spec.object_names[t] && spec.object_names[t][LANG];
+    var names = own || TYPE_NAMES[t] || { one: t, many: t };
+    var w = (n === 1 ? names.one : names.many) || t;
+    return /^[A-ZÀ-Ý][a-zà-ÿ]/.test(w) ? w.charAt(0).toLowerCase() + w.slice(1) : w;
+  }
+  // testo delle definizioni nella lingua attiva: {"it": ..., "en": ...}; un testo in una lingua sola resta com'e'
+  var OTHER = LANG === "it" ? "en" : "it";
+  function tx(v) { return v && typeof v === "object" ? (v[LANG] || v[OTHER] || "") : (v || ""); }
+  function setTx(holder, key, value) {
+    // il testo scritto vale nella lingua attiva; l'altra lingua va ritradotta (pulsante «Traduci»)
+    var o = {}; o[LANG] = value; holder[key] = o;
+  }
+  function oneLanguage(v) { return v && (typeof v === "string" || !v.it || !v.en); }
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function monthLabel(m) {
     var p = m.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, 1));
@@ -252,11 +268,50 @@
       bar.appendChild(a2);
     }
     box.appendChild(bar);
-    if (info.language && info.language !== LANG) box.appendChild(el("p", "tiny ct-note", T.otherLang));
+    var n1 = textsInOneLanguage();
+    if (n1) box.appendChild(translateBox(n1));
     if (spec && spec.notes && editing) {
       var det = el("details", "ct-claude-note"); det.appendChild(el("summary", "tiny", T.claudeNote));
-      det.appendChild(el("p", "tiny muted", spec.notes)); box.appendChild(det);
+      det.appendChild(el("p", "tiny muted", tx(spec.notes))); box.appendChild(det);
     }
+  }
+
+  // testi delle definizioni con una lingua sola (scritti prima delle due lingue, o corretti a mano)
+  function textsInOneLanguage() {
+    if (!spec) return 0;
+    var n = 0;
+    function chk(v) { if (v && (typeof v === "string" ? v.trim() : true) && oneLanguage(v)) n++; }
+    chk(spec.notes);
+    spec.sections.forEach(function (s) {
+      chk(s.question); chk(s.why); chk(s.missing);
+      (s.charts || []).forEach(function (c) { chk(c.title); (c.categories || []).forEach(function (x) { chk(x.label); }); });
+    });
+    spec.kpis.forEach(function (k) { chk(k.name); chk(k.description); if (k.target) chk(k.target.reason); });
+    return n;
+  }
+  function translateBox(n) {
+    var p = el("div", "tiny ct-note ct-translate");
+    p.appendChild(el("span", "", n === 1 ? T.oneLang1 : fmt(T.oneLang, { n: n })));
+    var out = el("span", "ct-claude-out");
+    var working = dirty || previewing;
+    var body = { workspace_id: WS, config_id: CONFIG }; if (working) body.spec = spec;
+    p.appendChild(button(T.translate, "link-btn", function () {
+      out.textContent = "…";
+      api("/analysis/control-tower/translate", Object.assign({ estimate: true }, body)).then(function (e) {
+        if (e.available === false) { out.textContent = e.error || T.noClaude; return; }
+        out.textContent = "";
+        out.appendChild(el("span", "", fmt(T.cost, { c: "$" + e.cost_usd.toFixed(3), m: "$" + e.max_usd.toFixed(3), model: e.model }) + " "));
+        out.appendChild(button(T.go, "primary", function () {
+          out.textContent = T.translating;
+          api("/analysis/control-tower/translate", body).then(function (r) {
+            if (r.saved) load(); else { spec = r.spec; dirty = true; load(spec); }
+          }).catch(function (err) { out.textContent = err.message; });
+        }));
+        out.appendChild(button(T.cancel, "link-btn", function () { out.textContent = ""; }));
+      }).catch(function (err) { out.textContent = err.message; });
+    }));
+    p.appendChild(out);
+    return p;
   }
 
   function save(approve, onlyApprove) {
@@ -344,7 +399,7 @@
       var card = el("a", "ct-qcard"); card.href = "#q=" + encodeURIComponent(s.id);
       var head = el("div", "ct-section-head");
       head.appendChild(el("span", "ct-section-n", String(i + 1)));
-      head.appendChild(el("h2", "ct-h", s.question));
+      head.appendChild(el("h2", "ct-h", tx(s.question)));
       card.appendChild(head);
       var ks = summaryKpis(s);
       if (ks.length) {
@@ -354,7 +409,7 @@
       } else card.appendChild(el("p", "tiny muted", T.noKpis));
       var spark = sparkFor(s);
       if (spark) { var sp = el("div", "ct-spark"); sp.dataset.spark = spark.id; card.appendChild(sp); }
-      if (s.missing) { var m = el("p", "tiny ct-qmissing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(s.missing)); card.appendChild(m); }
+      if (tx(s.missing)) { var m = el("p", "tiny ct-qmissing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(tx(s.missing))); card.appendChild(m); }
       card.appendChild(el("span", "ct-qmore", T.openDetail + " →"));
       grid.appendChild(card);
     });
@@ -388,7 +443,7 @@
       svg.appendChild(svgEl("circle", { cx: x(pts.length - 1), cy: y(last.value), r: 3.5, "class": "ct-dot" }));
       box.appendChild(svg);
       box.appendChild(el("span", "tiny muted", monthLabel(pts[0].month) + " – " + monthLabel(last.month)));
-      box.title = (c.title || (k && k.name) || "");
+      box.title = tx(c.title) || (k ? tx(k.name) : "");
     });
   }
 
@@ -407,10 +462,10 @@
     var sec = el("section", "ct-section ct-section-open");
     var head = el("div", "ct-section-head");
     head.appendChild(el("span", "ct-section-n", String(idx + 1)));
-    var ht = el("div"); ht.appendChild(el("h2", "ct-h ct-h-big", s.question)); if (s.why) ht.appendChild(el("p", "tiny muted ct-why", s.why));
+    var ht = el("div"); ht.appendChild(el("h2", "ct-h ct-h-big", tx(s.question))); if (tx(s.why)) ht.appendChild(el("p", "tiny muted ct-why", tx(s.why)));
     head.appendChild(ht); sec.appendChild(head);
-    if (s.missing) {
-      var m = el("div", "ct-missing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(s.missing)); sec.appendChild(m);
+    if (tx(s.missing)) {
+      var m = el("div", "ct-missing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(tx(s.missing))); sec.appendChild(m);
     }
     if (s.kpis.length) {
       var g2 = el("div", "ct-kpis");
@@ -423,7 +478,7 @@
       vs.forEach(function (c) {
         var box = el("figure", "ct-chart ct-chart-" + c.kind);
         var k = kpiById(c.kpi);
-        var capt = el("figcaption"); capt.appendChild(el("span", "ct-chart-title", c.title || (k && k.name)));
+        var capt = el("figcaption"); capt.appendChild(el("span", "ct-chart-title", tx(c.title) || (k ? tx(k.name) : "")));
         var dl = dimLabel(c, k); if (dl) capt.appendChild(el("span", "tiny muted", " · " + dl));
         box.appendChild(capt);
         var area = el("div", "ct-chart-area"); area.dataset.chart = c.id; box.appendChild(area);
@@ -453,7 +508,7 @@
   function kpiCard(k, big) {
     var r = data.values.kpis[k.id] || {};
     var card = el("div", "ct-kpi" + (big ? " ct-kpi-big" : "") + (r.status ? " ct-" + r.status : ""));
-    var lab = el("div", "ct-kpi-label", k.name); if (k.description) lab.title = k.description; card.appendChild(lab);
+    var lab = el("div", "ct-kpi-label", tx(k.name)); if (tx(k.description)) lab.title = tx(k.description); card.appendChild(lab);
     if (r.issues) {
       card.classList.add("ct-kpi-missing");
       card.appendChild(el("div", "ct-kpi-value muted", T.noData));
@@ -477,7 +532,7 @@
     if (tt) {
       var chip = el("div", "ct-target" + (r.status ? " ct-target-" + r.status : ""), tt);
       if (r.status) chip.title = r.status === "ok" ? T.targetOk : T.targetKo;
-      if (k.target && k.target.reason) chip.title = (chip.title ? chip.title + " — " : "") + k.target.reason;
+      if (k.target && tx(k.target.reason)) chip.title = (chip.title ? chip.title + " — " : "") + tx(k.target.reason);
       card.appendChild(chip);
     }
     return card;
@@ -526,7 +581,7 @@
     var lo = Math.min.apply(null, vals.concat(target !== null && target !== undefined ? [target] : []).concat(k.measure === "duration" ? [] : [0]));
     if (hi === lo) { hi = hi + (Math.abs(hi) || 1) * 0.5; lo = lo - (k.measure === "duration" ? (Math.abs(lo) || 1) * 0.5 : 0); }
     hi = hi + (hi - lo) * 0.08;
-    var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": c.title || k.name, "class": "ct-svg" });
+    var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
     function x(i) { return L + (pts.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (pts.length - 1)); }
     function y(v) { return TOP + (hi - v) * (H - TOP - B) / (hi - lo); }
     for (var g = 0; g <= 3; g++) {
@@ -557,7 +612,7 @@
     var sc = el("div", "ov-scroll"); sc.appendChild(svg); area.appendChild(sc);
   }
 
-  function groupLabel(x) { return x.label === "" ? T.empty : x.label; }
+  function groupLabel(x) { return x.label === "" ? T.empty : tx(x.label); }
   function violates(k, v) {
     var t = k.target; if (!t || v === null || v === undefined) return false;
     var g = Number(t.value); if (isNaN(g)) return false; if (isPct(k) && g > 1) g /= 100;
@@ -585,7 +640,7 @@
     if (!items.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var t = el("table", "ov-acts ct-table"), hr = el("tr");
     var showValue = k.measure !== "count";   // per un conteggio il valore e' gia' la colonna «Colpiti»
-    var cols = [T.colGroup, cap(tp(k.object_type)), T.colHit].concat(showValue ? [k.name] : []);
+    var cols = [T.colGroup, cap(tp(k.object_type)), T.colHit].concat(showValue ? [tx(k.name)] : []);
     if (k.amount && k.measure !== "sum") cols.push(T.colAmount);
     cols.forEach(function (h, i) { hr.appendChild(el("th", i ? "num" : "", h)); });
     var th = el("thead"); th.appendChild(hr); t.appendChild(th);
@@ -609,7 +664,7 @@
     if (!total) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var box = el("div", "ct-donut");
     var S = 168, R = 70, r = 44, cx = S / 2, cy = S / 2;
-    var svg = svgEl("svg", { width: S, height: S, viewBox: "0 0 " + S + " " + S, role: "img", "aria-label": c.title || k.name });
+    var svg = svgEl("svg", { width: S, height: S, viewBox: "0 0 " + S + " " + S, role: "img", "aria-label": tx(c.title) || tx(k.name) });
     var a0 = -Math.PI / 2;
     items.forEach(function (x, i) {
       var color = x.rest ? "var(--border)" : x.other ? "#9aa1ad" : COLORS[i % COLORS.length];
@@ -674,7 +729,7 @@
       var sec = el("section", "ct-ed-section");
       var head = el("div", "ct-row");
       head.appendChild(el("span", "ct-section-n", String(si + 1)));
-      head.appendChild(field(T.section, input(s.question, function (v) { s.question = v; }), "ct-grow"));
+      head.appendChild(field(T.section, input(tx(s.question), function (v) { setTx(s, "question", v); }), "ct-grow"));
       head.appendChild(button(T.delSection, "link-btn ct-danger", function () {
         if (!confirm(T.confirmDelSection)) return;
         spec.sections.splice(si, 1);
@@ -684,14 +739,14 @@
         changed(); redraw();
       }));
       sec.appendChild(head);
-      sec.appendChild(field(T.why, textarea(s.why, function (v) { s.why = v; }, 2)));
-      sec.appendChild(field(T.missingField, textarea(s.missing, function (v) { s.missing = v; }, 2)));
+      sec.appendChild(field(T.why, textarea(tx(s.why), function (v) { setTx(s, "why", v); }, 2)));
+      sec.appendChild(field(T.missingField, textarea(tx(s.missing), function (v) { setTx(s, "missing", v); }, 2)));
       s.kpis.forEach(function (id) {
         var k = kpiById(id); if (!k) return;
         var box = el("div", "ct-ed-kpi");
         var r = data.values && data.values.kpis[k.id];
         var row = el("div", "ct-row");
-        row.appendChild(field(T.kpiName, input(k.name, function (v) { k.name = v; }), "ct-grow"));
+        row.appendChild(field(T.kpiName, input(tx(k.name), function (v) { setTx(k, "name", v); }), "ct-grow"));
         row.appendChild(checkbox(T.kpiInSummary, (spec.headline || []).indexOf(k.id) >= 0, function (on) {
           spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; }); if (on) spec.headline.push(k.id);
         }));
@@ -705,7 +760,7 @@
         box.appendChild(row);
         // come si calcola: scritto da Claude insieme alla definizione; si cambia chiedendolo a Claude
         var d = el("div", "ct-field"); d.appendChild(el("span", "ct-field-label", T.kpiDesc));
-        d.appendChild(el("p", "ct-desc", k.description || "—")); box.appendChild(d);
+        d.appendChild(el("p", "ct-desc", tx(k.description) || "—")); box.appendChild(d);
         if (r && r.issues) { var ul = el("ul", "tiny ct-issues"); ul.appendChild(el("li", "", T.kpiIssues)); r.issues.forEach(function (x) { ul.appendChild(el("li", "", x)); }); box.appendChild(ul); }
         sec.appendChild(box);
       });
@@ -721,22 +776,22 @@
     var k = spec && o.kpi_id && kpiById(o.kpi_id), c = spec && o.chart_id && findChart(o.chart_id);
     var ch = o.changes || {};
     switch (o.type) {
-      case "add_section": return fmt(T.opAddSection, { x: (o.section || {}).question || "" });
-      case "update_section": return fmt(T.opUpdateSection, { x: ch.question || (s && s.question) || o.section_id });
-      case "remove_section": return fmt(T.opRemoveSection, { x: (s && s.question) || o.section_id });
-      case "add_kpi": return fmt(T.opAddKpi, { x: (o.kpi || {}).name || "" });
-      case "update_kpi": return fmt(T.opUpdateKpi, { x: ch.name || (k && k.name) || o.kpi_id });
-      case "remove_kpi": return fmt(T.opRemoveKpi, { x: (k && k.name) || o.kpi_id });
-      case "add_chart": return fmt(T.opAddChart, { x: (o.chart || {}).title || "" });
-      case "update_chart": return fmt(T.opUpdateChart, { x: ch.title || (c && c.title) || o.chart_id });
-      case "remove_chart": return fmt(T.opRemoveChart, { x: (c && c.title) || o.chart_id });
-      case "set_summary": return fmt(T.opSummary, { x: (s && s.question) || o.section_id });
+      case "add_section": return fmt(T.opAddSection, { x: tx((o.section || {}).question) });
+      case "update_section": return fmt(T.opUpdateSection, { x: tx(ch.question) || (s && tx(s.question)) || o.section_id });
+      case "remove_section": return fmt(T.opRemoveSection, { x: (s && tx(s.question)) || o.section_id });
+      case "add_kpi": return fmt(T.opAddKpi, { x: tx((o.kpi || {}).name) });
+      case "update_kpi": return fmt(T.opUpdateKpi, { x: tx(ch.name) || (k && tx(k.name)) || o.kpi_id });
+      case "remove_kpi": return fmt(T.opRemoveKpi, { x: (k && tx(k.name)) || o.kpi_id });
+      case "add_chart": return fmt(T.opAddChart, { x: tx((o.chart || {}).title) });
+      case "update_chart": return fmt(T.opUpdateChart, { x: tx(ch.title) || (c && tx(c.title)) || o.chart_id });
+      case "remove_chart": return fmt(T.opRemoveChart, { x: (c && tx(c.title)) || o.chart_id });
+      case "set_summary": return fmt(T.opSummary, { x: (s && tx(s.question)) || o.section_id });
     }
     return o.type;
   }
   function renderAction(a, box, as) {
     box.appendChild(el("div", "as-action-title", "✦ " + T.asProposal));
-    if (a.summary) box.appendChild(el("p", "", a.summary));
+    if (tx(a.summary)) box.appendChild(el("p", "", tx(a.summary)));
     var ul = el("ul", "tiny"); (a.operations || []).forEach(function (o) { ul.appendChild(el("li", "", opLabel(o))); }); box.appendChild(ul);
     var row = el("div", "as-action-buttons");
     var out = el("p", "tiny muted");
@@ -765,11 +820,11 @@
       var s = openSection(), ks = s ? s.kpis.map(kpiById).filter(Boolean) : spec.kpis;
       var ko = ks.filter(function (k) { return (data.values.kpis[k.id] || {}).status === "ko"; })[0];
       var out = [];
-      if (editing) return [T.asSugQuestion, ks[0] ? fmt(T.asSugTarget, { k: ks[0].name }) : null, T.asSugSummary].filter(Boolean);
-      if (ks[0]) out.push(fmt(T.asSugExplain, { k: ks[0].name }));
-      if (ko) out.push(fmt(T.asSugWhy, { k: ko.name }));
+      if (editing) return [T.asSugQuestion, ks[0] ? fmt(T.asSugTarget, { k: tx(ks[0].name) }) : null, T.asSugSummary].filter(Boolean);
+      if (ks[0]) out.push(fmt(T.asSugExplain, { k: tx(ks[0].name) }));
+      if (ko) out.push(fmt(T.asSugWhy, { k: tx(ko.name) }));
       if (s) out.push(T.asSugChart);
-      if (ks[0]) out.push(fmt(T.asSugTarget, { k: ks[0].name }));
+      if (ks[0]) out.push(fmt(T.asSugTarget, { k: tx(ks[0].name) }));
       if (!s) out.push(T.asSugSummary);
       return out;
     },

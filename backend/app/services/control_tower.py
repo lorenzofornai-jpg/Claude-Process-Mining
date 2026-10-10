@@ -660,10 +660,10 @@ def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
     slices: Counter = Counter()
     cats = [x for x in c.get("categories") or [] if isinstance(x, dict) and x.get("label")]
     if cats:
-        for r in hits:
-            label = next((x["label"] for x in cats if holds(ctx, r[0], x.get("condition"))), None)
+        for r in hits:   # chiave = posizione della categoria (l'etichetta puo' essere un testo in due lingue)
+            label = next((i for i, x in enumerate(cats) if holds(ctx, r[0], x.get("condition"))), None)
             slices[label] += w(r)
-        items = [{"label": x["label"], "value": slices.get(x["label"], 0.0)} for x in cats]
+        items = [{"label": x["label"], "value": slices.get(i, 0.0)} for i, x in enumerate(cats)]
         if slices.get(None):
             items.append({"label": None, "other": True, "value": slices[None]})
     elif c.get("dimension"):
@@ -732,7 +732,7 @@ def compute(spec: dict, model, period: str = "12") -> dict:
 # ---------- proposta con Claude ----------
 
 MAX_OUTPUT_TOKENS = 16000   # anche il ragionamento del modello consuma token di output
-TYPICAL_OUTPUT_TOKENS = 5000
+TYPICAL_OUTPUT_TOKENS = 7000   # i testi sono nelle due lingue
 
 GRAMMAR = """\
 - kpis: id breve (k1, k2...), name (breve, da cruscotto), description (come si calcola, in parole semplici),
@@ -802,12 +802,19 @@ Regole:
   condizioni, incasso registrato da un utente non di sistema), importo delle fatture gestite a mano, composizione
   per tipo di intervento, clienti con più interventi.
 - Se il dataset non permette di rispondere a una domanda, dillo in missing e non forzare KPI senza senso.
-- Testi (question, why, name, description, title, label, reason, missing, notes) nella lingua "language"
-  (it = italiano, en = inglese), chiari per un dirigente, senza gergo tecnico del sistema sorgente.
+- Testi (question, why, name, description, title, label, reason, missing, notes) SEMPRE in italiano e in inglese,
+  come oggetto {"it": "...", "en": "..."}, chiari per un dirigente, senza gergo tecnico del sistema sorgente.
+  "language" è la lingua dell'utente: ragiona e scegli i termini pensando a lui, ma scrivi entrambe le lingue.
+- object_names: per ogni tipo di oggetto usato nei KPI, come chiamarlo nelle frasi, al singolare e al plurale in
+  entrambe le lingue: {"Invoice": {"it": {"one": "fattura", "many": "fatture"}, "en": {"one": "invoice",
+  "many": "invoices"}}} (minuscolo, nome di business).
 - Rispondi SOLO chiamando una volta lo strumento control_tower con le definizioni complete, senza altro testo.
 - Se ricevi "current_spec" e "instruction", modifica le definizioni attuali secondo l'istruzione e restituiscile
   complete (tieni gli id dei KPI che non cambi).
 """
+
+# testo nelle due lingue
+TEXT = {"type": "object", "properties": {"it": {"type": "string"}, "en": {"type": "string"}}, "required": ["it", "en"]}
 
 TOOL = {
     "name": "control_tower",
@@ -815,15 +822,18 @@ TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "notes": {"type": "string", "description": "Nota breve per il Data Analyst: scelte e limiti principali."},
+            "notes": {"type": "object", "description": "Nota breve per il Data Analyst (scelte e limiti principali), "
+                                                         "{\"it\": ..., \"en\": ...}."},
+            "object_names": {"type": "object", "description": "Nomi dei tipi di oggetto nelle frasi, singolare e plurale "
+                                                               "nelle due lingue."},
             "headline": {"type": "array", "items": {"type": "string"}},
             "sections": {"type": "array", "items": {"type": "object", "properties": {
-                "id": {"type": "string"}, "question": {"type": "string"}, "why": {"type": "string"},
+                "id": {"type": "string"}, "question": TEXT, "why": TEXT,
                 "kpis": {"type": "array", "items": {"type": "string"}},
                 "charts": {"type": "array", "items": {"type": "object"}},
-                "missing": {"type": "string"}}, "required": ["question", "kpis", "charts"]}},
+                "missing": TEXT}, "required": ["question", "kpis", "charts"]}},
             "kpis": {"type": "array", "items": {"type": "object", "properties": {
-                "id": {"type": "string"}, "name": {"type": "string"}, "description": {"type": "string"},
+                "id": {"type": "string"}, "name": TEXT, "description": TEXT,
                 "object_type": {"type": "string"}, "measure": {"type": "string", "enum": list(MEASURES)},
                 "population": {"type": ["object", "null"]}, "condition": {"type": ["object", "null"]},
                 "amount": {"type": ["string", "null"]}, "currency": {"type": ["string", "null"]},
@@ -981,13 +991,23 @@ OPERATIONS = ("add_section", "update_section", "remove_section", "add_kpi", "upd
               "add_chart", "update_chart", "remove_chart", "set_summary")
 
 
+TEXT_FIELDS = {"name", "description", "question", "why", "missing", "reason", "title", "label", "notes"}
+
+
+def _no_texts(v):
+    if isinstance(v, dict):
+        return {k: _no_texts(x) for k, x in v.items() if k not in TEXT_FIELDS}
+    if isinstance(v, list):
+        return [_no_texts(x) for x in v]
+    return v
+
+
 def definitions_part(spec: dict | None) -> dict:
-    """La parte che il Data Analyst approva: domande e KPI (con come si calcolano e obiettivi). I grafici e la
-    scelta dei KPI della sintesi no: cambiarli non chiede una nuova approvazione."""
+    """La parte che il Data Analyst approva: quali domande e quali KPI, come si calcolano, obiettivi. Non i testi
+    (correggere un nome o tradurlo non cambia i numeri), non i grafici ne' la scelta dei KPI della sintesi."""
     spec = spec or {}
-    return {"kpis": spec.get("kpis") or [],
-            "sections": [{"id": s.get("id"), "kpis": list(s.get("kpis") or []),
-                          **{k: s.get(k) or "" for k in ("question", "why", "missing")}}
+    return {"kpis": _no_texts(spec.get("kpis") or []),
+            "sections": [{"id": s.get("id"), "kpis": list(s.get("kpis") or [])}
                          for s in spec.get("sections") or [] if isinstance(s, dict)]}
 
 
@@ -1113,3 +1133,144 @@ def apply_operations(spec: dict, operations: list) -> tuple[dict, list[dict]]:
             mine = set(s.get("kpis") or [])
             spec["headline"] = [x for x in spec["headline"] if x not in mine] + [x for x in ids if x in mine]
     return spec, skipped
+
+
+# ---------- testi nelle due lingue ----------
+LANGS = ("it", "en")
+
+
+def text_slots(spec: dict):
+    """(contenitore, chiave) di ogni testo delle definizioni: domande, KPI, obiettivi, grafici, categorie, nota."""
+    if spec.get("notes"):
+        yield spec, "notes"
+    for s in spec.get("sections") or []:
+        for k in ("question", "why", "missing"):
+            if s.get(k):
+                yield s, k
+        for c in s.get("charts") or []:
+            if c.get("title"):
+                yield c, "title"
+            for cat in c.get("categories") or []:
+                if isinstance(cat, dict) and cat.get("label"):
+                    yield cat, "label"
+    for k in spec.get("kpis") or []:
+        for f in ("name", "description"):
+            if k.get(f):
+                yield k, f
+        if isinstance(k.get("target"), dict) and k["target"].get("reason"):
+            yield k["target"], "reason"
+
+
+def untranslated(spec: dict | None, base_lang: str = "it") -> dict:
+    """Testi che non hanno tutte e due le lingue: {id: {"text", "from"}}; e i tipi di oggetto dei KPI senza nomi."""
+    out = {}
+    if not spec:
+        return {"texts": out, "object_types": []}
+    for i, (holder, key) in enumerate(text_slots(spec)):
+        v = holder[key]
+        if isinstance(v, dict):
+            have = {l: v.get(l) for l in LANGS if v.get(l)}
+            if len(have) < len(LANGS) and have:
+                src = next(iter(have))
+                out[str(i)] = {"text": have[src], "from": src}
+        elif isinstance(v, str) and v.strip():
+            out[str(i)] = {"text": v, "from": base_lang}
+    names = spec.get("object_names") or {}
+    types = sorted({k.get("object_type") for k in spec.get("kpis") or [] if k.get("object_type")}
+                   - {t for t, v in names.items() if isinstance(v, dict) and all(v.get(l) for l in LANGS)})
+    return {"texts": out, "object_types": types}
+
+
+TRANSLATE_PROMPT = """\
+Traduci i testi di una vista di process mining per il management (domande di business, nomi e descrizioni di KPI,
+titoli di grafici) tra italiano e inglese. Per ogni testo hai la lingua di partenza probabile ("from"; se il testo è
+chiaramente in un'altra lingua vale quella del testo): restituisci il testo in entrambe le lingue,
+{"it": ..., "en": ...}, tenendo identico quello di partenza. Stile da cruscotto, chiaro per
+un dirigente, termini di business corretti (es. DSO, touchless, termini di pagamento). Per i tipi di oggetto
+(object_types) dai il nome di business al singolare e al plurale, minuscolo, nelle due lingue. Rispondi SOLO con
+lo strumento translations."""
+
+TRANSLATE_TOOL = {
+    "name": "translations",
+    "description": "Testi tradotti e nomi dei tipi di oggetto.",
+    "input_schema": {"type": "object", "properties": {
+        "texts": {"type": "object", "description": "{id: {\"it\": ..., \"en\": ...}}"},
+        "object_names": {"type": "object", "description": "{tipo: {\"it\": {\"one\", \"many\"}, \"en\": {...}}}"}},
+        "required": ["texts", "object_names"]},
+}
+
+
+def translate_payload(spec: dict, base_lang: str) -> str | None:
+    todo = untranslated(spec, base_lang)
+    if not todo["texts"] and not todo["object_types"]:
+        return None
+    return json.dumps(todo, ensure_ascii=False, separators=(",", ":"))
+
+
+def translate_estimate(payload: str) -> dict:
+    from app.config import EXPLAIN_MODEL
+    from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+    price_in, price_out = _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    tokens_in = int(len(TRANSLATE_PROMPT + json.dumps(TRANSLATE_TOOL) + payload) / _CHARS_PER_TOKEN) + 50
+    tokens_out = int(len(payload) / _CHARS_PER_TOKEN * 1.6) + 200
+    return {"cost_usd": round((tokens_in * price_in + tokens_out * price_out) / 1_000_000, 4),
+            "max_usd": round((tokens_in * price_in + (tokens_out * 2 + 1500) * price_out) / 1_000_000, 4),
+            "model": EXPLAIN_MODEL}
+
+
+def translate(spec: dict, base_lang: str) -> dict:
+    """Completa con Claude i testi che hanno una lingua sola. Ritorna {"spec", "cost_usd"}."""
+    import anthropic
+    from app.config import EXPLAIN_MODEL
+    from app.services.ai_mapping import _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+
+    spec = copy.deepcopy(spec)
+    payload = translate_payload(spec, base_lang)
+    if payload is None:
+        return {"spec": spec, "cost_usd": 0.0}
+    client = anthropic.Anthropic()
+    request = dict(model=EXPLAIN_MODEL, max_tokens=8000, system=TRANSLATE_PROMPT, tools=[TRANSLATE_TOOL],
+                   messages=[{"role": "user", "content": payload}])
+    try:
+        with client.messages.stream(**request, output_config={"effort": "low"}) as stream:
+            response = stream.get_final_message()
+    except (TypeError, anthropic.BadRequestError):
+        with client.messages.stream(**request) as stream:
+            response = stream.get_final_message()
+    price_in, price_out = _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    u = response.usage
+    cost = ((u.input_tokens or 0) * price_in + (u.output_tokens or 0) * price_out) / 1_000_000
+    out = next((b.input for b in response.content if getattr(b, "type", "") == "tool_use"), None)
+    if not isinstance(out, dict):
+        text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
+        start, end = text.find("{"), text.rfind("}")
+        try:
+            out = json.loads(text[start:end + 1]) if start >= 0 else None
+        except ValueError:
+            out = None
+    if not isinstance(out, dict):
+        raise ProposalError(msg("Claude non ha restituito le traduzioni: riprova."), str(response.stop_reason))
+    return {"spec": merge_translations(spec, out, base_lang), "cost_usd": round(cost, 4)}
+
+
+def merge_translations(spec: dict, out: dict, base_lang: str = "it") -> dict:
+    """Mette nelle definizioni i testi tradotti (per posizione, come in untranslated) e i nomi dei tipi."""
+    texts = out.get("texts") or {}
+    for i, (holder, key) in enumerate(text_slots(spec)):
+        t = texts.get(str(i))
+        if not isinstance(t, dict):
+            continue
+        v = holder[key]
+        cur = dict(v) if isinstance(v, dict) else {}
+        for l in LANGS:
+            if not cur.get(l) and t.get(l):
+                cur[l] = str(t[l])
+        if isinstance(v, str):
+            # testo in una lingua sola salvato senza indicarla: Claude ha riconosciuto la lingua e tenuto il testo
+            cur = {l: str(t.get(l) or v) for l in LANGS}
+        holder[key] = cur
+    names = spec.setdefault("object_names", {})
+    for typ, v in (out.get("object_names") or {}).items():
+        if isinstance(v, dict):
+            names[typ] = {**(names.get(typ) or {}), **{l: v[l] for l in LANGS if isinstance(v.get(l), dict)}}
+    return spec

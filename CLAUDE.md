@@ -8,4 +8,7 @@
   - ogni testo nuovo ha la sua voce inglese in `backend/app/i18n_en.py` (chiave = testo italiano);
   - `python -m pytest backend/tests` verifica che non manchino traduzioni.
 - Le spiegazioni scritte da Claude seguono la lingua attiva (`process_context.language`).
+- I testi che Claude scrive e l'app salva per mostrarli dopo (es. domande, KPI, titoli dei grafici della Control Tower)
+  si salvano in tutte e due le lingue, `{"it": ..., "en": ...}`, e si mostrano nella lingua attiva; i nomi dei tipi di
+  oggetto dentro le frasi vanno nella lingua attiva, al singolare o al plurale.
 - Python 3.11 (devcontainer); analisi con pm4py.

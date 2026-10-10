@@ -185,6 +185,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ Assistente della Control Tower: spiega i numeri e propone modifiche (grafici, statistiche, obiettivi, domande,
   KPI) come operazioni che l'app applica in anteprima; si salvano dalla barra in alto. Cambiare grafici e sintesi
   lascia l'approvazione; cambiare domande e KPI (anche gli obiettivi) le rimette da approvare.
+- ✅ Testi nelle due lingue: Claude scrive domande, KPI, titoli ed etichette in italiano e in inglese e i nomi dei
+  tipi di oggetto per le frasi («394 di 485 fatture» / «invoices»); i testi in una lingua sola (definizioni già
+  salvate, correzioni a mano) si completano con «Traduci» (costo mostrato prima). Tradurre o correggere i testi non
+  toglie l'approvazione.
 - Da fare: esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 

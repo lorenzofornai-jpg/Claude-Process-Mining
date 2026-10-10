@@ -452,6 +452,19 @@ async def objective_save(request: Request):
 # Le domande di business dell'assessment tradotte in KPI (services/control_tower.py): Claude propone le definizioni
 # una volta per dataset, il Data Analyst le rivede e le approva, l'app calcola i valori.
 
+def _type_names(lang: str, types) -> dict:
+    """Come chiamare i tipi di oggetto nelle frasi, nella lingua attiva: «Invoice» -> fattura / fatture (nomi
+    standard conosciuti); gli altri restano come sono, al plurale della lingua. Le definizioni della Control Tower
+    possono avere nomi propri (object_names), che valgono prima di questi."""
+    from app.services import names_i18n
+    from app.services.nouns import plural
+    out = {}
+    for t in types:
+        one = names_i18n.name(t, lang) or t
+        out[t] = {"one": one, "many": plural(one, lang)}
+    return out
+
+
 def _tower_row(db, config_id: str):
     return db.query(ControlTower).filter_by(ingestion_config_id=config_id).first()
 
@@ -487,7 +500,7 @@ def control_tower_page(request: Request, workspace_id: str, config_id: str | Non
             "request": request, "user": user, "workspace_id": workspace_id, "process_name": ws.process_name,
             "config": config, "run": run, "lead": lead,
             "questions": (answers.get("key_questions") or "").strip(),
-            "plurals": _plurals(get_lang(request), model.types, {}),
+            "type_names": _type_names(get_lang(request), model.types),
             "claude": explain.available(),
         },
     )
@@ -713,3 +726,55 @@ async def control_tower_assistant_ask(request: Request):
         result["answer"] = (result.get("answer") or "").rstrip() + "…\n\n" + t(
             lang, "(Risposta interrotta perché troppo lunga: fai una domanda più precisa per avere il resto.)")
     return JSONResponse({"available": True, **result})
+
+
+@router.post("/analysis/control-tower/translate")
+async def control_tower_translate(request: Request):
+    """Completa in italiano e in inglese i testi delle definizioni scritti in una lingua sola (spec: le definizioni
+    in corso; senza, quelle salvate, che vengono salvate tradotte). Con estimate=true solo il costo."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    if not explain.available():
+        return JSONResponse({"available": False, "error": t(
+            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None:
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    db = SessionLocal()
+    try:
+        row = _tower_row(db, config.id)
+    finally:
+        db.close()
+    if row is None:
+        return JSONResponse({"error": t(lang, "Non ci sono definizioni da salvare.")}, status_code=400)
+    working = body.get("spec") if isinstance(body.get("spec"), dict) else None
+    spec = working or row.spec
+    payload = control_tower.translate_payload(spec, row.language or "it")
+    if payload is None:
+        return JSONResponse({"available": True, "spec": spec, "cost_usd": 0.0, "nothing": True})
+    if body.get("estimate"):
+        return JSONResponse({"available": True, **control_tower.translate_estimate(payload)})
+    try:
+        result = await run_in_threadpool(control_tower.translate, spec, row.language or "it")
+    except control_tower.ProposalError as exc:
+        return JSONResponse({"available": True, "error": render(lang, exc.reason)}, status_code=502)
+    except Exception as exc:
+        print(f"Control Tower: traduzione non riuscita ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+                             + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
+    if working is None:
+        # definizioni salvate: si salvano tradotte (i testi non cambiano cosa e' approvato)
+        db = SessionLocal()
+        try:
+            row = _tower_row(db, config.id)
+            row.spec = result["spec"]
+            row.cost_usd = round((row.cost_usd or 0.0) + result["cost_usd"], 4)
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    return JSONResponse({"available": True, "spec": result["spec"], "cost_usd": result["cost_usd"], "saved": working is None})

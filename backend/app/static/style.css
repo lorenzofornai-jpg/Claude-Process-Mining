@@ -1038,3 +1038,5 @@ table.ov-acts td.strong { font-weight: 600; }
 .as-action-buttons button { margin: 0; }
 .as-action-title { font-weight: 650; font-size: 13px; }
 .ct-ed-tools .ct-regen { margin: 0; padding: 0; border: 0; }
+.ct-translate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ct-translate .ct-claude-out { margin-top: 0; }

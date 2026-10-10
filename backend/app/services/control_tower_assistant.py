@@ -48,8 +48,9 @@ Regole:
 - Usa solo nomi di tipi, attività e attributi del catalogo ("catalog"); un importo è un attributo "number".
 - Con query_rows sulle tabelle del dataset (una per tipo di oggetto e "events") verifichi valori, utenti, attributi
   prima di proporre, se serve. Poche interrogazioni mirate.
-- Rispondi nella lingua "language" (it = italiano, en = inglese), in modo semplice, al massimo 150 parole; i testi
-  nelle definizioni (name, description, question, title, label) nella stessa lingua, chiari per un dirigente.
+- Rispondi nella lingua "language" (it = italiano, en = inglese), in modo semplice, al massimo 150 parole.
+- I testi nelle definizioni (name, description, question, why, missing, title, label, reason) vanno SEMPRE in
+  italiano e in inglese: {"it": "...", "en": "..."}, chiari per un dirigente.
   Testo semplice: niente titoli markdown, al massimo elenchi con "-".
 """
 

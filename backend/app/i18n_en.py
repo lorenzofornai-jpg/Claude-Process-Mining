@@ -1481,4 +1481,10 @@ EN: dict[str, str] = {
     "Scartata.": "Discarded.",
     "Sintesi": "Summary",
     "Vorrei modificare le definizioni: ": "I would like to change the definitions: ",
+    # Control Tower: due lingue
+    "Claude non ha restituito le traduzioni: riprova.": "Claude did not return the translations: try again.",
+    "Traduci": "Translate",
+    "Traduzione in corso…": "Translating…",
+    "Un testo delle definizioni è in una lingua sola: traducilo per vederlo anche in italiano e in inglese.": "One text in the definitions is in a single language: translate it to see it in both Italian and English.",
+    "{n} testi delle definizioni sono in una lingua sola: traducili per vederli anche in italiano e in inglese.": "{n} texts in the definitions are in a single language: translate them to see them in both Italian and English.",
 }
