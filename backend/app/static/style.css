@@ -1,3 +1,6 @@
+/* un elemento con l'attributo hidden resta nascosto anche se una regola gli da' un display (es. i pulsanti) */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #f4f5f8;
   --card-bg: #ffffff;
