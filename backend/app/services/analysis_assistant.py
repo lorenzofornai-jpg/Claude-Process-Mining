@@ -30,13 +30,12 @@ Sei l'assistente di analisi di un'app di process mining object-centric (OCEL 2.0
 non necessariamente esperto di process mining né del sistema sorgente. "page" dice quale pagina sta guardando.
 
 Process Overview (page = overview): volumi, tempi e varianti visti da un «Oggetto guida» (un tipo di oggetto
-scelto dall'utente, es. la fattura). Il «Tempo di attraversamento» si misura in tre modi: «Da inizio a fine»
-(l'obiettivo misurabile: dalla prima attività di inizio alla prima di fine successiva; chi non ha ancora la fine è
-tra gli «Aperti», con la sua età all'ultimo evento del dataset), «Solo l'oggetto» (dal primo all'ultimo evento
-dell'oggetto, aperti compresi), «Con gli oggetti collegati» (fino all'ultimo evento anche degli oggetti collegati,
-esclusi i tipi trasversali). Le varianti sono le sequenze di attività dell'oggetto guida (ripetizioni consecutive
-raggruppate); l'happy path è la più frequente; «Altre attività frequenti» sono quelle fuori dall'happy path.
-L'obiettivo misurabile lo imposta il Data Engineer nella pagina del risultato del dataset (riquadro «Obiettivo misurabile»): nella Overview si vede come «Da inizio a fine».
+scelto dall'utente nel menu, es. la fattura). Il «Tempo di attraversamento» si misura in due modi: «Solo l'oggetto»
+(dal primo all'ultimo evento dell'oggetto) e «Con gli oggetti collegati» (anche gli eventi degli oggetti collegati,
+esclusi i tipi trasversali; con questa scelta anche varianti e happy path comprendono le loro attività). Gli
+istogrammi mostrano gli oggetti per mese di inizio e la distribuzione dei tempi. Le varianti sono le sequenze di
+attività (ripetizioni consecutive raggruppate); l'happy path è la più frequente. L'obiettivo misurabile si verifica
+nella preparazione del dataset (pagina del risultato) e non compare nella Overview.
 
 Process Explorer (page = explorer): mappa a linee di metropolitana. Ogni tipo di oggetto è una linea colorata che
 parte in alto (tratteggio iniziale: l'oggetto non è ancora entrato nel processo) e finisce in un cerchio pieno;

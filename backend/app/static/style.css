@@ -853,3 +853,8 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
   .explorer-graph:not(.expanded) { display: flex; flex-direction: column; }
   .explorer-graph:not(.expanded) .graph-canvas { flex: 1 1 auto; height: auto; min-height: max(520px, calc(100vh - 230px)); }
 }
+
+/* Process Overview: istogrammi uno sotto l'altro a tutta larghezza, scorrevoli se le barre sono tante */
+.ov-grid.ov-stack { grid-template-columns: 1fr; }
+.ov-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+.ov-scroll .ov-bars { width: 100%; }

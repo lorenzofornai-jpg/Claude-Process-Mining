@@ -159,6 +159,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ Pannello «Controllo del grafo» richiudibile («) per dare spazio al grafo; si riapre dal pulsante sul grafo
   e la scelta resta per le visite successive.
 
+## Process Overview più essenziale (10 ottobre 2026)
+- ✅ Tolti: riquadro «Oggetti del dataset» (l'oggetto guida si sceglie dal menu), tempo «Da inizio a fine» e
+  riquadro dell'obiettivo, «Altre attività frequenti».
+- ✅ L'obiettivo misurabile resta come verifica nella pagina del risultato del dataset, senza salvataggio.
+- ✅ Istogrammi uno sotto l'altro a tutta larghezza; con tante barre (es. 36 mesi) larghezza minima per barra e
+  scorrimento orizzontale.
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

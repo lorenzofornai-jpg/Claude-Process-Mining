@@ -17,12 +17,6 @@
     </div>
   </div>
 
-  <section class="ov-section">
-    <h2 class="ov-title">{{ _("Oggetti del dataset") }}</h2>
-    <p class="tiny muted">{{ _("Tocca un tipo di oggetto per sceglierlo come oggetto guida: volumi, tempi e varianti qui sotto sono calcolati su di lui. I tipi trasversali non possono fare da guida.") }}</p>
-    <div class="ov-types" id="ov-types"></div>
-  </section>
-
 
   <div class="ov-controls">
     <label class="ov-lead">{{ _("Oggetto guida") }}
@@ -31,7 +25,6 @@
     <div>
       <div class="tiny muted ov-control-label">{{ _("Tempo di attraversamento") }}</div>
       <div class="segmented" role="group" aria-label="{{ _("Tempo di attraversamento") }}">
-        <button type="button" class="seg" data-scope="objective" id="seg-objective" hidden>{{ _("Da inizio a fine") }}</button>
         <button type="button" class="seg" data-scope="object">{{ _("Solo l'oggetto") }}</button>
         <button type="button" class="seg" data-scope="related">{{ _("Con gli oggetti collegati") }}</button>
       </div>
@@ -54,7 +47,7 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var TYPES = {{ object_types|tojson }};
-  var lead = {{ default_lead|tojson }}, scope = {{ ("objective" if has_objective else "object")|tojson }}, data = null, shown = 5;
+  var lead = {{ default_lead|tojson }}, scope = "object", data = null, shown = 5;
   // i nomi arrivano corretti dall'ingestion: nessuna ridenominazione nell'analisi
   function tn(n) { return n; }
   // plurale del nome mostrato (calcolato dal server per la lingua attiva): «8 fatture», «8 invoices»
@@ -103,17 +96,11 @@
     varTitle: {{ _("Varianti")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
-    othersDescRelated: {{ _("Attività di {tp} e dei loro oggetti collegati che non fanno parte dell'happy path.")|tojson }},
     varSlider: {{ _("Varianti mostrate: {n} di {m} · copertura: {p} dei casi")|tojson }},
     varCount: {{ _("{n} oggetti · {p}")|tojson }},
     varCount1: {{ _("1 oggetto · {p}")|tojson }},
     varTime: {{ _("mediana {d}")|tojson }},
     repeated: {{ _("ripetuta più volte di seguito")|tojson }},
-    othersTitle: {{ _("Altre attività frequenti")|tojson }},
-    othersDesc: {{ _("Attività di {tp} che non fanno parte dell'happy path.")|tojson }},
-    othersShare: {{ _("{p} dei casi")|tojson }},
-    othersEvents: {{ _("{n} eventi")|tojson }},
-    noOthers: {{ _("Nessuna: tutte le attività fanno parte dell'happy path.")|tojson }},
     scopeObject: {{ _("Dal primo all'ultimo evento di ogni {t}.")|tojson }},
     relatedSame: {{ _("Qui coincide con «Solo l'oggetto»: nessun oggetto di tipo {t} ha oggetti collegati con eventi propri (i tipi trasversali non contano).")|tojson }},
     objectVsObjective: {{ _("Comprende anche gli oggetti ancora aperti (fino al loro ultimo evento) e qualunque attività: per questo può essere diverso dal tempo dell'obiettivo.")|tojson }},
@@ -176,6 +163,7 @@
     k.appendChild(el("div", "ov-kpi-value", value)); if (sub) k.appendChild(el("div", "ov-kpi-sub tiny muted", sub));
     return k;
   }
+  function scroller(inner) { var w = el("div", "ov-scroll"); w.appendChild(inner); return w; }
   function chain(steps) {
     var c = el("div", "ov-chain");
     steps.forEach(function (s, i) {
@@ -186,9 +174,12 @@
     });
     return c;
   }
+  // istogramma: a tutta larghezza; con tante barre (es. 36 mesi) ogni barra ha una larghezza minima leggibile e
+  // il riquadro scorre in orizzontale
   function bars(items, labelOf, tipOf) {
     var max = Math.max.apply(null, [1].concat(items.map(function (x) { return x.count; })));
     var box = el("div", "ov-bars");
+    box.style.minWidth = (items.length * 52) + "px";
     items.forEach(function (x) {
       var col = el("div", "ov-bar-col"); col.title = tipOf(x); col.setAttribute("aria-label", tipOf(x)); col.tabIndex = 0;
       var v = el("div", "ov-bar-value tiny", x.count ? num(x.count) : "");
@@ -200,37 +191,13 @@
     return box;
   }
 
-  function renderTypes() {
-    var box = document.getElementById("ov-types"); box.textContent = "";
-    data.types.forEach(function (t) {
-      var card = el(t.lead_option ? "button" : "div", "ov-type" + (t.name === lead ? " is-lead" : "") + (t.hub ? " is-hub" : ""));
-      if (t.lead_option) { card.type = "button"; card.addEventListener("click", function () { lead = t.name; select.value = lead; load(); }); }
-      if (t.hub) card.title = T.hubTip;
-      var head = el("div", "ov-type-head"); head.appendChild(swatch(t.color)); head.appendChild(el("strong", "", tn(t.name)));
-      if (t.name === lead) head.appendChild(el("span", "chip", T.lead));
-      if (t.hub) head.appendChild(el("span", "hub-tag", T.hub));
-      card.appendChild(head);
-      card.appendChild(el("div", "tiny", num(t.objects) + " " + T.objects.toLowerCase() + " · " + num(t.events) + " " + T.events.toLowerCase()));
-      card.appendChild(el("div", "tiny muted", t.median_lifetime ? fmt(T.lifetime, { d: dur(t.median_lifetime) })
-                                               : (t.median_lifetime === 0 ? T.zeroLife : T.noLifetime)));
-      box.appendChild(card);
-    });
-  }
-
   function render() {
     fillSelect(data.lead_options);
-    renderTypes();
-    var segObj = document.getElementById("seg-objective");
-    segObj.hidden = !data.objective;
-    if (data.objective) segObj.textContent = an(data.objective.start_activity) + " → " + an(data.objective.end_activity);
     if (data.scope !== scope) scope = data.scope;
     document.querySelectorAll(".seg[data-scope]").forEach(function (x) { x.classList.toggle("active", x.dataset.scope === scope); });
-    document.getElementById("scope-help").textContent = scope === "objective"
-      ? fmt(T.scopeObjective, { s: an(data.objective.start_activity), e: an(data.objective.end_activity), t: tn(lead) })
-      : fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) })
-        // perche' due misure possono coincidere o differire: detto, non lasciato da indovinare
-        + (scope === "related" && data.related_adds === 0 ? " " + fmt(T.relatedSame, { t: tn(lead) }) : "")
-        + (scope === "object" && data.objective ? " " + T.objectVsObjective : "");
+    document.getElementById("scope-help").textContent = fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) })
+        // perche' due misure possono coincidere: detto, non lasciato da indovinare
+        + (scope === "related" && data.related_adds === 0 ? " " + fmt(T.relatedSame, { t: tn(lead) }) : "");
     var body = document.getElementById("ov-body"); body.textContent = "";
     var L = tn(lead), st = data.throughput.stats, vol = data.volumes;
 
@@ -258,15 +225,15 @@
     }
 
     // volumi e tempi
-    var grid = el("div", "ov-grid");
+    var grid = el("div", "ov-grid ov-stack");
     var s1 = section(fmt(T.volTitle, { tp: tp(lead) }));
-    s1.appendChild(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); }));
+    s1.appendChild(scroller(bars(vol.months, monthLabel, function (m) { return fmt(T.volBar, { m: monthLabel(m), n: num(m.count) }); })));
     grid.appendChild(s1);
     var s2 = section(T.tpTitle);
-    s2.appendChild(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
+    s2.appendChild(scroller(bars(data.throughput.histogram, function (b) { return b.overflow ? "> " + days(b.from) : days(b.to); },
       function (b) { var one = b.count === 1;
         return b.overflow ? fmt(one ? T.tpOver1 : T.tpOver, { a: days(b.from), n: num(b.count) })
-                          : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); }));
+                          : fmt(one ? T.tpBar1 : T.tpBar, { a: days(b.from), b: days(b.to), n: num(b.count) }); })));
     if (st) s2.appendChild(el("p", "tiny muted", fmt(T.tpStats, { m: dur(st.median), a: dur(st.mean), lo: dur(st.min), hi: dur(st.max) })));
     grid.appendChild(s2);
     body.appendChild(grid);
@@ -310,19 +277,6 @@
     drawVariants();
     body.appendChild(s4);
 
-    // altre attivita'
-    var s5 = section(T.othersTitle, fmt(scope === "related" ? T.othersDescRelated : T.othersDesc, { tp: tp(lead) }));
-    if (!data.other_activities.length) s5.appendChild(el("p", "muted tiny", T.noOthers));
-    var oc = el("div", "ov-others");
-    data.other_activities.forEach(function (a) {
-      var c = el("div", "ov-other");
-      c.appendChild(el("strong", "", an(a.activity)));
-      c.appendChild(el("div", "tiny", fmt(T.othersShare, { p: pct(a.share) })));
-      c.appendChild(el("div", "tiny muted", fmt(T.othersEvents, { n: num(a.events) })));
-      oc.appendChild(c);
-    });
-    s5.appendChild(oc);
-    body.appendChild(s5);
   }
 
 

@@ -206,9 +206,9 @@ async def analysis_assistant_ask(request: Request):
     if page == "overview":
         options = overview.lead_options(model)
         lead = view.get("lead") if view.get("lead") in options else (options[0] if options else None)
-        scope = view.get("scope") if view.get("scope") in ("objective", "object", "related") else "object"
+        scope = view.get("scope") if view.get("scope") in ("object", "related") else "object"
         page_view = analysis_assistant.overview_view(
-            overview.build_overview(model, lead, scope, saved_objective(config.id)) if lead else None, focus)
+            overview.build_overview(model, lead, scope, None) if lead else None, focus)
     else:
         acts = view.get("act") if view.get("acts") == "list" else None
         top = view.get("top")
@@ -238,7 +238,7 @@ async def analysis_assistant_ask(request: Request):
                  "objects": run.object_count, "events": run.event_count},
         model=model, mapping=mapping, page=page, view=page_view,
         ui_labels=ui_labels(lang, analysis_assistant.UI_LABELS),
-        objective=saved_objective(config.id),
+        objective=None,   # l'obiettivo si verifica nella preparazione del dataset, non si salva
     )
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     est = analysis_assistant.estimate(context, history)
@@ -282,9 +282,7 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
             "config": config, "run": run, "configs": configs,
             "object_types": model.type_summary(), "aliases": _aliases(user.id, config.id),
             "plurals": _plurals(get_lang(request), model.types, _aliases(user.id, config.id)),
-            "default_lead": (saved_objective(config.id) or {}).get("object_type")
-                            or overview.default_lead(model, with_business_lead(answers, config.id).get("main_object")),
-            "has_objective": saved_objective(config.id) is not None,
+            "default_lead": overview.default_lead(model, with_business_lead(answers, config.id).get("main_object")),
         },
     )
 
@@ -304,8 +302,10 @@ def process_overview_data(request: Request, workspace_id: str, config_id: str, l
     if lead is None:
         return JSONResponse({"error": t(get_lang(request), "Nessun tipo di oggetto con eventi propri da analizzare.")},
                             status_code=404)
-    scope = scope if scope in ("object", "related", "objective") else "object"
-    return JSONResponse(overview.build_overview(model, lead, scope, saved_objective(config.id)))
+    # l'obiettivo misurabile si verifica nella preparazione del dataset; nella Overview i tempi sono dell'oggetto
+    # o con gli oggetti collegati
+    scope = scope if scope in ("object", "related") else "object"
+    return JSONResponse(overview.build_overview(model, lead, scope, None))
 
 
 # ---------- obiettivo misurabile (pagina Risultato del Data Engineer e Process Overview) ----------

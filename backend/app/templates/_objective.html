@@ -1,12 +1,13 @@
-{# Obiettivo misurabile del dataset: scelta (tipo, filtro, inizio, fine), controllo dal vivo, salvataggio.
-   Variabili: objective_ws, objective_config, objective_collapsed (facoltativa). Chi include la pagina puo'
-   definire window.onObjectiveSaved per reagire al salvataggio. #}
+{# Verifica dell'obiettivo misurabile nella preparazione del dataset: scelta (tipo, filtro, inizio, fine) e
+   controllo dal vivo di quanti oggetti lo rendono misurabile. Non si salva: serve a capire se il dataset regge.
+   Variabili: objective_ws, objective_config, objective_collapsed (facoltativa). #}
 <details class="objective" id="objective" data-ws="{{ objective_ws }}" data-config="{{ objective_config }}" {{ '' if objective_collapsed else 'open' }}>
   <summary>
     <span class="objective-title">🎯 {{ _("Obiettivo misurabile") }}</span>
     <span class="objective-summary tiny muted" id="obj-summary"></span>
   </summary>
   <p class="tiny muted">{{ _("Traduce la domanda di business in un tempo da misurare: su quale oggetto, da quale attività a quale attività. Il controllo dice su quanti oggetti è davvero misurabile e, se non lo è, cosa sistemare.") }}</p>
+  <p class="tiny muted">{{ _("È una verifica sul dataset e non si salva: serve a capire se i dati permettono di misurare l'obiettivo prima di usarli per l'analisi.") }}</p>
   <p class="tiny objective-goal" id="obj-goal" hidden></p>
   <div class="objective-form">
     <label>{{ _("Oggetto") }} <select id="obj-type"></select></label>
@@ -18,10 +19,6 @@
     <label>{{ _("A (fine)") }} <select id="obj-end"></select></label>
   </div>
   <div class="objective-result" id="obj-result"></div>
-  <div class="objective-actions">
-    <button type="button" class="primary" id="obj-save">{{ _("Salva obiettivo") }}</button>
-    <span class="tiny muted" id="obj-state"></span>
-  </div>
 </details>
 <script>
 (function () {
@@ -33,9 +30,6 @@
     median: {{ _("Tempo mediano")|tojson }}, p90: {{ _("9 su 10 entro {d}")|tojson }},
     open: {{ _("Aperti")|tojson }}, age: {{ _("età mediana {d}")|tojson }},
     apply: {{ _("Applica")|tojson }},
-    saved: {{ _("Salvato: l'Overview userà questo obiettivo.")|tojson }},
-    proposed: {{ _("Proposta automatica non ancora salvata.")|tojson }},
-    changed: {{ _("Modifiche non salvate.")|tojson }},
     summary: {{ _("{t}: da «{s}» a «{e}» · mediana {d}")|tojson }},
     error: {{ _("Non è stato possibile controllare l'obiettivo.")|tojson }},
     days: {{ _("{n} g")|tojson }}, hours: {{ _("{n} h")|tojson }}, minutes: {{ _("{n} min")|tojson }}, seconds: {{ _("{n} s")|tojson }}
@@ -55,10 +49,10 @@
       body: JSON.stringify(Object.assign({ workspace_id: WS, config_id: CONFIG }, body)) })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); });
   }
-  var opts = null, binding = null, saved = false, timer = null;
+  var opts = null, binding = null, timer = null;
   var selType = document.getElementById("obj-type"), selAttr = document.getElementById("obj-fattr");
   var selStart = document.getElementById("obj-start"), selEnd = document.getElementById("obj-end");
-  var vals = document.getElementById("obj-fvals"), result = document.getElementById("obj-result"), state = document.getElementById("obj-state");
+  var vals = document.getElementById("obj-fvals"), result = document.getElementById("obj-result");
 
   function typeInfo() { return opts.types.filter(function (t) { return t.name === binding.object_type; })[0] || { activities: [], attributes: [] }; }
   function fill(sel, items, value, first) {
@@ -107,9 +101,7 @@
     document.getElementById("obj-summary").textContent = c.measurable
       ? fmt(T.summary, { t: binding.object_type, s: binding.start_activity, e: binding.end_activity, d: dur(c.median) }) : "";
   }
-  function setState() { state.textContent = saved ? T.saved : (state.dataset.dirty ? T.changed : T.proposed); }
   function changed() {
-    saved = false; state.dataset.dirty = "1"; setState();
     clearTimeout(timer);
     timer = setTimeout(function () {
       post("/analysis/objective/check", { binding: binding }).then(renderCheck).catch(function () { result.textContent = T.error; });
@@ -123,24 +115,17 @@
   selAttr.addEventListener("change", function () { binding.filter_attribute = selAttr.value || null; binding.filter_values = []; renderForm(); changed(); });
   selStart.addEventListener("change", function () { binding.start_activity = selStart.value; changed(); });
   selEnd.addEventListener("change", function () { binding.end_activity = selEnd.value; changed(); });
-  document.getElementById("obj-save").addEventListener("click", function () {
-    post("/analysis/objective/save", { binding: binding }).then(function () {
-      saved = true; delete state.dataset.dirty; setState();
-      if (window.onObjectiveSaved) window.onObjectiveSaved(binding);
-    }).catch(function (e) { state.textContent = e.message; });
-  });
-
   fetch("/analysis/objective?workspace_id=" + encodeURIComponent(WS) + "&config_id=" + encodeURIComponent(CONFIG), { credentials: "same-origin" })
     .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
     .then(function (d) {
-      opts = d.options; binding = d.binding; saved = d.saved;
+      opts = d.options; binding = d.binding;
       var g = d.goal || {};
       if (g.main_object || g.start_event || g.end_event) {
         var goal = document.getElementById("obj-goal");
         goal.textContent = fmt(T.goal, { o: g.main_object || "—", s: g.start_event || "—", e: g.end_event || "—" }); goal.hidden = false;
       }
       if (!binding) return;
-      renderForm(); renderCheck(d.check); setState();
+      renderForm(); renderCheck(d.check);
     }).catch(function (e) { result.textContent = e.message || T.error; });
 })();
 </script>

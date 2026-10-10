@@ -1237,4 +1237,6 @@ EN: dict[str, str] = {
     "Filtro per varianti attivo: il grafo mostra solo il tipo scelto nella scheda «Varianti».": "Variant filter active: the graph shows only the type chosen in the “Variants” tab.",
     # Explorer: varianti del caso
     "Filtro alternativo a quello per attività. Una variante è la sequenza delle attività di un oggetto del tipo scelto e degli oggetti collegati a lui tra i tipi selezionati (il suo caso). Il grafo mostra i tipi selezionati, solo per i casi delle varianti spuntate.": "Alternative to the activity filter. A variant is the sequence of activities of an object of the chosen type and of the objects linked to it among the selected types (its case). The graph shows the selected types, only for the cases of the ticked variants.",
+    # Obiettivo: verifica senza salvataggio
+    "È una verifica sul dataset e non si salva: serve a capire se i dati permettono di misurare l'obiettivo prima di usarli per l'analisi.": "This is a check on the dataset and is not saved: it tells whether the data allow measuring the objective before using them for the analysis.",
 }
