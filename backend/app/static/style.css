@@ -862,8 +862,12 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 /* Process Overview: riquadro delle varianti richiudibile, con una casella per variante */
 .ov-collapse > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 10px; }
 .ov-collapse > summary::-webkit-details-marker { display: none; }
-.ov-collapse > summary::before { content: "▸"; color: var(--muted); font-size: 13px; }
+.ov-collapse > summary { align-items: center; }
+.ov-collapse > summary::before { content: "▸"; color: var(--brand); font-size: 22px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: none;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg-soft); }
 .ov-collapse[open] > summary::before { content: "▾"; }
+.ov-collapse > summary:hover::before { border-color: var(--brand); }
 .ov-collapse > summary .ov-title { margin: 0; }
 .ov-var-tools { margin: 4px 0 8px; }
 .ov-variants-check .ov-variant { display: flex; gap: 10px; align-items: flex-start; }
