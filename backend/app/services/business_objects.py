@@ -138,6 +138,22 @@ def normalize(objects: list[dict], tables: list[TableSchema]) -> list[dict]:
     return out
 
 
+def keep_user_objects(objects: list[dict], user_objects: list[dict]) -> list[dict]:
+    """Nuova proposta di Claude piu' gli oggetti aggiunti dall'utente: un oggetto dell'utente prende il posto di
+    quello di Claude con lo stesso nome (tenendo ruolo, obiettivo e motivazione di Claude) o si aggiunge in fondo."""
+    out = list(objects)
+    for u in user_objects:
+        i = next((k for k, o in enumerate(out) if o["name"].lower() == u["name"].lower()), None)
+        if i is None:
+            out.append({**u, "user_added": True})
+        else:
+            c = out[i]
+            out[i] = {**u, "role": c.get("role", u.get("role")), "include": c.get("include", True) or u.get("include", True),
+                      "objective": c.get("objective") or u.get("objective", ""), "why": c.get("why") or u.get("why"),
+                      "user_added": True}
+    return out
+
+
 def lead(objects: list[dict]) -> str | None:
     return next((o["name"] for o in objects if o.get("include") and o.get("role") == "lead"), None)
 
@@ -171,6 +187,9 @@ In "not_objects" elenca le tabelle che non generano oggetti: becomes "events" (l
 oggetto), "attributes" (anagrafica o dettaglio da usare come dimensione) o "excluded" (copia o fuori obiettivo),
 con why. Scegli la granularita' che l'obiettivo richiede (es. con pagamenti parziali serve la partita, non la
 testata). Usa nota utente, documenti e conoscenza del sistema sorgente per il significato di tabelle e codici.
+"user_objects", se presente, sono oggetti aggiunti dall'utente: includili SEMPRE in "objects" con lo stesso name,
+table, key e filter (scegli tu role, objective e why), tienine conto per i ruoli degli altri oggetti e non
+proporre un altro oggetto per le stesse righe.
 Non inventare tabelle, colonne o valori. Scrivi nella lingua indicata da "language", in modo semplice.
 Rispondi SOLO con JSON valido, senza testo prima o dopo, con questa forma:
 {"objects":[{"name":"...","table":"...","key":["..."],"filter":null,"role":"lead|needed|context","include":true,
@@ -184,7 +203,7 @@ def _price():
 
 
 def build_payload(*, language: str, process_name: str, answers: dict, tables: list[TableSchema], data_profile: dict,
-                  descriptions: dict[str, str]) -> str:
+                  descriptions: dict[str, str], user_objects: list[dict] | None = None) -> str:
     keep = ("objectives", "key_questions", "kpis", "main_object", "other_objects", "start_event", "end_event", "systems")
     compact = []
     for t in tables:
@@ -200,6 +219,9 @@ def build_payload(*, language: str, process_name: str, answers: dict, tables: li
     payload = {"language": language, "process": process_name,
                "assessment": {k: answers[k] for k in keep if answers.get(k)},
                "tables": compact, "data_profile": profile}
+    if user_objects:
+        payload["user_objects"] = [{"name": o["name"], "table": o["table"], "key": o.get("key"), "filter": o.get("filter")}
+                                   for o in user_objects]
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 

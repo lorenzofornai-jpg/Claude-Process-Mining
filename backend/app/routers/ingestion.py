@@ -713,7 +713,15 @@ def _bo_payload(request: Request, sess: dict, workspace_id: str) -> str:
     return business_objects.build_payload(
         language=get_lang(request), process_name=sess["context"].get("process_name", ""), answers=answers,
         tables=sess["tables_schema_objs"], data_profile=sess["context"].get("data_profile") or {},
-        descriptions=sess.get("table_descriptions", {}))
+        descriptions=sess.get("table_descriptions", {}), user_objects=_user_objects(sess))
+
+
+def _user_objects(sess: dict) -> list[dict]:
+    """Oggetti aggiunti dall'utente alla proposta corrente: restano anche se si rifa' la proposta con Claude."""
+    current = sess.get("bo_proposal") or {}
+    if current.get("signature") != _bo_signature(sess):
+        return []
+    return [o for o in current.get("objects") or [] if o.get("user_added")]
 
 
 @router.get("/ingestion/business-objects", response_class=HTMLResponse)
@@ -732,6 +740,7 @@ def business_objects_page(request: Request, workspace_id: str):
         "business_objects.html", {
             "request": request, "user": user, "workspace_id": workspace_id, "context": sess["context"], "step": 2,
             "proposal": proposal, "answers": answers, "claude_ok": claude_ok, "sess_error": sess.pop("bo_error", False),
+            "new_object": sess.pop("bo_new", None),
             "estimate": business_objects.estimate(_bo_payload(request, sess, workspace_id)) if claude_ok else None,
             "tables": [{"name": tb.name, "columns": [c.name for c in tb.columns],
                         "key": (profile_tables_.get(tb.name) or {}).get("key") or []} for tb in sess["tables_schema_objs"]],
@@ -758,7 +767,8 @@ async def business_objects_propose(request: Request):
         print(f"Oggetti di business: richiesta a Claude non riuscita ({exc!r})")
         return JSONResponse({"error": t(get_lang(request), "La richiesta a Claude non è riuscita: riprova tra poco.")}, status_code=502)
     result = out["result"]
-    objects = business_objects.normalize(result["objects"], sess["tables_schema_objs"])
+    objects = business_objects.normalize(business_objects.keep_user_objects(result["objects"], _user_objects(sess)),
+                                         sess["tables_schema_objs"])
     if not objects:
         return JSONResponse({"error": t(get_lang(request), "Claude non ha proposto oggetti utilizzabili: resta la bozza.")}, status_code=502)
     sess["bo_proposal"] = {"source": "claude", "objects": objects, "not_objects": result["not_objects"],
@@ -826,11 +836,15 @@ async def business_objects_submit(request: Request, background_tasks: Background
             objects.append({"name": name, "table": table, "key": key,
                             "filter": {"column": column, "values": values} if column and values else None,
                             "role": "needed", "include": True, "objective": "",
-                            "why": msg("Aggiunto da te.")})
+                            "why": msg("Aggiunto da te."), "user_added": True})
+            sess["bo_new"] = name
     objects = business_objects.normalize(objects, tables)
     proposal = {**proposal, "objects": objects, "signature": _bo_signature(sess)}
     sess["bo_proposal"] = proposal
     if action != "confirm":
+        if action == "add" and sess.get("bo_new"):
+            # si torna sull'oggetto appena aggiunto (in fondo all'elenco), evidenziato
+            return RedirectResponse(url=f"/ingestion/business-objects?workspace_id={workspace_id}#bo-new", status_code=303)
         return back
     confirmed = [o for o in objects if o["include"]]
     if not confirmed:

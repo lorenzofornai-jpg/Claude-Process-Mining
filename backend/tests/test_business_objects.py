@@ -195,3 +195,17 @@ def test_needed_objects_link_check_follows_indirect_links():
     bos[1]["name"] = "Supplier"; bos[2]["name"] = "Payment"           # nessuna posizione raggiunge il fornitore
     [check] = _check_needed_links({"objects": objects, "events": events}, bos)
     assert not check["passed"]
+
+
+def test_user_added_objects_survive_a_new_claude_proposal():
+    claude = [{"name": "Invoice", "table": "docs", "key": ["doc_no"], "role": "lead", "include": True, "why": "c"},
+              {"name": "item", "table": "items", "key": ["item_id"], "role": "context", "include": False, "why": "Claude"}]
+    user = [{"name": "Item", "table": "items", "key": ["item_id", "order_id"], "filter": None, "role": "needed",
+             "include": True, "why": "Aggiunto da te.", "user_added": True},
+            {"name": "Return", "table": "orders", "key": ["order_id"], "filter": None, "role": "needed", "include": True,
+             "user_added": True}]
+    out = bo.keep_user_objects(claude, user)
+    assert [o["name"] for o in out] == ["Invoice", "Item", "Return"]
+    item = out[1]   # stesso nome: chiave dell'utente, ruolo e motivazione di Claude, resta incluso
+    assert item["key"] == ["item_id", "order_id"] and item["role"] == "context" and item["include"] and item["why"] == "Claude"
+    assert all(o.get("user_added") for o in out[1:])

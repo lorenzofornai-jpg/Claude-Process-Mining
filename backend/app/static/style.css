@@ -827,3 +827,5 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .bo-help dl { margin: 8px 0 0; }
 .bo-help dt { font-weight: 600; margin-top: 8px; font-size: 14px; }
 .bo-help dd { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.bo-item.bo-new { box-shadow: 0 0 0 2px var(--brand); animation: bo-new-flash 1.6s ease-out 1; scroll-margin-top: 90px; }
+@keyframes bo-new-flash { from { background: var(--brand-soft); } }

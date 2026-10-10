@@ -1200,4 +1200,6 @@ EN: dict[str, str] = {
     "Collegamento agli oggetti necessari": "Link to the needed objects",
     "{t}: raggiungibile da {n} oggetti {l} su {m} ({p}%)": "{t}: reachable from {n} of {m} {l} objects ({p}%)",
     "meno della metà: nella revisione aggiungi il collegamento mancante (una colonna degli eventi che contiene il numero di quell'oggetto) o chiedilo all'assistente": "less than half: in the review add the missing link (an event column holding that object's number) or ask the assistant",
+    # Oggetti aggiunti dall'utente
+    "aggiunto da te": "added by you",
 }
