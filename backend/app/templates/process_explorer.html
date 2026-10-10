@@ -29,7 +29,10 @@
 
   <div class="explorer-body">
     <aside class="explorer-side">
-      <h3>{{ _("Controllo del grafo") }}</h3>
+      <div class="side-head">
+        <h3>{{ _("Controllo del grafo") }}</h3>
+        <button type="button" class="link-button side-hide" id="side-hide" title="{{ _("Nascondi il pannello: più spazio al grafo") }}" aria-label="{{ _("Nascondi il pannello: più spazio al grafo") }}">«</button>
+      </div>
 
       <div class="side-block">
         <div class="side-title">{{ _("Tipi di oggetto") }}</div>
@@ -58,6 +61,7 @@
 
       <div class="side-tabs" role="tablist">
         <button type="button" class="side-tab active" data-tab="acts" role="tab">{{ _("Attività") }} <span class="chip" id="acts-chip">–</span></button>
+        <button type="button" class="side-tab" data-tab="vars" role="tab">{{ _("Varianti") }} <span class="chip" id="vars-chip">–</span></button>
         <button type="button" class="side-tab" data-tab="paths" role="tab">{{ _("Collegamenti") }} <span class="chip" id="paths-chip">–</span></button>
       </div>
 
@@ -71,6 +75,20 @@
           <span>{{ _("Eventi") }}</span>
         </div>
         <ul class="check-list" id="acts-list"></ul>
+      </div>
+
+      <div class="side-panel" id="tab-vars" hidden>
+        <p class="tiny muted var-help">{{ _("Filtro alternativo a quello per attività: il grafo mostra solo gli oggetti del tipo scelto che seguono le varianti spuntate, con tutte le loro attività.") }}</p>
+        <label class="tiny var-type-label">{{ _("Varianti di") }}
+          <select id="var-type"></select>
+        </label>
+        <div class="var-tools">
+          <button type="button" class="secondary" id="var-less">− {{ _("Meno") }}</button>
+          <button type="button" class="secondary" id="var-top">{{ _("Solo la più frequente") }}</button>
+          <button type="button" class="secondary" id="var-more">+ {{ _("Più") }}</button>
+        </div>
+        <p class="tiny" id="var-cover"></p>
+        <ul class="check-list var-list" id="var-list"></ul>
       </div>
 
       <div class="side-panel" id="tab-paths" hidden>
@@ -98,6 +116,7 @@
 
         <div class="graph-legend tiny" id="graph-legend" hidden></div>
         <div class="graph-controls">
+          <button type="button" class="secondary" id="side-show" hidden>☰ {{ _("Controllo del grafo") }}</button>
           <button type="button" class="secondary as-open-full as-open-btn" id="as-open-full" title="{{ _("Assistente") }}">✦</button>
           <button type="button" class="secondary" id="expand-btn" aria-pressed="false">⛶ <span id="expand-label">{{ _("Schermo intero") }}</span></button>
           <button type="button" class="secondary" id="legend-btn">☰ {{ _("Legenda") }}</button>
@@ -136,6 +155,11 @@
   function tn(name) { return name; }
   function an(name) { return name; }
   var T = {
+    varCover: {{ _("Varianti mostrate: {n} di {m} · {o} oggetti ({p} del tipo)")|tojson }},
+    varObjects: {{ _("{n} oggetti · {p}")|tojson }},
+    varObject1: {{ _("1 oggetto · {p}")|tojson }},
+    varMedian: {{ _("mediana {d}")|tojson }},
+    varTypesNote: {{ _("Filtro per varianti attivo: il grafo mostra solo il tipo scelto nella scheda «Varianti».")|tojson }},
     nOfM: {{ _("{n} di {m}")|tojson }},
     top: {{ _("Le più frequenti: {n} di {m}")|tojson }},
     paths: {{ _("Percorsi più frequenti: {p}%")|tojson }},
@@ -215,6 +239,8 @@
   var search = document.getElementById("list-search");
   var metric = "frequency", data = null;
   var actMode = "top", actTop = 15, actSet = null;   // le N piu' frequenti, oppure una scelta a mano
+  // filtro alternativo per varianti: «acts» (attivita') oppure «vars» (varianti di un tipo di oggetto)
+  var filterMode = "acts", vType = null, vSel = [1], vData = null;
   var edgeOverride = {};                             // collegamenti mostrati/nascosti a mano: chiave -> true/false
   function edgeKey(e) { return e.type + "\u0001" + e.source + "\u0001" + e.target; }
   function edgeVisible(e) { var k = edgeKey(e); return k in edgeOverride ? edgeOverride[k] : e.kept; }
@@ -265,12 +291,13 @@
                                   hub: hubAll && hubAll.checked ? "all" : "own" });
     types.forEach(function (t) { q.append("type", t); });
     if (actMode === "top") q.set("top", actTop); else actSet.forEach(function (a) { q.append("act", a); });
+    if (filterMode === "vars" && vType) { q.set("vtype", vType); vSel.forEach(function (v) { q.append("var", v); }); }
     document.getElementById("graph-loading").hidden = false;
     fetch("/analysis/explorer/graph?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (g) {
         data = g;
-        actSet = g.activity_list.filter(function (a) { return a.selected; }).map(function (a) { return a.name; });
+        if (filterMode !== "vars") actSet = g.activity_list.filter(function (a) { return a.selected; }).map(function (a) { return a.name; });
         renderLists(); draw();
       })
       .catch(function () { var e = document.getElementById("graph-empty"); e.textContent = T.error; e.hidden = false; })
@@ -286,7 +313,10 @@
   }
 
   function renderLists() {
-    var list = data.activity_list, total = list.length, sel = actSet.length;
+    var list = data.activity_list, total = list.length, sel = filterMode === "vars" ? total : actSet.length;
+    var typeList = document.querySelector(".type-list");
+    typeList.classList.toggle("dimmed", filterMode === "vars");
+    typeList.title = filterMode === "vars" ? T.varTypesNote : "";
     actSlider.max = Math.max(1, total);
     actSlider.value = actMode === "top" ? Math.min(actTop, total) : sel;
     document.getElementById("act-label").textContent = fmt(T.top, { n: actSlider.value, m: total });
@@ -749,6 +779,78 @@
   cy.on("tap", "edge", function (ev) { showEdge(ev.target); });
   cy.on("tap", function (ev) { if (ev.target === cy) closeDetail(); });
 
+  // ---------- filtro per varianti ----------
+  var varType = document.getElementById("var-type");
+  function variantTypes() {
+    return Object.keys(TYPES).filter(function (t) { return TYPES[t].with_events && !TYPES[t].hub; });
+  }
+  function fillVariantTypes() {
+    varType.textContent = "";
+    var sel = selectedTypes().filter(function (t) { return variantTypes().indexOf(t) >= 0; });
+    vType = vType || sel[0] || variantTypes()[0] || null;
+    variantTypes().forEach(function (t) { var o = el("option", "", tn(t)); o.value = t; o.selected = t === vType; varType.appendChild(o); });
+  }
+  function loadVariants() {
+    if (!vType) return;
+    var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, type: vType });
+    fetch("/analysis/explorer/variants?" + q.toString(), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { vData = j; vSel = j.variants.length ? [1] : []; renderVariants(); schedule(); });
+  }
+  function renderVariants() {
+    var ul = document.getElementById("var-list"); ul.textContent = "";
+    if (!vData) return;
+    var objs = 0;
+    vData.variants.forEach(function (v) {
+      var on = vSel.indexOf(v.id) >= 0;
+      if (on) objs += v.count;
+      if (!matches(v.steps.map(an).join(" "))) return;
+      var li = el("li", "var-item" + (on ? " on" : "")), lab = el("label"), cb = el("input");
+      cb.type = "checkbox"; cb.checked = on;
+      cb.addEventListener("change", function () {
+        vSel = cb.checked ? vSel.concat([v.id]) : vSel.filter(function (x) { return x !== v.id; });
+        renderVariants(); schedule();
+      });
+      var main = el("span", "var-main");
+      main.appendChild(el("strong", "", "#" + v.id));
+      main.appendChild(el("span", "", (v.count === 1 ? fmt(T.varObject1, { p: pctOf(v.share) }) : fmt(T.varObjects, { n: compact(v.count), p: pctOf(v.share) }))));
+      if (v.median !== null) main.appendChild(el("span", "muted", fmt(T.varMedian, { d: dur(v.median) })));
+      var steps = el("span", "var-steps tiny muted", v.steps.map(an).join(" → "));
+      steps.title = v.steps.map(an).join(" → ");
+      var txt = el("span", "item-name"); txt.appendChild(main); txt.appendChild(steps);
+      lab.appendChild(cb); lab.appendChild(txt); li.appendChild(lab); ul.appendChild(li);
+    });
+    document.getElementById("var-cover").textContent = fmt(T.varCover, { n: vSel.length, m: vData.total, o: compact(objs),
+      p: pctOf(vData.objects ? objs / vData.objects : 0) });
+    document.getElementById("vars-chip").textContent = fmt(T.nOfM, { n: vSel.length, m: vData.total });
+  }
+  function pctOf(x) { return (x * 100).toLocaleString(LANG, { maximumFractionDigits: 1 }) + "%"; }
+  varType.addEventListener("change", function () { vType = varType.value; vData = null; loadVariants(); });
+  document.getElementById("var-top").addEventListener("click", function () { vSel = [1]; renderVariants(); schedule(); });
+  document.getElementById("var-more").addEventListener("click", function () {
+    if (!vData) return;
+    var next = vData.variants.filter(function (v) { return vSel.indexOf(v.id) < 0; })[0];
+    if (next) { vSel = vSel.concat([next.id]); renderVariants(); schedule(); }
+  });
+  document.getElementById("var-less").addEventListener("click", function () {
+    if (vSel.length <= 1) return;
+    var worst = Math.max.apply(null, vSel);
+    vSel = vSel.filter(function (x) { return x !== worst; }); renderVariants(); schedule();
+  });
+  fillVariantTypes();
+
+  // ---------- pannello laterale: si puo' chiudere per dare spazio al grafo ----------
+  var bodyEl = document.querySelector(".explorer-body");
+  function setSide(collapsed) {
+    bodyEl.classList.toggle("side-collapsed", collapsed);
+    document.getElementById("side-show").hidden = !collapsed;
+    try { window.localStorage.setItem("pm-explorer-side", collapsed ? "closed" : "open"); } catch (e) {}
+    setTimeout(function () { cy.resize(); fitAll(); syncLayer(); placeLabels(currentFocus); }, 30);
+  }
+  document.getElementById("side-hide").addEventListener("click", function () { setSide(true); });
+  document.getElementById("side-show").addEventListener("click", function () { setSide(false); });
+  try { if (window.localStorage.getItem("pm-explorer-side") === "closed") { bodyEl.classList.add("side-collapsed"); document.getElementById("side-show").hidden = false; } } catch (e) {}
+
   // ---------- comandi ----------
   document.querySelectorAll(".type-check").forEach(function (c) { c.addEventListener("change", schedule); });
   if (document.getElementById("hub-all")) document.getElementById("hub-all").addEventListener("change", schedule);
@@ -768,12 +870,19 @@
   document.getElementById("acts-none").addEventListener("click", function (e) {
     e.preventDefault(); actMode = "list"; actSet = []; schedule();
   });
-  search.addEventListener("input", function () { if (data) renderLists(); });
+  search.addEventListener("input", function () { if (data) renderLists(); renderVariants(); });
   document.querySelectorAll(".side-tab").forEach(function (b) {
     b.addEventListener("click", function () {
       document.querySelectorAll(".side-tab").forEach(function (x) { x.classList.toggle("active", x === b); });
       document.getElementById("tab-acts").hidden = b.dataset.tab !== "acts";
+      document.getElementById("tab-vars").hidden = b.dataset.tab !== "vars";
       document.getElementById("tab-paths").hidden = b.dataset.tab !== "paths";
+      // le schede Attivita' e Varianti sono i due filtri alternativi: vale l'ultima aperta
+      var mode = b.dataset.tab === "vars" ? "vars" : b.dataset.tab === "acts" ? "acts" : filterMode;
+      if (mode !== filterMode) {
+        filterMode = mode;
+        if (mode === "vars" && !vData) loadVariants(); else schedule();
+      }
     });
   });
   document.querySelectorAll(".seg").forEach(function (b) {
@@ -825,7 +934,8 @@
   function viewState() {
     var hubAll = document.getElementById("hub-all");
     return { types: selectedTypes(), acts: actMode, act: actSet || [], top: actTop, paths: Number(pathSlider.value),
-             hub: hubAll && hubAll.checked ? "all" : "own" };
+             hub: hubAll && hubAll.checked ? "all" : "own",
+             vtype: filterMode === "vars" ? vType : null, var: filterMode === "vars" ? vSel : [] };
   }
   var assistant = initAssistant({
     ws: WS, config: CONFIG, page: "explorer", lang: LANG, T: AS_T, getView: viewState,

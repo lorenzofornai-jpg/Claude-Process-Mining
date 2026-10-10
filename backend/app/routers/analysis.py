@@ -135,7 +135,7 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
 def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
                            type: list[str] = Query(default=[]), act: list[str] = Query(default=[]),
                            acts: str = "top", top: int | None = None, paths: int = 100,
-                           hub: str = "own"):
+                           hub: str = "own", vtype: str = "", var: list[int] = Query(default=[])):
     """Grafo aggregato in JSON per i filtri scelti.
 
     type=...&type=...: tipi di oggetto. acts=top: le `top` attivita' piu' frequenti;
@@ -151,7 +151,22 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
     model = explorer.load_model(run.ocel_file_path)
     activities = list(act) if acts == "list" else None
     return JSONResponse(explorer.build_graph(model, list(type), activities, top, paths,
-                                             "all" if hub == "all" else "own"))
+                                             "all" if hub == "all" else "own", vtype or None, list(var)))
+
+
+@router.get("/analysis/explorer/variants")
+def process_explorer_variants(request: Request, workspace_id: str, config_id: str, type: str):
+    """Varianti di un tipo di oggetto (sequenze di attivita'), dalla piu' frequente: per il filtro per varianti."""
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
+    model = explorer.load_model(run.ocel_file_path)
+    variants = model.variants(type) if type in model.object_counts else []
+    return JSONResponse({"type": type, "total": len(variants), "objects": sum(v["count"] for v in variants),
+                         "variants": variants[:300]})
 
 
 # ---------- assistente dell'analisi ----------
@@ -198,7 +213,8 @@ async def analysis_assistant_ask(request: Request):
         graph = explorer.build_graph(model, [str(x) for x in view.get("types") or []],
                                      [str(x) for x in acts] if acts is not None else None,
                                      int(top) if top not in (None, "") else None, int(view.get("paths") or 100),
-                                     "all" if view.get("hub") == "all" else "own")
+                                     "all" if view.get("hub") == "all" else "own",
+                                     view.get("vtype") or None, [int(x) for x in view.get("var") or [] if str(x).isdigit()])
         page_view = analysis_assistant.explorer_view(graph, focus)
     db = SessionLocal()
     try:

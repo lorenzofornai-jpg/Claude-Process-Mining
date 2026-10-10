@@ -150,6 +150,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   `data_query.converse` comune con l'assistente della revisione): risponde a «quali ordini del cliente X sono
   ancora aperti?» con i numeri.
 
+## Process Explorer: filtro per varianti e pannello richiudibile (10 ottobre 2026)
+- ✅ Scheda «Varianti», alternativa a «Attività» (vale l'ultima delle due aperta): tipo di oggetto, elenco delle
+  varianti (sequenze di attività, ripetizioni raggruppate come nella Overview) con oggetti, quota e tempo mediano;
+  «− Meno», «Solo la più frequente», «+ Più». Il grafo mostra solo gli oggetti di quel tipo nelle varianti spuntate.
+- ✅ Pannello «Controllo del grafo» richiudibile («) per dare spazio al grafo; si riapre dal pulsante sul grafo
+  e la scelta resta per le visite successive.
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

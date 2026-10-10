@@ -46,6 +46,8 @@ tipi di oggetto, scheda Attività (spunte o cursore «le più frequenti»), sche
 nome di una linea la si vede da sola. Tipi «trasversali» (es. cliente): pochi oggetti in moltissimi eventi di
 documenti diversi; di base la linea passa solo dagli eventi propri, un interruttore la mostra su tutti.
 Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi.
+Scheda «Varianti» (alternativa al filtro per attività): si sceglie un tipo di oggetto e le sue varianti (sequenze di
+attività); il grafo mostra solo gli oggetti di quel tipo che seguono le varianti scelte ("variant_filter" nella vista).
 
 Dati: con query_rows e compare_columns leggi il dataset in sola lettura. Tabelle:
 una per tipo di oggetto (id, attributi, events, first, last, duration_days, activities = attività in ordine) e
@@ -151,6 +153,8 @@ def explorer_view(graph: dict, focus: str | None) -> dict:
             "mean_days": _round_days((e["duration"] or {}).get("mean")),
         } for e in edges],
         "connections_total": graph["paths"]["total"],
+        # filtro per varianti attivo: il grafo mostra solo gli oggetti di quel tipo nelle varianti scelte
+        "variant_filter": graph.get("variants"),
         "user_is_looking_at": focus or None,
     }
 

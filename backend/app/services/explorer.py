@@ -141,6 +141,30 @@ class ExplorerModel:
         ranked = sorted((t for t in self.types if self.related_events[t]), key=lambda t: (-self.related_events[t], t))
         return ([t for t in ranked if not self.is_hub(t)] or ranked)[:2]
 
+    def variants(self, t: str) -> list[dict]:
+        """Varianti di un tipo di oggetto: la sequenza delle sue attivita' (ripetizioni consecutive raggruppate,
+        come nella Process Overview), dalla piu' frequente. id = posizione (1 = la piu' frequente)."""
+        cache = self.__dict__.setdefault("_variants", {})
+        if t not in cache:
+            groups: dict[tuple, list] = defaultdict(list)
+            for oid, seq in self.sequences_by_type.get(t, []):
+                steps = tuple(a for i, (_, a, _) in enumerate(seq) if i == 0 or seq[i - 1][1] != a)
+                ts = [x for x, _, _ in seq if not math.isnan(x)]
+                groups[steps].append((oid, (ts[-1] - ts[0]) if ts else float("nan")))
+            n = sum(len(v) for v in groups.values()) or 1
+            out, of = [], {}
+            for i, (steps, objs) in enumerate(sorted(groups.items(), key=lambda kv: (-len(kv[1]), len(kv[0]), kv[0])), 1):
+                durs = [d for _, d in objs if not math.isnan(d)]
+                out.append({"id": i, "steps": list(steps), "count": len(objs), "share": len(objs) / n,
+                            "median": statistics.median(durs) if durs else None})
+                of.update({oid: i for oid, _ in objs})
+            cache[t] = (out, of)
+        return cache[t][0]
+
+    def variant_of(self, t: str) -> dict[str, int]:
+        self.variants(t)
+        return self.__dict__["_variants"][t][1]
+
     def type_summary(self) -> list[dict]:
         return [{"name": t, "color": self.colors[t], "objects": self.object_counts[t],
                  "with_events": self.with_events[t], "events": self.related_events[t],
@@ -190,7 +214,8 @@ def _duration_stats(values: list[float]) -> dict | None:
 
 
 def build_graph(model: ExplorerModel, types: list[str] | None = None, activities: list[str] | None = None,
-                top: int | None = None, paths: int = 100, hub_mode: str = "own") -> dict:
+                top: int | None = None, paths: int = 100, hub_mode: str = "own",
+                variant_type: str | None = None, variant_ids: list[int] | None = None) -> dict:
     """Grafo per i tipi scelti.
 
     Attivita' visibili: l'elenco `activities` se dato (scelta manuale), altrimenti le `top` piu' frequenti
@@ -203,9 +228,28 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
     """
     types = [t for t in (types if types is not None else model.default_types()) if t in model.object_counts]
 
+    # filtro per varianti (alternativo a quello per attivita'): solo gli oggetti del tipo scelto che seguono le
+    # varianti scelte, con tutte le loro attivita'
+    seqs_of = model.sequences_by_type
+    ev_by = model.events_by_type_act
+    obj_by = model.objects_by_type_act
+    if variant_type in model.object_counts:
+        allowed = set(variant_ids or [])
+        of = model.variant_of(variant_type)
+        chosen = [(oid, seq) for oid, seq in model.sequences_by_type.get(variant_type, []) if of.get(oid) in allowed]
+        types = [variant_type]
+        seqs_of = {variant_type: chosen}
+        ev_by, obj_by = defaultdict(set), defaultdict(set)
+        for oid, seq in chosen:
+            for _, act, idx in seq:
+                ev_by[(variant_type, act)].add(idx)
+                obj_by[(variant_type, act)].add(oid)
+        activities = None
+        top = None
+
     # attivita' dei tipi scelti, per numero di eventi (un evento con piu' tipi conta una volta)
     act_events: dict[str, set[str]] = defaultdict(set)
-    for (t, act), ev_ids in model.events_by_type_act.items():
+    for (t, act), ev_ids in ev_by.items():
         if t in types:
             act_events[act] |= ev_ids
     ranking = sorted(act_events, key=lambda a: (-len(act_events[a]), a))
@@ -221,7 +265,7 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
     durs: dict[tuple, list] = defaultdict(list)
     for t in types:
         own = model.own_events.get(t) if hub_mode == "own" else None
-        for oid, seq in model.sequences_by_type.get(t, []):
+        for oid, seq in seqs_of.get(t, []):
             seq = [(ts, a) for ts, a, idx in seq if a in kept and (own is None or idx in own)]
             if not seq:
                 continue
@@ -258,9 +302,9 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
         if act not in kept or act not in used_nodes:
             continue
         per_type = [{"type": t, "color": model.colors[t],
-                     "events": len(model.events_by_type_act.get((t, act), ())),
-                     "objects": len(model.objects_by_type_act.get((t, act), ()))}
-                    for t in types if model.events_by_type_act.get((t, act))]
+                     "events": len(ev_by.get((t, act), ())),
+                     "objects": len(obj_by.get((t, act), ()))}
+                    for t in types if ev_by.get((t, act))]
         nodes.append({"id": act, "kind": "activity", "label": act, "count": len(act_events[act]), "types": per_type})
     for t in types:
         for kind, prefix in (("start", START), ("end", END)):
@@ -272,6 +316,8 @@ def build_graph(model: ExplorerModel, types: list[str] | None = None, activities
 
     return {
         "types": types, "hub_mode": hub_mode,
+        "variants": ({"type": variant_type, "ids": sorted(set(variant_ids or [])),
+                      "objects": len(seqs_of.get(variant_type, []))} if variant_type in model.object_counts else None),
         "own_activities": {t: model.own_activities(t) for t in types if t in model.own_events},
         "activity_list": [{"name": a, "events": len(act_events[a]), "selected": a in kept} for a in ranking],
         "activities": {"shown": len(kept), "total": len(ranking)},

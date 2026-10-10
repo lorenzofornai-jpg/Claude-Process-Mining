@@ -1226,4 +1226,13 @@ EN: dict[str, str] = {
     "Incluso: nel dataset nasce un tipo di oggetto con i suoi attributi; il mapping deve collegargli gli eventi delle tabelle, dopo la generazione un controllo dice quanti oggetti guida lo raggiungono, e il Process Explorer si apre con lui già selezionato. Escluso: le sue colonne possono comunque arrivare come attributi di altri oggetti o eventi (es. il numero cliente sull'ordine, utile per filtrare), ma nelle analisi non ha una linea propria. Per includerlo in seguito: «Rivedi mapping» (ripristina le sue righe) o «Ricarica i file e rifai il mapping».": "Included: the dataset gets an object type with its attributes; the mapping must link the tables' events to it, after generation a check tells how many lead objects reach it, and the Process Explorer opens with it already selected. Excluded: its columns can still arrive as attributes of other objects or events (e.g. the customer number on the order, useful for filtering), but it has no line of its own in the analyses. To include it later: “Review mapping” (restore its rows) or “Reload the files and redo the mapping”.",
     "Claude legge obiettivi e tabelle e propone oggetti con nomi di business, oggetto guida e filtri. Costo indicativo (massimo {m}).": "Claude reads objectives and tables and proposes objects with business names, lead object and filters. Indicative cost (maximum {m}).",
     "Collegamento all'oggetto guida": "Link to the lead object",
+    # Explorer: varianti e pannello
+    "Nascondi il pannello: più spazio al grafo": "Hide the panel: more room for the graph",
+    "Filtro alternativo a quello per attività: il grafo mostra solo gli oggetti del tipo scelto che seguono le varianti spuntate, con tutte le loro attività.": "Alternative to the activity filter: the graph shows only the objects of the chosen type that follow the ticked variants, with all their activities.",
+    "Varianti di": "Variants of",
+    "Meno": "Less",
+    "Solo la più frequente": "Most common only",
+    "Più": "More",
+    "Varianti mostrate: {n} di {m} · {o} oggetti ({p} del tipo)": "Variants shown: {n} of {m} · {o} objects ({p} of the type)",
+    "Filtro per varianti attivo: il grafo mostra solo il tipo scelto nella scheda «Varianti».": "Variant filter active: the graph shows only the type chosen in the “Variants” tab.",
 }

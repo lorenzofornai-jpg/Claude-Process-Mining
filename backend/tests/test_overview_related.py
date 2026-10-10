@@ -36,3 +36,16 @@ def test_related_scope_variants_include_related_activities():
     assert [tuple(s["activity"] for s in v["steps"]) for v in rel["variants"]] == [
         ("Create Invoice", "Post Payment", "Clear Invoice"), ("Create Invoice",)]
     assert rel["related_adds"] == 2
+
+
+def test_explorer_variant_filter_shows_only_chosen_variants():
+    from app.services.explorer import build_graph
+    m = ExplorerModel(_ocel())
+    vs = m.variants("Invoice")
+    assert [(v["id"], v["steps"], v["count"]) for v in vs] == [
+        (1, ["Create Invoice", "Clear Invoice"], 2), (2, ["Create Invoice"], 1)]
+    g = build_graph(m, ["Invoice", "Payment"], variant_type="Invoice", variant_ids=[2])
+    assert g["types"] == ["Invoice"] and g["variants"]["objects"] == 1
+    assert {(e["source"], e["target"]) for e in g["edges"]} == {("__start__|Invoice", "Create Invoice"),
+                                                                ("Create Invoice", "__end__|Invoice")}
+    assert [a["name"] for a in g["activity_list"]] == ["Create Invoice"]

@@ -829,3 +829,21 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .bo-item.bo-new { box-shadow: 0 0 0 2px var(--brand); animation: bo-new-flash 1.6s ease-out 1; scroll-margin-top: 90px; }
 @keyframes bo-new-flash { from { background: var(--brand-soft); } }
 
+
+/* Process Explorer: pannello che si chiude e filtro per varianti */
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.side-head h3 { margin: 0 0 10px; }
+.side-hide { font-size: 20px; line-height: 1; padding: 0 6px 8px; text-decoration: none; }
+.explorer-body.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+.explorer-body.side-collapsed .explorer-side { display: none; }
+.type-list.dimmed { opacity: 0.45; }
+.var-help { margin: 0 0 8px; }
+.var-type-label { display: block; margin-bottom: 8px; }
+.var-type-label select { width: 100%; margin-top: 3px; }
+.var-tools { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; margin-bottom: 6px; }
+.var-tools button { margin: 0; padding: 6px 8px; font-size: 13px; }
+.var-list .var-item label { align-items: flex-start; }
+.var-list .item-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.var-main { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.var-steps { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.graph-controls #side-show[hidden] { display: none; }
