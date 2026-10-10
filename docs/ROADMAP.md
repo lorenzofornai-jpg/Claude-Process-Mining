@@ -194,6 +194,8 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   colonne della sintesi, dei KPI e dei grafici, larghezza e altezza dei grafici, quanti gruppi e in che ordine nelle
   barre e tabelle, andamento sulle card e «perché conta» visibili o no. Non tocca colori e stile dell'app.
   L'impaginazione non chiede una nuova approvazione.
+- ✅ Un solo «Salva» (vale anche come conferma delle definizioni, al posto di «Salva e approva»); con modifiche non
+  salvate la barra con «Salva» compare anche nel dettaglio di una domanda.
 - Da fare: esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 

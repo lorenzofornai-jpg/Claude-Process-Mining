@@ -58,13 +58,11 @@
     working: {{ _("L'LLM sta preparando le definizioni: può richiedere un paio di minuti…")|tojson }},
     spent: {{ _("Fatto: costo {c}.")|tojson }},
     error: {{ _("Non è stato possibile calcolare la Control Tower.")|tojson }},
-    draft: {{ _("Definizioni proposte dall'LLM: controllale (pulsante «Definizioni dei KPI») e approvale. Finché non sono approvate i numeri sono provvisori.")|tojson }},
-    draftEdited: {{ _("Definizioni modificate da {u}: da approvare.")|tojson }},
-    approved: {{ _("Definizioni approvate da {u} il {d}.")|tojson }},
-    approve: {{ _("Approva le definizioni")|tojson }},
+    draft: {{ _("Definizioni proposte dall'LLM: controllale (pulsante «Definizioni dei KPI») e salvale. Finché non le salvi i numeri sono provvisori.")|tojson }},
+    saved: {{ _("Definizioni salvate da {u} il {d}.")|tojson }},
     unsaved: {{ _("Modifiche non ancora salvate.")|tojson }},
     previewing: {{ _("Stai vedendo un'anteprima con le modifiche non salvate.")|tojson }},
-    save: {{ _("Salva")|tojson }}, saveApprove: {{ _("Salva e approva")|tojson }}, discard: {{ _("Annulla le modifiche")|tojson }},
+    save: {{ _("Salva")|tojson }}, discard: {{ _("Annulla le modifiche")|tojson }},
     preview: {{ _("Anteprima")|tojson }}, close: {{ _("Chiudi le definizioni")|tojson }},
     oneLang: {{ _("{n} testi delle definizioni sono in una lingua sola: traducili per vederli anche in italiano e in inglese.")|tojson }},
     oneLang1: {{ _("Un testo delle definizioni è in una lingua sola: traducilo per vederlo anche in italiano e in inglese.")|tojson }},
@@ -301,24 +299,18 @@
     var info = data.info || {};
     var bar = el("div", "ct-status");
     if (dirty || previewing) {
-      bar.classList.add("ct-status-warn");
-      bar.appendChild(el("span", "", previewing && !editing ? T.previewing : T.unsaved));
-      var acts = el("span", "ct-status-actions");
-      if (editing) acts.appendChild(button(T.preview, "secondary", function () { editing = false; load(spec); }));
-      acts.appendChild(button(T.save, "secondary", function () { save(false); }));
-      acts.appendChild(button(T.saveApprove, "primary", function () { save(true); }));
-      acts.appendChild(button(T.discard, "link-btn", function () { editing = false; load(); }));
-      bar.appendChild(acts);
+      bar = unsavedBar();
     } else if (info.status === "approved") {
       bar.classList.add("ct-status-ok");
       // data e ora nell'ora del dispositivo
       var when = window.pmLocalTime ? window.pmLocalTime(info.approved_at) : info.approved_at;
-      bar.appendChild(el("span", "", fmt(T.approved, { u: info.approved_by || "—", d: when })));
+      bar.appendChild(el("span", "", fmt(T.saved, { u: info.approved_by || "—", d: when })));
     } else {
+      // proposta dell'LLM appena arrivata: salvandola si conferma
       bar.classList.add("ct-status-warn");
-      bar.appendChild(el("span", "", info.updated_by && info.updated_by !== info.created_by ? fmt(T.draftEdited, { u: info.updated_by }) : T.draft));
+      bar.appendChild(el("span", "", T.draft));
       var a2 = el("span", "ct-status-actions");
-      a2.appendChild(button(T.approve, "primary", function () { save(true, true); }));
+      a2.appendChild(button(T.save, "primary", function () { save(true); }));
       bar.appendChild(a2);
     }
     box.appendChild(bar);
@@ -366,6 +358,18 @@
     }));
     p.appendChild(out);
     return p;
+  }
+
+  // modifiche non salvate: un solo «Salva» (salvare conferma anche le definizioni)
+  function unsavedBar() {
+    var bar = el("div", "ct-status ct-status-warn");
+    bar.appendChild(el("span", "", previewing && !editing ? T.previewing : T.unsaved));
+    var acts = el("span", "ct-status-actions");
+    if (editing) acts.appendChild(button(T.preview, "secondary", function () { editing = false; load(spec); }));
+    acts.appendChild(button(T.save, "primary", function () { save(true); }));
+    acts.appendChild(button(T.discard, "link-btn", function () { editing = false; load(); }));
+    bar.appendChild(acts);
+    return bar;
   }
 
   function save(approve, onlyApprove) {
@@ -513,6 +517,8 @@
   // secondo livello: tutti i dettagli di una domanda
   function detail(s) {
     var wrap = el("div", "ct-detail");
+    // al secondo livello l'intestazione non c'e': le modifiche non salvate si salvano da qui
+    if (dirty || previewing) { var ub = unsavedBar(); ub.classList.add("ct-detail-save"); wrap.appendChild(ub); }
     var idx = spec.sections.indexOf(s), n = spec.sections.length;
     var nav = el("div", "ct-crumbs");
     nav.appendChild(button("← " + T.backSummary, "secondary", function () { go(null); }));

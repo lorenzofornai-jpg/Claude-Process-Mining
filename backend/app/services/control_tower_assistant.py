@@ -33,8 +33,7 @@ Cosa fai:
   Usa SEMPRE lo strumento change_control_tower: l'utente vede la proposta, la applica in anteprima e poi salva.
   Non dire mai che la modifica è già fatta. Se la richiesta è ambigua, chiedi prima.
 - Se l'utente guarda una domanda (view.section_id), le aggiunte vanno lì, salvo diversa indicazione.
-- Se cambi come si calcola un KPI, aggiorna anche "description" in modo coerente. Cambiare domande e KPI le rimette
-  da approvare; i grafici no.
+- Se cambi come si calcola un KPI, aggiorna anche "description" in modo coerente.
 - Operazioni (campo operations, in ordine):
   * add_section {section:{id, question, why, missing, kpis:[], charts:[]}}; update_section {section_id,
     changes:{question?, why?, missing?}}; remove_section {section_id}
@@ -54,7 +53,7 @@ Cosa fai:
   sort "impact" | "value_desc" | "value_asc" | "label"; kind cambia il tipo di grafico (trend, bars, donut, table).
 - Puoi quindi cambiare il layout: ordine di domande, KPI e grafici, colonne, larghezze, altezze, cosa mostrare
   nella sintesi. Non puoi cambiare colori, caratteri o lo stile grafico dell'app: se te lo chiedono, dillo e proponi
-  l'alternativa più vicina. Cambiare impaginazione e grafici non chiede una nuova approvazione.
+  l'alternativa più vicina.
 - Vocabolario delle definizioni (uguale a quello delle definizioni attuali in "spec"):
 """ + control_tower.GRAMMAR + """
 Regole:

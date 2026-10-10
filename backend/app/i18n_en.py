@@ -1497,4 +1497,7 @@ EN: dict[str, str] = {
     "KPI spostato: «{x}»": "KPI moved: “{x}”",
     "Grafico spostato: «{x}»": "Chart moved: “{x}”",
     "Impaginazione della pagina": "Page layout",
+    # Control Tower: un solo Salva
+    "Definizioni proposte dall'LLM: controllale (pulsante «Definizioni dei KPI») e salvale. Finché non le salvi i numeri sono provvisori.": "Definitions proposed by the LLM: check them (“KPI definitions” button) and save them. Until you save them the figures are provisional.",
+    "Definizioni salvate da {u} il {d}.": "Definitions saved by {u} on {d}.",
 }

@@ -1077,3 +1077,4 @@ table.ov-acts td.strong { font-weight: 600; }
   .ct-qcards.ct-cols-2, .ct-qcards.ct-cols-3, .ct-charts.ct-cols-2, .ct-charts.ct-cols-3,
   .ct-kpis.ct-kcols-2, .ct-kpis.ct-kcols-3, .ct-kpis.ct-kcols-4 { grid-template-columns: minmax(0, 1fr); }
 }
+.ct-detail-save { margin-bottom: 16px; }
