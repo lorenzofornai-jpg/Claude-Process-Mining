@@ -57,8 +57,6 @@
         {% endif %}
       </div>
 
-      <input type="search" id="list-search" class="list-search" placeholder="{{ _("Cerca") }}" aria-label="{{ _("Cerca") }}">
-
       <div class="side-tabs" role="tablist">
         <button type="button" class="side-tab active" data-tab="acts" role="tab">{{ _("Attività") }} <span class="chip" id="acts-chip">–</span></button>
         <button type="button" class="side-tab" data-tab="vars" role="tab">{{ _("Varianti") }} <span class="chip" id="vars-chip">–</span></button>
@@ -235,7 +233,6 @@
 
   // ---------- stato ----------
   var actSlider = document.getElementById("act-slider"), pathSlider = document.getElementById("path-slider");
-  var search = document.getElementById("list-search");
   var metric = "frequency", data = null;
   var actMode = "top", actTop = 15, actSet = null;   // le N piu' frequenti, oppure una scelta a mano
   // filtro alternativo per varianti: «acts» (attivita') oppure «vars» (varianti di un tipo di oggetto)
@@ -304,7 +301,7 @@
   }
 
   // ---------- pannello: attivita' e collegamenti ----------
-  function matches(text) { var s = search.value.trim().toLowerCase(); return !s || text.toLowerCase().indexOf(s) >= 0; }
+  function matches(text) { return true; }
   function nodeName(id) {
     if (isStart(id)) return T.start + " · " + tn(id.slice(10));
     if (isEnd(id)) return T.end + " · " + tn(id.slice(8));
@@ -838,6 +835,15 @@
   });
   fillVariantTypes();
 
+  // il riquadro del grafo e' alto quanto il pannello: quando il pannello cambia altezza, il grafo si riadatta
+  if (window.ResizeObserver) {
+    var lastH = 0;
+    new ResizeObserver(function () {
+      var h = document.getElementById("graph-canvas").clientHeight;
+      if (Math.abs(h - lastH) > 4) { lastH = h; cy.resize(); syncLayer(); placeLabels(currentFocus); }
+    }).observe(document.getElementById("graph-canvas"));
+  }
+
   // ---------- pannello laterale: si puo' chiudere per dare spazio al grafo ----------
   var bodyEl = document.querySelector(".explorer-body");
   function setSide(collapsed) {
@@ -875,7 +881,6 @@
   document.getElementById("acts-none").addEventListener("click", function (e) {
     e.preventDefault(); actMode = "list"; actSet = []; schedule();
   });
-  search.addEventListener("input", function () { if (data) renderLists(); renderVariants(); });
   document.querySelectorAll(".side-tab").forEach(function (b) {
     b.addEventListener("click", function () {
       document.querySelectorAll(".side-tab").forEach(function (x) { x.classList.toggle("active", x === b); });

@@ -125,7 +125,7 @@ def mapping_summary(rows) -> dict:
 UI_LABELS = {
     "confirm": "Conferma", "graph_control": "Controllo del grafo", "object_types": "Tipi di oggetto",
     "activities_tab": "Attività", "connections_tab": "Collegamenti", "most_frequent": "Le più frequenti",
-    "search": "Cerca", "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
+    "frequency": "Frequenza", "time": "Tempo", "legend": "Legenda", "fit": "Adatta alla finestra",
     "cross_cutting_switch": "Tipi trasversali: mostra la linea su tutti gli eventi collegati",
     "cross_cutting_tag": "trasversale", "assistant": "Assistente",
     "ask_assistant": "Chiedi all'assistente", "mapping_review": "Revisione mapping", "add_link": "Aggiungi collegamento",

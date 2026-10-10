@@ -846,3 +846,10 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .var-main { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .var-steps { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .graph-controls #side-show[hidden] { display: none; }
+
+/* Process Explorer: il riquadro del grafo e' alto almeno quanto il pannello «Controllo del grafo» */
+@media (min-width: 901px) {
+  .explorer-body { align-items: stretch; }
+  .explorer-graph:not(.expanded) { display: flex; flex-direction: column; }
+  .explorer-graph:not(.expanded) .graph-canvas { flex: 1 1 auto; height: auto; min-height: max(520px, calc(100vh - 230px)); }
+}
