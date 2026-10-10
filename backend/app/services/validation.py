@@ -306,11 +306,11 @@ def run_data_quality_checks(ocel: dict, skip_log: list[SkipRecord], stats: dict 
 
 
 def _check_needed_links(ocel: dict, objects: list[dict], max_hops: int = 3) -> list[dict]:
-    """Oggetti di business «necessari»: quanti oggetti guida li raggiungono attraverso gli eventi (anche passando
+    """Oggetti di business inclusi (oltre alla guida): quanti oggetti guida li raggiungono attraverso gli eventi (anche passando
     per altri oggetti, es. posizione d'ordine -> fattura -> pagamento). Se pochi, la misura che dipende da loro
     non regge: lo si dice con i numeri."""
     lead = next((o["name"] for o in objects if o.get("include") and o.get("role") == "lead"), None)
-    needed = [o["name"] for o in objects if o.get("include") and o.get("role") == "needed" and o["name"] != lead]
+    needed = [o["name"] for o in objects if o.get("include") and o.get("role") != "lead" and o["name"] != lead]
     type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
     present = set(type_of.values())
     needed = [t for t in needed if t in present]
@@ -347,7 +347,7 @@ def _check_needed_links(ocel: dict, objects: list[dict], max_hops: int = 3) -> l
         if n * 2 < len(leads):
             weak += 1
     return [{
-        "check_name": "Collegamento agli oggetti necessari",
+        "check_name": "Collegamento all'oggetto guida",
         "severity": "warning",
         "passed": weak == 0,
         "details": joined(parts + ([msg(

@@ -180,21 +180,22 @@ def test_key_of_confirmed_object_from_another_host_table_is_rejected():
     assert [(out[i].source_table, out[i].source_column) for i in rejected] == [("items", "order_id")]
 
 
-def test_needed_objects_link_check_follows_indirect_links():
-    """Posizione d'ordine (guida) -> fattura -> pagamento: il pagamento si raggiunge passando dalla fattura."""
+def test_included_objects_link_check_follows_indirect_links():
+    """Posizione d'ordine (guida) -> fattura -> pagamento: il pagamento si raggiunge passando dalla fattura.
+    Contano tutti gli oggetti inclusi; quelli esclusi no."""
     from app.services.validation import _check_needed_links
     objects = [{"id": f"I{i}", "type": "Item"} for i in range(4)] + [{"id": "F0", "type": "Invoice"}, {"id": "P0", "type": "Payment"},
                                                                      {"id": "S0", "type": "Supplier"}]
     events = [{"relationships": [{"objectId": "I0"}, {"objectId": "F0"}]}, {"relationships": [{"objectId": "I1"}, {"objectId": "F0"}]},
               {"relationships": [{"objectId": "F0"}, {"objectId": "P0"}]}, {"relationships": [{"objectId": "I2"}]}]
     bos = [{"name": "Item", "role": "lead", "include": True}, {"name": "Payment", "role": "needed", "include": True},
-           {"name": "Supplier", "role": "context", "include": True}]
+           {"name": "Supplier", "role": "context", "include": False}]
     [check] = _check_needed_links({"objects": objects, "events": events}, bos)
     assert check["affected_count"] == 0 and check["passed"]            # 2 su 4: la meta', non meno
     assert check["details"]["list"][0]["p"]["n"] == 2
-    bos[1]["name"] = "Supplier"; bos[2]["name"] = "Payment"           # nessuna posizione raggiunge il fornitore
+    bos[2]["include"] = True                                           # nessuna posizione raggiunge il fornitore
     [check] = _check_needed_links({"objects": objects, "events": events}, bos)
-    assert not check["passed"]
+    assert not check["passed"] and check["affected_count"] == 1
 
 
 def test_user_added_objects_survive_a_new_claude_proposal():

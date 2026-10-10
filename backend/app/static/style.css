@@ -799,7 +799,6 @@ fieldset.copies legend { font-weight: 600; padding: 0 6px; }
 .bo-include input { width: 18px; height: 18px; }
 .bo-name { flex: 1 1 200px; font-weight: 600; font-size: 16px; padding: 6px 8px; min-width: 0; }
 .bo-lead { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
-.bo-role { padding: 4px 6px; }
 .bo-meta { margin-top: 6px; }
 .bo-why { margin: 4px 0 0; }
 .bo-split { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }

@@ -132,7 +132,7 @@ class ExplorerModel:
         return self.avg_events(t) >= 8 and self.with_events[t] * 4 <= self.related_events[t]
 
     def default_types(self, preferred: list[str] | None = None) -> list[str]:
-        """Selezione iniziale. preferred: l'oggetto guida e gli oggetti necessari confermati prima del mapping
+        """Selezione iniziale. preferred: l'oggetto guida e gli altri oggetti inclusi prima del mapping
         (quelli con eventi, al massimo quattro). Senza: i due tipi con piu' eventi collegati, esclusi i
         trasversali, cosi' il primo grafo e' leggibile."""
         chosen = [t for t in dict.fromkeys(preferred or []) if t in self.types and self.related_events.get(t)]

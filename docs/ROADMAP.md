@@ -134,6 +134,11 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   oggetto necessario, anche passando per altri oggetti (fino a 3 passaggi); avviso sotto la metà.
 - ✅ Process Explorer: all'apertura sono selezionati l'oggetto guida e i necessari (con eventi).
 
+## Oggetti inclusi o esclusi, senza ruoli (10 ottobre 2026)
+- ✅ Tolta la scelta «necessario / di contesto»: un oggetto è incluso o no, più l'oggetto guida. Gli inclusi hanno
+  tutti i collegamenti curati nel mapping, il controllo «Collegamento all'oggetto guida» e la selezione iniziale nel
+  Process Explorer (internamente role = needed se incluso, context se escluso).
+
 ## Filtri per attributo e assistente dell'analisi con i dati (10 ottobre 2026)
 - ✅ Filtri per attributo in Process Explorer e Process Overview (`services/ocel_filter.py`, `static/filters.js`):
   attributo di un tipo di oggetto o degli eventi, ricerca tra i valori (anche migliaia), più valori e più filtri.

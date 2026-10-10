@@ -787,14 +787,13 @@ def _bo_from_form(form, proposal: dict) -> list[dict]:
         name = (form.get(f"name_{i}") or "").strip()
         if name:
             o["name"] = name
-        role = form.get(f"role_{i}")
-        if role in ("needed", "context"):
-            o["role"] = role
+        if o["role"] != "lead":
+            o["role"] = "needed" if o["include"] else "context"
         if lead is not None:
             if str(i) == lead:
                 o["role"], o["include"] = "lead", True
             elif o["role"] == "lead":
-                o["role"] = "needed"
+                o["role"] = "needed" if o["include"] else "context"
         objects.append(o)
     return objects
 

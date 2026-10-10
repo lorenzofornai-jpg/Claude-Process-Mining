@@ -127,10 +127,9 @@ def normalize(objects: list[dict], tables: list[TableSchema]) -> list[dict]:
         f = o.get("filter")
         if f and (f.get("column") not in cols[table] or not f.get("values")):
             f = None
-        role = o.get("role") if o.get("role") in ROLES else "context"
         include = bool(o.get("include", True))
-        if role == "lead" and (lead or not include):
-            role = "needed" if include else "context"
+        # un oggetto e' incluso o no: oltre alla guida il ruolo segue la spunta (necessario se incluso)
+        role = "lead" if o.get("role") == "lead" and include and not lead else ("needed" if include else "context")
         lead = lead or role == "lead"
         seen.add(name.lower())
         out.append({**o, "name": name, "key": key, "filter": ({"column": f["column"], "values": [str(v) for v in f["values"]]}
@@ -179,9 +178,9 @@ Per ogni oggetto:
 - table: la tabella da cui nasce; key: le colonne che lo identificano (preferisci le candidate_keys misurate);
 - filter: null, oppure {"column": colonna, "values": [valori]} se l'oggetto e' solo una parte della tabella
   (usa i valori reali in type_columns);
-- role: "lead" (l'oggetto che l'obiettivo principale misura; uno solo), "needed" (senza di lui la misura non
-  si fa, es. l'incasso che chiude la fattura), "context" (oggetto di business presente ma non necessario);
-- include: true per lead e needed, false per context;
+- role: "lead" per l'oggetto che l'obiettivo principale misura (uno solo), "needed" per gli altri;
+- include: true se serve agli obiettivi (es. l'incasso che chiude la fattura, le posizioni se servono quantita' e
+  prezzi), false se e' un oggetto di business presente ma non utile agli obiettivi (l'utente puo' spuntarlo);
 - objective: a quale obiettivo dell'assessment serve (breve); why: perche' (una frase, concreta, citando colonne).
 In "not_objects" elenca le tabelle che non generano oggetti: becomes "events" (log di operazioni su un
 oggetto), "attributes" (anagrafica o dettaglio da usare come dimensione) o "excluded" (copia o fuori obiettivo),

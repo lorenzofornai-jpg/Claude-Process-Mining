@@ -11,13 +11,9 @@
     <summary>{{ _("Cosa cambiano queste scelte") }}</summary>
     <dl>
       <dt>{{ _("Includere o escludere un oggetto") }}</dt>
-      <dd>{{ _("Incluso: nel dataset nasce un tipo di oggetto con i suoi attributi, e il mapping gli collega gli eventi delle tabelle. Escluso: le sue colonne possono servire come attributi di altri oggetti (es. il cliente come dimensione), ma nelle analisi non ha una linea propria. Per includerlo in seguito serve «Ricarica i file e rifai il mapping».") }}</dd>
+      <dd>{{ _("Incluso: nel dataset nasce un tipo di oggetto con i suoi attributi; il mapping deve collegargli gli eventi delle tabelle, dopo la generazione un controllo dice quanti oggetti guida lo raggiungono, e il Process Explorer si apre con lui già selezionato. Escluso: le sue colonne possono comunque arrivare come attributi di altri oggetti o eventi (es. il numero cliente sull'ordine, utile per filtrare), ma nelle analisi non ha una linea propria. Per includerlo in seguito: «Rivedi mapping» (ripristina le sue righe) o «Ricarica i file e rifai il mapping».") }}</dd>
       <dt>{{ _("Oggetto guida") }}</dt>
       <dd>{{ _("È l'oggetto che gli obiettivi misurano. Il mapping cerca di far arrivare a lui gli eventi; obiettivo misurabile e Process Overview partono da lui, il Process Explorer si apre su di lui. Non è definitivo: in analisi puoi scegliere un altro oggetto come guida in qualsiasi momento, senza rigenerare il dataset. Sceglierlo ora conta per il mapping: i collegamenti che servono a misurarlo si cercano adesso, e un oggetto a cui gli eventi non arrivano darà numeri poveri anche se lo scegli dopo.") }}</dd>
-      <dt>{{ _("Necessario") }}</dt>
-      <dd>{{ _("Senza di lui la misura non si fa (es. il pagamento che chiude la fattura). Il mapping deve collegargli gli eventi; dopo la generazione un controllo dice quanti oggetti guida lo raggiungono; il Process Explorer si apre con lui già selezionato.") }}</dd>
-      <dt>{{ _("Di contesto") }}</dt>
-      <dd>{{ _("Serve a spiegare i risultati, non a misurarli (es. le posizioni per confrontare quantità e prezzi). Entra nel dataset con chiave e attributi, con i collegamenti evidenti; nel Process Explorer lo aggiungi tu quando ti serve.") }}</dd>
     </dl>
   </details>
 
@@ -40,7 +36,7 @@
     {% if claude_ok %}
     <div class="bo-claude">
       <button type="button" class="secondary" id="bo-ask">{{ _("Rifai la proposta con Claude") if proposal.source == "claude" else _("Proponi con Claude") }}{% if estimate %} · ~{{ money(estimate.cost_usd) }} ${% endif %}</button>
-      <span class="tiny muted">{% if estimate %}{{ _("Claude legge obiettivi e tabelle e propone oggetti con nomi di business, ruoli e filtri. Costo indicativo (massimo {m}).", m=money(estimate.max_usd) ~ " $") }}{% endif %}</span>
+      <span class="tiny muted">{% if estimate %}{{ _("Claude legge obiettivi e tabelle e propone oggetti con nomi di business, oggetto guida e filtri. Costo indicativo (massimo {m}).", m=money(estimate.max_usd) ~ " $") }}{% endif %}</span>
       <p class="as-error" id="bo-error" hidden></p>
     </div>
     {% endif %}
@@ -50,7 +46,6 @@
 
   <form method="post" action="/ingestion/business-objects" id="bo-form">
     <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
-    {% set role_labels = {"lead": _("Oggetto guida"), "needed": _("Necessario"), "context": _("Di contesto")} %}
     <div class="bo-list">
       {% for o in proposal.objects %}{% set i = loop.index0 %}
       <section class="bo-item {{ 'bo-off' if not o.include }} {{ 'bo-new' if new_object and o.name == new_object }}"{% if new_object and o.name == new_object %} id="bo-new"{% endif %}>
@@ -59,10 +54,6 @@
             <span class="sr-only">{{ _("Includi") }}</span></label>
           <input type="text" class="bo-name" name="name_{{ i }}" value="{{ o.name }}" aria-label="{{ _('Nome') }}">
           <label class="bo-lead tiny"><input type="radio" name="lead" value="{{ i }}" {% if o.role == "lead" %}checked{% endif %}> {{ _("Oggetto guida") }}</label>
-          <select name="role_{{ i }}" class="bo-role tiny" aria-label="{{ _('Ruolo') }}" {% if o.role == "lead" %}hidden{% endif %}>
-            <option value="needed" {% if o.role == "needed" %}selected{% endif %}>{{ _("Necessario") }}</option>
-            <option value="context" {% if o.role == "context" %}selected{% endif %}>{{ _("Di contesto") }}</option>
-          </select>
         </div>
         <div class="tiny bo-meta">
           <span class="mono">{{ o.table }}</span>
@@ -121,12 +112,11 @@
     t.columns.forEach(function (c) { var o = document.createElement("option"); o.value = c; o.textContent = c; csel.appendChild(o); });
   }
   if (tsel) { tsel.addEventListener("change", cols); cols(); }
-  // l'oggetto guida e' sempre incluso; il ruolo si sceglie solo per gli altri
+  // l'oggetto guida e' sempre incluso
   document.querySelectorAll('input[name="lead"]').forEach(function (r) {
     r.addEventListener("change", function () {
       document.querySelectorAll(".bo-item").forEach(function (item) {
-        var radio = item.querySelector('input[name="lead"]'), role = item.querySelector(".bo-role");
-        role.hidden = radio.checked;
+        var radio = item.querySelector('input[name="lead"]');
         if (radio.checked) { var cb = item.querySelector('.bo-include input'); cb.checked = true; item.classList.remove("bo-off"); }
       });
     });

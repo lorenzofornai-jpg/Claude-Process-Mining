@@ -346,10 +346,10 @@ def _plurals(lang: str, types, aliases: dict) -> dict:
 
 
 def business_focus(config) -> list[str]:
-    """Oggetto guida e oggetti necessari confermati prima del mapping, in quest'ordine (selezione iniziale)."""
+    """Oggetto guida e altri oggetti inclusi prima del mapping, in quest'ordine (selezione iniziale)."""
     objs = [o for o in (getattr(config, "business_objects", None) or []) if o.get("include")]
     return ([o["name"] for o in objs if o.get("role") == "lead"]
-            + [o["name"] for o in objs if o.get("role") == "needed"])
+            + [o["name"] for o in objs if o.get("role") != "lead"])
 
 
 def business_lead(config_id: str) -> str | None:

@@ -1222,4 +1222,8 @@ EN: dict[str, str] = {
     "Nessun caso con questi filtri per i tipi di oggetto scelti: togli un filtro o scegli altri tipi.": "No cases with these filters for the chosen object types: remove a filter or choose other types.",
     # Filtri: singolare
     "1 scelto": "1 selected",
+    # Oggetti inclusi o esclusi
+    "Incluso: nel dataset nasce un tipo di oggetto con i suoi attributi; il mapping deve collegargli gli eventi delle tabelle, dopo la generazione un controllo dice quanti oggetti guida lo raggiungono, e il Process Explorer si apre con lui già selezionato. Escluso: le sue colonne possono comunque arrivare come attributi di altri oggetti o eventi (es. il numero cliente sull'ordine, utile per filtrare), ma nelle analisi non ha una linea propria. Per includerlo in seguito: «Rivedi mapping» (ripristina le sue righe) o «Ricarica i file e rifai il mapping».": "Included: the dataset gets an object type with its attributes; the mapping must link the tables' events to it, after generation a check tells how many lead objects reach it, and the Process Explorer opens with it already selected. Excluded: its columns can still arrive as attributes of other objects or events (e.g. the customer number on the order, useful for filtering), but it has no line of its own in the analyses. To include it later: “Review mapping” (restore its rows) or “Reload the files and redo the mapping”.",
+    "Claude legge obiettivi e tabelle e propone oggetti con nomi di business, oggetto guida e filtri. Costo indicativo (massimo {m}).": "Claude reads objectives and tables and proposes objects with business names, lead object and filters. Indicative cost (maximum {m}).",
+    "Collegamento all'oggetto guida": "Link to the lead object",
 }
