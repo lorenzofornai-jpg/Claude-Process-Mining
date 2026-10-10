@@ -1,9 +1,9 @@
-{# «Chiedi a Claude»: finestra condivisa dai pulsanti .ask-btn della pagina.
+{# «Chiedi all'LLM»: finestra condivisa dai pulsanti .ask-btn della pagina.
    Prima di inviare mostra il costo indicativo e chiede conferma. #}
 <dialog id="ask-dialog" class="ask-dialog" data-workspace="{{ workspace_id }}">
   <form method="dialog" class="ask-form">
-    <h2>{{ _("Chiedi a Claude") }}</h2>
-    <p class="tiny muted">{{ _("Claude spiega il messaggio: cosa significa, cosa comporta e cosa fare nell'app.") }}</p>
+    <h2>{{ _("Chiedi all'LLM") }}</h2>
+    <p class="tiny muted">{{ _("L'LLM spiega il messaggio: cosa significa, cosa comporta e cosa fare nell'app.") }}</p>
     <blockquote class="ask-message" id="ask-message"></blockquote>
     <label class="ask-q">{{ _("Cosa non ti è chiaro? (facoltativo)") }}
       <textarea id="ask-question" rows="2" lang="{{ current_lang() }}" spellcheck="true" placeholder="{{ _("es. Devo correggere i dati o basta la revisione?") }}"></textarea>
@@ -12,7 +12,7 @@
     <div class="ask-answer" id="ask-answer" hidden></div>
     <div class="confirm-actions">
       <button value="cancel" class="secondary" id="ask-close">{{ _("Chiudi") }}</button>
-      <button type="button" class="primary" id="ask-send" disabled>{{ _("Chiedi a Claude") }}</button>
+      <button type="button" class="primary" id="ask-send" disabled>{{ _("Chiedi all'LLM") }}</button>
     </div>
   </form>
 </dialog>
@@ -20,12 +20,12 @@
 (function () {
   var T = {
     estimating: {{ _("Calcolo il costo indicativo…")|tojson }},
-    cost: {{ _("Costo indicativo: circa {c} $ (al massimo {m} $). La richiesta usa Claude e consuma token: parte solo se confermi.")|tojson }},
-    send: {{ _("Chiedi a Claude (≈ {c} $)")|tojson }},
+    cost: {{ _("Costo indicativo: circa {c} $ (al massimo {m} $). La richiesta usa l'LLM e consuma token: parte solo se confermi.")|tojson }},
+    send: {{ _("Chiedi all'LLM (≈ {c} $)")|tojson }},
     again: {{ _("Fai un'altra domanda (≈ {c} $)")|tojson }},
-    waiting: {{ _("Claude sta rispondendo…")|tojson }},
+    waiting: {{ _("L'LLM sta rispondendo…")|tojson }},
     spent: {{ _("Costo effettivo: {c} $")|tojson }},
-    failed: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }}
+    failed: {{ _("La richiesta all'LLM non è riuscita: riprova tra poco.")|tojson }}
   };
   var lang = {{ current_lang()|tojson }};
   var dlg = document.getElementById("ask-dialog");

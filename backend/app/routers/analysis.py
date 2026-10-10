@@ -194,7 +194,7 @@ async def analysis_assistant_ask(request: Request):
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
@@ -252,7 +252,7 @@ async def analysis_assistant_ask(request: Request):
         result = await run_in_threadpool(analysis_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente dell'analisi non riuscito ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")},
                             status_code=502)
     if result.get("truncated"):
         result["answer"] = result["answer"].rstrip() + "…\n\n" + t(
@@ -563,7 +563,7 @@ async def control_tower_propose(request: Request):
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
@@ -593,7 +593,7 @@ async def control_tower_propose(request: Request):
         return JSONResponse({"available": True, "error": render(lang, exc.reason)}, status_code=502)
     except Exception as exc:
         print(f"Control Tower: proposta non riuscita ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")
                              + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     db = SessionLocal()
@@ -682,7 +682,7 @@ async def control_tower_assistant_ask(request: Request):
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
@@ -720,7 +720,7 @@ async def control_tower_assistant_ask(request: Request):
         result = await run_in_threadpool(control_tower_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente della Control Tower non riuscito ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")
                              + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
     if result.get("truncated"):
         result["answer"] = (result.get("answer") or "").rstrip() + "…\n\n" + t(
@@ -740,7 +740,7 @@ async def control_tower_translate(request: Request):
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None:
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
@@ -764,7 +764,7 @@ async def control_tower_translate(request: Request):
         return JSONResponse({"available": True, "error": render(lang, exc.reason)}, status_code=502)
     except Exception as exc:
         print(f"Control Tower: traduzione non riuscita ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")
                              + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
     if working is None:
         # definizioni salvate: si salvano tradotte (i testi non cambiano cosa e' approvato)

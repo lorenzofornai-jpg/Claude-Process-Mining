@@ -99,7 +99,7 @@
             <td class="rationale">{{ r.rationale|tr }}
               <button type="button" class="ask-btn ask-btn-small" data-page="revisione del mapping" data-table="{{ r.source_table }}"
                       data-message="{{ r.source_table }}.{{ r.source_column }} — {{ r.target_label|tr }} ({{ (r.confidence * 100)|round|int }}%). {{ r.rationale|tr }}"
-                      title="{{ _('Chiedi a Claude') }}" aria-label="{{ _('Chiedi a Claude') }}">?</button></td>
+                      title="{{ _("Chiedi all'LLM") }}" aria-label="{{ _("Chiedi all'LLM") }}">?</button></td>
             <td class="decision">
               <label class="radio">
                 <input type="radio" name="decision_{{ r.row_id }}" value="confirmed" {{ 'checked' if r.status in ('confirmed', 'overridden') else '' }}>

@@ -1,4 +1,4 @@
-"""«Chiedi a Claude»: spiegazione su richiesta di un messaggio dell'app.
+"""«Chiedi all'LLM»: spiegazione su richiesta di un messaggio dell'app.
 
 Accanto ai messaggi del profilo dei dati, della revisione del mapping e dei
 controlli di qualita' l'utente puo' chiedere a Claude cosa significano, cosa

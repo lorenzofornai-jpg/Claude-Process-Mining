@@ -963,10 +963,10 @@ def propose(payload: str) -> dict:
             response = call()
     except anthropic.APIStatusError as exc:
         print(f"Control Tower: errore dell'API ({exc.status_code}): {exc}")
-        raise ProposalError(msg("Claude ha risposto con un errore ({c}): {d}", c=exc.status_code, d=str(exc)[:300]), str(exc))
+        raise ProposalError(msg("L'LLM ha risposto con un errore ({c}): {d}", c=exc.status_code, d=str(exc)[:300]), str(exc))
     except anthropic.APIConnectionError as exc:
         print(f"Control Tower: Claude non raggiungibile ({exc!r})")
-        raise ProposalError(msg("Claude non è raggiungibile dal server: controlla la connessione e riprova."), repr(exc))
+        raise ProposalError(msg("L'LLM non è raggiungibile dal server: controlla la connessione e riprova."), repr(exc))
     price_in, price_out = _price()
     u = response.usage
     cost = ((u.input_tokens or 0) * price_in + (u.output_tokens or 0) * price_out) / 1_000_000
@@ -978,8 +978,8 @@ def propose(payload: str) -> dict:
         spec = _spec_from_text(text)
     if not isinstance(spec, dict):
         if response.stop_reason == "max_tokens":
-            raise ProposalError(msg("La risposta di Claude è stata interrotta perché troppo lunga: riprova."), "max_tokens")
-        raise ProposalError(msg("Claude non ha restituito le definizioni dei KPI: riprova."), str(response.stop_reason))
+            raise ProposalError(msg("La risposta dell'LLM è stata interrotta perché troppo lunga: riprova."), "max_tokens")
+        raise ProposalError(msg("L'LLM non ha restituito le definizioni dei KPI: riprova."), str(response.stop_reason))
     return {"spec": normalize(spec), "cost_usd": round(cost, 4)}
 
 
@@ -1275,7 +1275,7 @@ def translate(spec: dict, base_lang: str) -> dict:
         except ValueError:
             out = None
     if not isinstance(out, dict):
-        raise ProposalError(msg("Claude non ha restituito le traduzioni: riprova."), str(response.stop_reason))
+        raise ProposalError(msg("L'LLM non ha restituito le traduzioni: riprova."), str(response.stop_reason))
     return {"spec": merge_translations(spec, out, base_lang), "cost_usd": round(cost, 4)}
 
 

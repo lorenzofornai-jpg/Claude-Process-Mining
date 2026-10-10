@@ -11,4 +11,5 @@
 - I testi che Claude scrive e l'app salva per mostrarli dopo (es. domande, KPI, titoli dei grafici della Control Tower)
   si salvano in tutte e due le lingue, `{"it": ..., "en": ...}`, e si mostrano nella lingua attiva; i nomi dei tipi di
   oggetto dentro le frasi vanno nella lingua attiva, al singolare o al plurale.
+- Nell'interfaccia il modello si chiama sempre «LLM» (es. «Chiedi all'LLM», «Proponi con l'LLM»), mai «Claude».
 - Python 3.11 (devcontainer); analisi con pm4py.

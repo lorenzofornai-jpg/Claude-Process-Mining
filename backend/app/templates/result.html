@@ -51,7 +51,7 @@
         <td>{{ "✓ " ~ _("superato") if dq.passed else "✗ " ~ _("{n} elementi coinvolti", n=dq.affected_count) }}</td>
         <td class="rationale">{{ dq.details|tr }}
           {% if not dq.passed %}<div><button type="button" class="ask-btn" data-page="controlli di qualità"
-                  data-message="{{ dq.check_name|tr }} ({{ _(dq.severity) }}): {{ dq.details|tr }}">{{ _("Chiedi a Claude") }}</button></div>{% endif %}
+                  data-message="{{ dq.check_name|tr }} ({{ _(dq.severity) }}): {{ dq.details|tr }}">{{ _("Chiedi all'LLM") }}</button></div>{% endif %}
         </td>
       </tr>
       {% endfor %}

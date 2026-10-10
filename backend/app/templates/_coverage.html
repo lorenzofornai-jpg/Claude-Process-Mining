@@ -27,21 +27,21 @@
   {% if coverage.unanswered %}
   <p class="tiny muted cov-unanswered">{{ _("Domande che il controllo rapido non copre:") }}
     {% for q in coverage.unanswered %}<span class="bo-chip">{{ q.n }}. {{ q.short }}</span>{% endfor %}
-    {{ _("La valutazione con Claude qui sotto le considera tutte.") }}</p>
+    {{ _("La valutazione con l'LLM qui sotto le considera tutte.") }}</p>
   {% endif %}
   {% endif %}
 
   {% if coverage_questions or coverage_has_objectives %}
-  <h3 class="objcov-sub">{{ _("Le tue domande di business, valutate da Claude") }}</h3>
+  <h3 class="objcov-sub">{{ _("Le tue domande di business, valutate dall'LLM") }}</h3>
   {% if coverage_questions %}<blockquote class="objcov-quote tiny">{{ coverage_questions }}</blockquote>{% endif %}
   <div id="cov-ai"></div>
   {% if coverage_claude %}
   <div class="objcov-actions">
-    <button type="button" class="primary" id="cov-run">{{ _("Rivaluta con Claude") if coverage_stored else _("Valuta con Claude") }}{% if coverage_estimate %} · ~{{ money(coverage_estimate.cost_usd) }} ${% endif %}</button>
+    <button type="button" class="primary" id="cov-run">{{ _("Rivaluta con l'LLM") if coverage_stored else _("Valuta con l'LLM") }}{% if coverage_estimate %} · ~{{ money(coverage_estimate.cost_usd) }} ${% endif %}</button>
     <span class="tiny muted">{% if coverage_estimate %}{{ _("Costo indicativo (massimo {m}): la valutazione consuma token.", m=money(coverage_estimate.max_usd) ~ " $") }}{% endif %}</span>
   </div>
   {% else %}
-  <p class="tiny muted">{{ _("Claude non è configurato su questo server: è disponibile solo il controllo rapido.") }}</p>
+  <p class="tiny muted">{{ _("L'LLM non è configurato su questo server: è disponibile solo il controllo rapido.") }}</p>
   {% endif %}
   {% endif %}
 </section>
@@ -56,7 +56,7 @@
     otherLang: {{ _("(scritta in un'altra lingua: rivaluta per averla nella lingua attuale)")|tojson }},
     running: {{ _("Valutazione in corso…")|tojson }},
     truncated: {{ _("Risposta interrotta perché troppo lunga: alcune voci potrebbero mancare.")|tojson }},
-    error: {{ _("La richiesta a Claude non è riuscita: riprova tra poco.")|tojson }}
+    error: {{ _("La richiesta all'LLM non è riuscita: riprova tra poco.")|tojson }}
   };
   var LANG = {{ current_lang()|tojson }};
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }

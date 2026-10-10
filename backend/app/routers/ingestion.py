@@ -136,7 +136,7 @@ def _get_ai_mapper() -> tuple[AIMapper, str]:
     """
     if AI_MAPPER == "claude":
         try:
-            return ClaudeAIMapper(), "Claude (LLM reale)"
+            return ClaudeAIMapper(), "LLM (modello reale)"
         except Exception as exc:
             print(f"AI_MAPPER=claude ma il client Anthropic non si inizializza ({exc!r}): fallback sull'euristica mock per questo upload.")
     return HeuristicAIMapper(), "euristica mock"
@@ -546,7 +546,7 @@ async def coverage_evaluate(request: Request):
     if denied:
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if AI_MAPPER != "claude" or not explain.available():
-        return JSONResponse({"error": t(lang, "Claude non è configurato su questo server (manca la chiave API): la valutazione non è disponibile.")},
+        return JSONResponse({"error": t(lang, "L'LLM non è configurato su questo server (manca la chiave API): la valutazione non è disponibile.")},
                             status_code=400)
     sess = _load_session(user.id, workspace_id)
     tables = sess.get("tables_schema_objs") or []
@@ -560,7 +560,7 @@ async def coverage_evaluate(request: Request):
         out = await run_in_threadpool(coverage.ask, payload)
     except Exception as exc:
         print(f"Copertura degli obiettivi non riuscita ({exc!r}).")
-        return JSONResponse({"error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")}, status_code=502)
+        return JSONResponse({"error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")}, status_code=502)
     db = SessionLocal()
     try:
         row = ObjectiveCoverage(workspace_id=workspace_id, tables_signature=coverage.tables_signature(tables),
@@ -750,7 +750,7 @@ def business_objects_page(request: Request, workspace_id: str):
 
 @router.post("/ingestion/business-objects/propose")
 async def business_objects_propose(request: Request):
-    """Proposta di Claude (costo indicativo mostrato prima nel pulsante)."""
+    """Proposta dell'LLM (costo indicativo mostrato prima nel pulsante)."""
     body = await request.json()
     workspace_id = str(body.get("workspace_id") or "")
     user, denied = _require_process_access(request, workspace_id)
@@ -760,17 +760,17 @@ async def business_objects_propose(request: Request):
     if not sess.get("tables_schema_objs"):
         return JSONResponse({"error": t(get_lang(request), "Carica prima i dati.")}, status_code=400)
     if AI_MAPPER != "claude" or not explain.available():
-        return JSONResponse({"error": t(get_lang(request), "Claude non è configurato su questo server.")}, status_code=400)
+        return JSONResponse({"error": t(get_lang(request), "L'LLM non è configurato su questo server.")}, status_code=400)
     try:
         out = await run_in_threadpool(business_objects.ask, _bo_payload(request, sess, workspace_id))
     except Exception as exc:  # rete, chiave, risposta non leggibile
         print(f"Oggetti di business: richiesta a Claude non riuscita ({exc!r})")
-        return JSONResponse({"error": t(get_lang(request), "La richiesta a Claude non è riuscita: riprova tra poco.")}, status_code=502)
+        return JSONResponse({"error": t(get_lang(request), "La richiesta all'LLM non è riuscita: riprova tra poco.")}, status_code=502)
     result = out["result"]
     objects = business_objects.normalize(business_objects.keep_user_objects(result["objects"], _user_objects(sess)),
                                          sess["tables_schema_objs"])
     if not objects:
-        return JSONResponse({"error": t(get_lang(request), "Claude non ha proposto oggetti utilizzabili: resta la bozza.")}, status_code=502)
+        return JSONResponse({"error": t(get_lang(request), "L'LLM non ha proposto oggetti utilizzabili: resta la bozza.")}, status_code=502)
     sess["bo_proposal"] = {"source": "claude", "objects": objects, "not_objects": result["not_objects"],
                            "summary": result["summary"], "cost_usd": out["cost_usd"], "truncated": out["truncated"],
                            "signature": _bo_signature(sess)}
@@ -880,7 +880,7 @@ def _run_ai_mapping(
             # valida, rate limit): meglio un fallback trasparente sull'euristica
             # mock, con l'errore reale visibile nei log e in etichetta, che un 500.
             print(f"ClaudeAIMapper ha fallito ({exc!r}): fallback sull'euristica mock per questo upload.")
-            mapper_label = "euristica mock (fallback: chiamata Claude fallita)"
+            mapper_label = "euristica mock (fallback: chiamata all'LLM fallita)"
             proposals = HeuristicAIMapper().propose_mapping(tables_schema, sess["context"], table_descriptions)
 
         # colonne calcolate dal profilo dei dati: log di modifiche (attivita' da campo e valori) e chiavi dentro
@@ -1177,7 +1177,7 @@ async def review_assistant_ask(request: Request):
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
     if AI_MAPPER != "claude" or not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): l'assistente non è disponibile.")})
     sess = _load_session(user.id, workspace_id)
     rows = sess.get("mapping_rows")
     if rows is None:
@@ -1202,7 +1202,7 @@ async def review_assistant_ask(request: Request):
         result = await run_in_threadpool(review_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente della revisione non riuscito ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")},
                             status_code=502)
     actions = []
     columns = {tb.name: [c.name for c in tb.columns] for tb in sess.get("tables_schema_objs") or []}
@@ -1702,7 +1702,7 @@ def _finalize(workspace_id: str, sess: dict, user: User) -> None:
 
 @router.post("/ingestion/explain")
 async def explain_message(request: Request):
-    """«Chiedi a Claude» su un messaggio. Con estimate=true non chiama Claude: restituisce
+    """«Chiedi all'LLM» su un messaggio. Con estimate=true non chiama Claude: restituisce
     solo il costo indicativo, che l'utente vede e conferma prima dell'invio vero."""
     body = await request.json()
     workspace_id = str(body.get("workspace_id") or "")
@@ -1712,7 +1712,7 @@ async def explain_message(request: Request):
     lang = get_lang(request)
     if AI_MAPPER != "claude" or not explain.available():
         return JSONResponse({"available": False, "error": t(
-            lang, "Claude non è configurato su questo server (manca la chiave API): la spiegazione non è disponibile.")})
+            lang, "L'LLM non è configurato su questo server (manca la chiave API): la spiegazione non è disponibile.")})
     sess = _load_session(user.id, workspace_id)
     table = next((tb for tb in sess.get("tables_schema_objs") or [] if tb.name == body.get("table")), None)
     payload = explain.build_payload(
@@ -1726,8 +1726,8 @@ async def explain_message(request: Request):
     try:
         result = await run_in_threadpool(explain.ask, payload)
     except Exception as exc:
-        print(f"Chiedi a Claude non riuscito ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
+        print(f"Chiedi all'LLM non riuscito ({exc!r}).")
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta all'LLM non è riuscita: riprova tra poco.")},
                             status_code=502)
     if result.get("truncated"):
         result["answer"] = result["answer"].rstrip() + "…\n\n" + t(
