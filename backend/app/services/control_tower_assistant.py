@@ -1,7 +1,7 @@
 """Assistente della Control Tower: spiega i numeri e propone modifiche a domande, KPI e grafici.
 
 Il Data Analyst scrive cosa vuole («aggiungi un grafico per cliente», «togli la ciambella», «porta l'obiettivo al
-15%», «aggiungi una domanda sul DSO»); Claude risponde in breve e propone le modifiche con lo strumento
+15%», «aggiungi una domanda sul DSO», «metti i grafici uno sotto l'altro», «sposta la tabella in cima»); Claude risponde in breve e propone le modifiche con lo strumento
 change_control_tower (operazioni nel vocabolario di services/control_tower.py). L'utente le vede, le applica in
 anteprima e poi salva: niente cambia senza la sua conferma. Claude puo' leggere il dataset in sola lettura
 (data_query) per verificare valori e utenti prima di proporre.
@@ -28,7 +28,8 @@ section_id = la domanda aperta, period = mesi del periodo).
 Cosa fai:
 - Spieghi i numeri (usa "values": valori del periodo, numeratore, denominatore, periodo precedente, obiettivo) e come
   si calcola un KPI.
-- Proponi modifiche quando l'utente le chiede: domande, KPI (statistiche), grafici, obiettivi, KPI della sintesi.
+- Proponi modifiche quando l'utente le chiede: domande, KPI (statistiche), grafici, obiettivi, KPI della sintesi e
+  impaginazione della pagina (ordine, colonne, larghezze e altezze, cosa mostrare).
   Usa SEMPRE lo strumento change_control_tower: l'utente vede la proposta, la applica in anteprima e poi salva.
   Non dire mai che la modifica è già fatta. Se la richiesta è ambigua, chiedi prima.
 - Se l'utente guarda una domanda (view.section_id), le aggiunte vanno lì, salvo diversa indicazione.
@@ -41,7 +42,19 @@ Cosa fai:
     remove_kpi {kpi_id}
   * add_chart {section_id, chart:{...}, position?}; update_chart {chart_id, changes:{...}}; remove_chart {chart_id}
   * set_summary {section_id, kpi_ids:[...]} — quali KPI della domanda compaiono nella sintesi.
+  * move_section {section_id, position}; move_kpi {kpi_id, position}; move_chart {chart_id, position, section_id?}
+    — ordine (position 0 = in testa); move_chart con section_id sposta il grafico in un'altra domanda.
+  * update_layout {changes:{...}} — impaginazione della pagina (null = torna al valore di base):
+    summary_columns 1|2|3 (card delle domande per riga nella sintesi), summary_trend true|false (andamento mensile
+    sulle card), kpi_columns 0|1|2|3|4 (KPI per riga nel dettaglio, 0 = automatico), chart_columns 1|2|3 (grafici
+    per riga nel dettaglio), show_why true|false («perché conta» sotto la domanda). Valori attuali in spec.layout.
   Un KPI nuovo si può usare in un grafico nella stessa proposta con il suo id.
+- Impaginazione dei singoli grafici (update_chart changes): width "auto" | "full" (a tutta larghezza; l'andamento
+  mensile lo è di base), height "small" | "medium" | "large", per barre e tabelle top (quanti gruppi, 3-30) e
+  sort "impact" | "value_desc" | "value_asc" | "label"; kind cambia il tipo di grafico (trend, bars, donut, table).
+- Puoi quindi cambiare il layout: ordine di domande, KPI e grafici, colonne, larghezze, altezze, cosa mostrare
+  nella sintesi. Non puoi cambiare colori, caratteri o lo stile grafico dell'app: se te lo chiedono, dillo e proponi
+  l'alternativa più vicina. Cambiare impaginazione e grafici non chiede una nuova approvazione.
 - Vocabolario delle definizioni (uguale a quello delle definizioni attuali in "spec"):
 """ + control_tower.GRAMMAR + """
 Regole:
@@ -56,7 +69,8 @@ Regole:
 
 TOOL = {
     "name": "change_control_tower",
-    "description": "Propone modifiche alla Control Tower (domande, KPI, grafici, obiettivi, KPI della sintesi). "
+    "description": "Propone modifiche alla Control Tower (domande, KPI, grafici, obiettivi, KPI della sintesi, "
+                   "impaginazione: ordine, colonne, larghezze e altezze dei grafici). "
                    "L'utente le vede e decide se applicarle.",
     "input_schema": {
         "type": "object",

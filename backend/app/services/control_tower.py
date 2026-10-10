@@ -671,9 +671,17 @@ def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
             groups.pop("", None)   # oggetti senza nessun valore: non sono un gruppo (es. nessun intervento)
         items = [{"label": k, **aggregate(kpi, v)} for k, v in groups.items()]
         # per le quote contano i gruppi con piu' oggetti colpiti (non il 100% di un gruppo da un oggetto solo)
-        items.sort(key=lambda x: (-_impact(kpi, x), -(x["den"]), x["label"]))
-        out["items"] = items[:TOP]
-        out["others"] = max(0, len(items) - TOP)
+        # ordine: per impatto (default), per valore (crescente o decrescente) o per nome del gruppo
+        order = c.get("sort") or "impact"
+        if order in ("value_desc", "value_asc"):
+            items.sort(key=lambda x: (x["value"] is None, -(x["value"] or 0) if order == "value_desc" else (x["value"] or 0), x["label"]))
+        elif order == "label":
+            items.sort(key=lambda x: x["label"])
+        else:
+            items.sort(key=lambda x: (-_impact(kpi, x), -(x["den"]), x["label"]))
+        top = max(3, min(30, int(number(c.get("top")) or TOP)))
+        out["items"] = items[:top]
+        out["others"] = max(0, len(items) - top)
         out["dimension"] = d
         return out
     # donut: composizione degli oggetti colpiti (o dell'importo) per categoria o per dimensione
@@ -1013,8 +1021,19 @@ def library_hints(process_name: str, process_type: str) -> list[dict]:
 
 # ---------- modifiche proposte dall'assistente ----------
 
-OPERATIONS = ("add_section", "update_section", "remove_section", "add_kpi", "update_kpi", "remove_kpi",
-              "add_chart", "update_chart", "remove_chart", "set_summary")
+OPERATIONS = ("add_section", "update_section", "remove_section", "move_section", "add_kpi", "update_kpi", "remove_kpi",
+              "move_kpi", "add_chart", "update_chart", "remove_chart", "move_chart", "set_summary", "update_layout")
+
+# impaginazione: cosa si puo' cambiare senza toccare i numeri (valori ammessi)
+LAYOUT = {
+    "summary_columns": (1, 2, 3),          # card delle domande per riga nella sintesi
+    "summary_trend": (True, False),        # andamento mensile sulle card della sintesi
+    "kpi_columns": (0, 1, 2, 3, 4),        # KPI per riga nel dettaglio (0 = automatico)
+    "chart_columns": (1, 2, 3),            # grafici per riga nel dettaglio
+    "show_why": (True, False),             # «perche' conta» sotto la domanda
+}
+CHART_LAYOUT = {"width": ("auto", "full"), "height": ("small", "medium", "large"),
+                "sort": ("impact", "value_desc", "value_asc", "label")}
 
 
 TEXT_FIELDS = {"name", "description", "question", "why", "missing", "reason", "title", "label", "notes"}
@@ -1030,11 +1049,13 @@ def _no_texts(v):
 
 def definitions_part(spec: dict | None) -> dict:
     """La parte che il Data Analyst approva: quali domande e quali KPI, come si calcolano, obiettivi. Non i testi
-    (correggere un nome o tradurlo non cambia i numeri), non i grafici ne' la scelta dei KPI della sintesi."""
+    (correggere un nome o tradurlo non cambia i numeri), non i grafici, non l'impaginazione (ordine, colonne) ne' la
+    scelta dei KPI della sintesi."""
     spec = spec or {}
-    return {"kpis": _no_texts(spec.get("kpis") or []),
-            "sections": [{"id": s.get("id"), "kpis": list(s.get("kpis") or [])}
-                         for s in spec.get("sections") or [] if isinstance(s, dict)]}
+    kpis = sorted(_no_texts(spec.get("kpis") or []), key=lambda k: str(k.get("id")))
+    return {"kpis": kpis,
+            "sections": sorted(({"id": s.get("id"), "kpis": sorted(str(x) for x in s.get("kpis") or [])}
+                                for s in spec.get("sections") or [] if isinstance(s, dict)), key=lambda x: str(x["id"]))}
 
 
 def _new_id(prefix: str, taken: set[str]) -> str:
@@ -1042,6 +1063,11 @@ def _new_id(prefix: str, taken: set[str]) -> str:
     while f"{prefix}{i}" in taken:
         i += 1
     return f"{prefix}{i}"
+
+
+def _pos(p, n: int) -> int:
+    """Posizione 0..n (0 = in testa); fuori dai limiti o assente: in fondo."""
+    return int(p) if isinstance(p, (int, float)) and 0 <= int(p) <= n else n
 
 
 def apply_operations(spec: dict, operations: list) -> tuple[dict, list[dict]]:
@@ -1154,6 +1180,43 @@ def apply_operations(spec: dict, operations: list) -> tuple[dict, list[dict]]:
                         c.pop(key, None)
                     else:
                         c[key] = remap.get(str(v), v) if key == "kpi" else v
+        elif t == "move_section":
+            s = sec(op.get("section_id"))
+            if s is None:
+                skipped.append(msg("La domanda «{s}» non c'è.", s=str(op.get("section_id"))))
+                continue
+            spec["sections"].remove(s)
+            spec["sections"].insert(_pos(op.get("position"), len(spec["sections"])), s)
+        elif t == "move_kpi":
+            kid = remap.get(str(op.get("kpi_id")), str(op.get("kpi_id")))
+            owner = next((x for x in spec["sections"] if kid in (x.get("kpis") or [])), None)
+            if owner is None:
+                skipped.append(msg("Il KPI «{k}» non c'è.", k=str(op.get("kpi_id"))))
+                continue
+            owner["kpis"].remove(kid)
+            owner["kpis"].insert(_pos(op.get("position"), len(owner["kpis"])), kid)
+        elif t == "move_chart":
+            owner = next((x for x in spec["sections"] for c in x.get("charts") or [] if c.get("id") == op.get("chart_id")), None)
+            if owner is None:
+                skipped.append(msg("Il grafico «{c}» non c'è.", c=str(op.get("chart_id"))))
+                continue
+            c = next(c for c in owner["charts"] if c.get("id") == op.get("chart_id"))
+            target = sec(op.get("section_id")) if op.get("section_id") else owner
+            if target is None:
+                skipped.append(msg("La domanda «{s}» non c'è.", s=str(op.get("section_id"))))
+                continue
+            owner["charts"].remove(c)
+            lst = target.setdefault("charts", [])
+            lst.insert(_pos(op.get("position"), len(lst)), c)
+        elif t == "update_layout":
+            lay = spec.setdefault("layout", {})
+            for key, v in changes.items():
+                if key in LAYOUT and v in LAYOUT[key]:
+                    lay[key] = v
+                elif key in LAYOUT and v is None:
+                    lay.pop(key, None)
+                else:
+                    skipped.append(msg("Impaginazione non riconosciuta: «{m}».", m=f"{key}={v}"))
         elif t == "set_summary":
             ids = [remap.get(str(x), str(x)) for x in op.get("kpi_ids") or []]
             mine = set(s.get("kpis") or [])

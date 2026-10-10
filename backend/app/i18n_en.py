@@ -1491,4 +1491,10 @@ EN: dict[str, str] = {
     "Fine del periodo": "End of the period",
     "Inizio del periodo": "Start of the period",
     "Tutto il periodo": "Whole period",
+    # Control Tower: impaginazione
+    "Impaginazione non riconosciuta: «{m}».": "Unrecognised layout setting: “{m}”.",
+    "Domanda spostata: «{x}»": "Question moved: “{x}”",
+    "KPI spostato: «{x}»": "KPI moved: “{x}”",
+    "Grafico spostato: «{x}»": "Chart moved: “{x}”",
+    "Impaginazione della pagina": "Page layout",
 }

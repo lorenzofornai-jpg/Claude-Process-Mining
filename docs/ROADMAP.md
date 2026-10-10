@@ -190,6 +190,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   tipi di oggetto per le frasi («394 di 485 fatture» / «invoices»); i testi in una lingua sola (definizioni già
   salvate, correzioni a mano) si completano con «Traduci» (costo mostrato prima). Tradurre o correggere i testi non
   toglie l'approvazione.
+- ✅ L'assistente gestisce anche l'impaginazione: ordine di domande, KPI e grafici (anche da una domanda all'altra),
+  colonne della sintesi, dei KPI e dei grafici, larghezza e altezza dei grafici, quanti gruppi e in che ordine nelle
+  barre e tabelle, andamento sulle card e «perché conta» visibili o no. Non tocca colori e stile dell'app.
+  L'impaginazione non chiede una nuova approvazione.
 - Da fare: esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 

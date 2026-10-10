@@ -136,7 +136,9 @@
     opRemoveKpi: {{ _("KPI tolto: «{x}»")|tojson }},
     opAddChart: {{ _("Nuovo grafico: «{x}»")|tojson }}, opUpdateChart: {{ _("Grafico modificato: «{x}»")|tojson }},
     opRemoveChart: {{ _("Grafico tolto: «{x}»")|tojson }},
-    opSummary: {{ _("KPI della sintesi per «{x}»")|tojson }}
+    opSummary: {{ _("KPI della sintesi per «{x}»")|tojson }},
+    opMoveSection: {{ _("Domanda spostata: «{x}»")|tojson }}, opMoveKpi: {{ _("KPI spostato: «{x}»")|tojson }},
+    opMoveChart: {{ _("Grafico spostato: «{x}»")|tojson }}, opLayout: {{ _("Impaginazione della pagina")|tojson }}
   };
   var COLORS = ["#3b63e0", "#e08a3b", "#2fa36b", "#c2457a", "#7a5be0", "#2a9fb8", "#a6720a", "#68707e"];
 
@@ -450,8 +452,12 @@
   }
 
   // primo livello: una card per domanda di business, cliccabile
+  // impaginazione scelta (spec.layout), con i valori di base
+  function lay(key, def) { var l = (spec && spec.layout) || {}; return l[key] === undefined || l[key] === null ? def : l[key]; }
+  function chartLayout(id) { return findChart(id) || {}; }
+
   function summaryView() {
-    var grid = el("div", "ct-qcards");
+    var grid = el("div", "ct-qcards ct-cols-" + lay("summary_columns", 2));
     spec.sections.forEach(function (s, i) {
       var card = el("a", "ct-qcard"); card.href = "#q=" + encodeURIComponent(s.id);
       var head = el("div", "ct-section-head");
@@ -464,7 +470,7 @@
         ks.forEach(function (k) { g.appendChild(kpiCard(k, true)); });
         card.appendChild(g);
       } else card.appendChild(el("p", "tiny muted", T.noKpis));
-      var spark = sparkFor(s);
+      var spark = lay("summary_trend", true) ? sparkFor(s) : null;
       if (spark) { var sp = el("div", "ct-spark"); sp.dataset.spark = spark.id; card.appendChild(sp); }
       if (tx(s.missing)) { var m = el("p", "tiny ct-qmissing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(tx(s.missing))); card.appendChild(m); }
       card.appendChild(el("span", "ct-qmore", T.openDetail + " →"));
@@ -519,21 +525,25 @@
     var sec = el("section", "ct-section ct-section-open");
     var head = el("div", "ct-section-head");
     head.appendChild(el("span", "ct-section-n", String(idx + 1)));
-    var ht = el("div"); ht.appendChild(el("h2", "ct-h ct-h-big", tx(s.question))); if (tx(s.why)) ht.appendChild(el("p", "tiny muted ct-why", tx(s.why)));
+    var ht = el("div"); ht.appendChild(el("h2", "ct-h ct-h-big", tx(s.question))); if (tx(s.why) && lay("show_why", true)) ht.appendChild(el("p", "tiny muted ct-why", tx(s.why)));
     head.appendChild(ht); sec.appendChild(head);
     if (tx(s.missing)) {
       var m = el("div", "ct-missing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(tx(s.missing))); sec.appendChild(m);
     }
     if (s.kpis.length) {
-      var g2 = el("div", "ct-kpis");
+      var kc = lay("kpi_columns", 0);
+      var g2 = el("div", "ct-kpis" + (kc ? " ct-kcols-" + kc : ""));
       s.kpis.forEach(function (id) { var k = kpiById(id); if (k) g2.appendChild(kpiCard(k, false)); });
       sec.appendChild(g2);
     }
     var vs = (data.values.sections.filter(function (x) { return x.id === s.id; })[0] || { charts: [] }).charts;
     if (vs.length) {
-      var cg = el("div", "ct-charts");
+      var cg = el("div", "ct-charts ct-cols-" + lay("chart_columns", 2));
       vs.forEach(function (c) {
-        var box = el("figure", "ct-chart ct-chart-" + c.kind);
+        var cl = chartLayout(c.id);
+        // a tutta larghezza se scelto; l'andamento mensile lo e' di base
+        var full = cl.width === "full" || (c.kind === "trend" && cl.width !== "auto");
+        var box = el("figure", "ct-chart ct-chart-" + c.kind + (full ? " ct-chart-full" : ""));
         var k = kpiById(c.kpi);
         var capt = el("figcaption"); capt.appendChild(el("span", "ct-chart-title", tx(c.title) || (k ? tx(k.name) : "")));
         var dl = dimLabel(c, k); if (dl) capt.appendChild(el("span", "tiny muted", " · " + dl));
@@ -632,7 +642,8 @@
   function trend(area, c, k, cur) {
     var pts = c.points || [];
     if (!pts.some(function (p) { return p.den; })) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
-    var W = Math.max(area.clientWidth || 600, pts.length * 46), H = 220, L = 54, R = 14, TOP = 14, B = 30;
+    var H = { small: 160, medium: 220, large: 320 }[chartLayout(c.id).height] || 220;
+    var W = Math.max(area.clientWidth || 600, pts.length * 46), L = 54, R = 14, TOP = 14, B = 30;
     var vals = pts.map(function (p) { return p.value; }).filter(function (x) { return x !== null && x !== undefined; });
     var target = c.target;
     var hi = Math.max.apply(null, vals.concat(target !== null && target !== undefined ? [target] : []));
@@ -721,7 +732,7 @@
     var total = items.reduce(function (a, x) { return a + x.value; }, 0);
     if (!total) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var box = el("div", "ct-donut");
-    var S = 168, R = 70, r = 44, cx = S / 2, cy = S / 2;
+    var S = { small: 130, medium: 168, large: 220 }[chartLayout(c.id).height] || 168, R = S * 0.42, r = S * 0.26, cx = S / 2, cy = S / 2;
     var svg = svgEl("svg", { width: S, height: S, viewBox: "0 0 " + S + " " + S, role: "img", "aria-label": tx(c.title) || tx(k.name) });
     var a0 = -Math.PI / 2;
     items.forEach(function (x, i) {
@@ -844,6 +855,10 @@
       case "update_chart": return fmt(T.opUpdateChart, { x: tx(ch.title) || (c && tx(c.title)) || o.chart_id });
       case "remove_chart": return fmt(T.opRemoveChart, { x: (c && tx(c.title)) || o.chart_id });
       case "set_summary": return fmt(T.opSummary, { x: (s && tx(s.question)) || o.section_id });
+      case "move_section": return fmt(T.opMoveSection, { x: (s && tx(s.question)) || o.section_id });
+      case "move_kpi": return fmt(T.opMoveKpi, { x: (k && tx(k.name)) || o.kpi_id });
+      case "move_chart": return fmt(T.opMoveChart, { x: (c && tx(c.title)) || o.chart_id });
+      case "update_layout": return T.opLayout;
     }
     return o.type;
   }

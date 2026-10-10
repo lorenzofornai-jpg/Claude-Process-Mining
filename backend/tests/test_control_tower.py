@@ -257,3 +257,25 @@ def test_period_as_month_range():
     r = ct.compute(_spec(), m, "2025-01..2027-01")      # fuori dai dati: si restringe ai mesi del dataset
     assert r["months"] == ["2026-01", "2026-02", "2026-03"]
     assert ct.compute(_spec(), m, "bad")["months"] is None   # valore non valido: tutto
+
+
+def test_layout_operations_do_not_need_approval():
+    """Impaginazione con l'assistente: ordine di domande, KPI e grafici, colonne, larghezze; valori non ammessi
+    scartati; nessuna nuova approvazione. Barre: quanti gruppi e in che ordine."""
+    spec, _ = ct.validate(_spec(), ExplorerModel(_ocel()))
+    spec["sections"].append({"id": "s2", "question": "Q2", "kpis": ["k3", "k4"], "charts": []})
+    ops = [{"type": "move_section", "section_id": "s2", "position": 0},
+           {"type": "move_kpi", "kpi_id": "k5", "position": 0},
+           {"type": "move_chart", "chart_id": "s1c3", "position": 0},
+           {"type": "move_chart", "chart_id": "s1c1", "section_id": "s2"},
+           {"type": "update_layout", "changes": {"chart_columns": 1, "summary_trend": False, "colors": "red"}},
+           {"type": "update_chart", "chart_id": "s1c3", "changes": {"width": "full", "top": 1, "sort": "label"}}]
+    new, skipped = ct.apply_operations(spec, ops)
+    assert [s["id"] for s in new["sections"]] == ["s2", "s1"]
+    assert new["sections"][1]["kpis"] == ["k5", "k1", "k2"]
+    assert [c["id"] for c in new["sections"][1]["charts"]] == ["s1c3", "s1c2", "s1c4"]
+    assert [c["id"] for c in new["sections"][0]["charts"]] == ["s1c1"]
+    assert new["layout"] == {"chart_columns": 1, "summary_trend": False} and len(skipped) == 1
+    assert ct.definitions_part(new) == ct.definitions_part(spec)
+    bars = next(c for s in ct.compute(new, ExplorerModel(_ocel()), "all")["sections"] for c in s["charts"] if c["id"] == "s1c3")
+    assert [x["label"] for x in bars["items"]] == ["Acme", "Beta"]   # almeno 3 gruppi chiesti: ce ne sono 2
