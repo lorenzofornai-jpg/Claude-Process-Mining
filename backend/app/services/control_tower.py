@@ -731,7 +731,7 @@ def compute(spec: dict, model, period: str = "12") -> dict:
 
 # ---------- proposta con Claude ----------
 
-MAX_OUTPUT_TOKENS = 12000
+MAX_OUTPUT_TOKENS = 16000   # anche il ragionamento del modello consuma token di output
 TYPICAL_OUTPUT_TOKENS = 5000
 
 SYSTEM_PROMPT = """\
@@ -799,6 +799,7 @@ Regole:
 - Se il dataset non permette di rispondere a una domanda, dillo in missing e non forzare KPI senza senso.
 - Testi (question, why, name, description, title, label, reason, missing, notes) nella lingua "language"
   (it = italiano, en = inglese), chiari per un dirigente, senza gergo tecnico del sistema sorgente.
+- Rispondi SOLO chiamando una volta lo strumento control_tower con le definizioni complete, senza altro testo.
 - Se ricevi "current_spec" e "instruction", modifica le definizioni attuali secondo l'istruzione e restituiscile
   complete (tieni gli id dei KPI che non cambi).
 """
@@ -879,24 +880,65 @@ def estimate(payload: str) -> dict:
     return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": _model_name()}
 
 
+class ProposalError(RuntimeError):
+    """La proposta non e' arrivata: reason e' un messaggio da tradurre (mostrato al Data Analyst)."""
+
+    def __init__(self, reason: dict, detail: str = ""):
+        super().__init__(detail or reason.get("m", ""))
+        self.reason, self.detail = reason, detail
+
+
+def _spec_from_text(text: str) -> dict | None:
+    """Definizioni scritte come JSON nel testo (se Claude non ha usato lo strumento)."""
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        out = json.loads(text[start:end + 1])
+    except ValueError:
+        return None
+    return out if isinstance(out, dict) and out.get("kpis") else None
+
+
 def propose(payload: str) -> dict:
-    """Chiama Claude. Ritorna {"spec", "cost_usd"}; solleva eccezione se la chiamata non riesce."""
+    """Chiama Claude. Ritorna {"spec", "cost_usd"}; solleva ProposalError se la proposta non arriva.
+
+    Lo strumento non e' imposto (tool_choice forzato non e' compatibile con il ragionamento del modello): il
+    prompt chiede di chiamarlo e, se Claude scrive il JSON nel testo, lo si legge da li'. Streaming: la risposta e'
+    lunga e una richiesta normale potrebbe scadere."""
     import anthropic
 
     client = anthropic.Anthropic()
     request = dict(model=_model_name(), max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT, tools=[TOOL],
-                   tool_choice={"type": "tool", "name": TOOL["name"]},
                    messages=[{"role": "user", "content": payload}])
+
+    def call(**extra):
+        with client.messages.stream(**request, **extra) as stream:
+            return stream.get_final_message()
     try:
-        response = client.messages.create(**request, output_config={"effort": "medium"})
-    except (TypeError, anthropic.BadRequestError):
-        response = client.messages.create(**request)
+        try:
+            response = call(output_config={"effort": "medium"})
+        except (TypeError, anthropic.BadRequestError):
+            response = call()
+    except anthropic.APIStatusError as exc:
+        print(f"Control Tower: errore dell'API ({exc.status_code}): {exc}")
+        raise ProposalError(msg("Claude ha risposto con un errore ({c}): {d}", c=exc.status_code, d=str(exc)[:300]), str(exc))
+    except anthropic.APIConnectionError as exc:
+        print(f"Control Tower: Claude non raggiungibile ({exc!r})")
+        raise ProposalError(msg("Claude non è raggiungibile dal server: controlla la connessione e riprova."), repr(exc))
     price_in, price_out = _price()
     u = response.usage
     cost = ((u.input_tokens or 0) * price_in + (u.output_tokens or 0) * price_out) / 1_000_000
+    print(f"Control Tower: stop_reason={response.stop_reason}, token in/out={u.input_tokens}/{u.output_tokens}, "
+          f"costo $ {cost:.3f}")
     spec = next((b.input for b in response.content if getattr(b, "type", "") == "tool_use"), None)
+    if not isinstance(spec, dict) or not spec.get("kpis"):
+        text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
+        spec = _spec_from_text(text)
     if not isinstance(spec, dict):
-        raise RuntimeError("no control_tower tool call")
+        if response.stop_reason == "max_tokens":
+            raise ProposalError(msg("La risposta di Claude è stata interrotta perché troppo lunga: riprova."), "max_tokens")
+        raise ProposalError(msg("Claude non ha restituito le definizioni dei KPI: riprova."), str(response.stop_reason))
     return {"spec": normalize(spec), "cost_usd": round(cost, 4)}
 
 

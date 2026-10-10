@@ -128,3 +128,61 @@ def test_validate_drops_unknown_references_and_keeps_shape():
 def test_numbers_and_dates():
     assert ct.number("48.098,24") == 48098.24 and ct.number("1,234.50") == 1234.5 and ct.number("abc") is None
     assert ct.date_value("20260518") == ct.date_value("2026-05-18") == ct.date_value("18.05.2026")
+
+
+def test_propose_reads_tool_or_text_and_reports_errors(monkeypatch):
+    """La proposta: dallo strumento o dal JSON nel testo; risposta troncata o errore dell'API con un motivo."""
+    import types
+
+    import anthropic
+    from app.i18n import render
+
+    def block(**kw):
+        return types.SimpleNamespace(**kw)
+
+    def fake_client(content, stop="end_turn", error=None, calls=None):
+        usage = block(input_tokens=1000, output_tokens=500)
+
+        class Stream:
+            def __init__(self, kw):
+                (calls if calls is not None else []).append(kw)
+
+            def __enter__(self):
+                if error:
+                    raise error
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def get_final_message(self):
+                return block(content=content, stop_reason=stop, usage=usage)
+
+        class Client:
+            messages = block(stream=lambda **kw: Stream(kw))
+        return lambda *a, **k: Client()
+
+    spec = {"kpis": [{"name": "A", "object_type": "Fattura", "measure": "count"}], "sections": [{"question": "Q", "kpis": [], "charts": []}],
+            "headline": []}
+    calls = []
+    monkeypatch.setattr(anthropic, "Anthropic", fake_client([block(type="tool_use", input=spec)], calls=calls))
+    out = ct.propose("{}")
+    assert out["spec"]["kpis"][0]["id"] == "k1" and out["spec"]["sections"][0]["id"] == "s1"
+    assert "tool_choice" not in calls[0]    # strumento non imposto: incompatibile con il ragionamento
+    import json as _json
+    monkeypatch.setattr(anthropic, "Anthropic", fake_client([block(type="text", text="Ecco:\n" + _json.dumps(spec))]))
+    assert ct.propose("{}")["spec"]["kpis"][0]["name"] == "A"
+    monkeypatch.setattr(anthropic, "Anthropic", fake_client([block(type="text", text="...")], stop="max_tokens"))
+    try:
+        ct.propose("{}")
+        raise AssertionError("doveva fallire")
+    except ct.ProposalError as exc:
+        assert "troppo lunga" in render("it", exc.reason)
+    import httpx
+    err = anthropic.APIStatusError("bad", response=httpx.Response(400, request=httpx.Request("POST", "https://x")), body=None)
+    monkeypatch.setattr(anthropic, "Anthropic", fake_client([], error=err))
+    try:
+        ct.propose("{}")
+        raise AssertionError("doveva fallire")
+    except ct.ProposalError as exc:
+        assert "400" in render("en", exc.reason)

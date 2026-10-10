@@ -1288,7 +1288,7 @@ EN: dict[str, str] = {
     "Barre per gruppo": "Bars by group",
     "Chiudi le definizioni": "Close the definitions",
     "Claude riparte dalle domande di business e dai dati e sostituisce tutte le definizioni.": "Claude starts again from the business questions and the data and replaces all the definitions.",
-    "Claude sta preparando le definizioni: può richiedere un minuto…": "Claude is preparing the definitions: it may take a minute…",
+    "Claude sta preparando le definizioni: può richiedere un paio di minuti…": "Claude is preparing the definitions: it may take a couple of minutes…",
     "Colpiti": "Affected",
     "Come si calcola": "How it is calculated",
     "Composizione (ciambella)": "Breakdown (donut)",
@@ -1432,4 +1432,9 @@ EN: dict[str, str] = {
     "{n} pp": "{n} pp",
     "è uno di": "is one of",
     "è vuoto": "is empty",
+    # Control Tower: errori della proposta
+    "Claude ha risposto con un errore ({c}): {d}": "Claude responded with an error ({c}): {d}",
+    "Claude non ha restituito le definizioni dei KPI: riprova.": "Claude did not return the KPI definitions: try again.",
+    "Claude non è raggiungibile dal server: controlla la connessione e riprova.": "Claude cannot be reached from the server: check the connection and try again.",
+    "La risposta di Claude è stata interrotta perché troppo lunga: riprova.": "Claude's response was cut off because it was too long: try again.",
 }

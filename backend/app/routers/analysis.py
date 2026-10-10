@@ -575,10 +575,13 @@ async def control_tower_propose(request: Request):
         return JSONResponse({"available": True, **est})
     try:
         result = await run_in_threadpool(control_tower.propose, payload)
+    except control_tower.ProposalError as exc:
+        # il motivo si vede nella pagina: dall'iPad il terminale del server non e' a portata di mano
+        return JSONResponse({"available": True, "error": render(lang, exc.reason)}, status_code=502)
     except Exception as exc:
         print(f"Control Tower: proposta non riuscita ({exc!r}).")
-        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")},
-                            status_code=502)
+        return JSONResponse({"available": True, "error": t(lang, "La richiesta a Claude non è riuscita: riprova tra poco.")
+                             + f" ({type(exc).__name__}: {str(exc)[:200]})"}, status_code=502)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     db = SessionLocal()
     try:
