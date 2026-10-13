@@ -76,6 +76,18 @@ def catalog(ocel: dict) -> list[dict]:
 
 
 CASE_KINDS = ("start_month", "duration")
+# selezioni sui grafici della Control Tower: si risolvono in oggetti («ids») con il modello del dataset
+# (explorer.load_model), con la stessa logica dei grafici (control_tower.dimension_values / holds)
+MODEL_KINDS = ("dimension", "condition")
+DIMENSION_KEYS = ("source", "attribute", "object_type", "attributes", "activities", "related")
+MAX_IDS = 200000
+
+
+def _small_json(v, limit: int = 20000) -> bool:
+    try:
+        return len(json.dumps(v, ensure_ascii=False)) <= limit
+    except (TypeError, ValueError):
+        return False
 
 
 def clean(filters) -> list[dict]:
@@ -104,6 +116,28 @@ def clean(filters) -> list[dict]:
                 out.append({"kind": kind, "type": str(f["type"]),
                             "scope": "related" if f.get("scope") == "related" else "object",
                             "ranges": sorted(ranges, key=lambda r: r[0])[:50]})
+            continue
+        if kind == "dimension":
+            d = f.get("dimension")
+            if f.get("type") and isinstance(d, dict) and d.get("source") and _small_json(d):
+                values = sorted({str(v) for v in f.get("values") or []})[:500]
+                if values:
+                    out.append({"kind": kind, "type": str(f["type"]),
+                                "dimension": {k: d[k] for k in DIMENSION_KEYS if k in d},
+                                "values": values, "key": str(f.get("key") or "")[:300],
+                                "title": str(f.get("title") or "")[:200]})
+            continue
+        if kind == "condition":
+            c = f.get("condition")
+            if f.get("type") and isinstance(c, dict) and c.get("op") and _small_json(c):
+                label = f.get("label")
+                out.append({"kind": kind, "type": str(f["type"]), "condition": c, "key": str(f.get("key") or "")[:300],
+                            "label": label if isinstance(label, (str, dict)) else "", "picked": [
+                                int(x) for x in (f.get("picked") or []) if isinstance(x, (int, float))][:100]})
+            continue
+        if kind == "ids":   # solo interno (risolto da explorer.load_model)
+            ids = [str(x) for x in f.get("ids") or []][:MAX_IDS]
+            out.append({"kind": kind, "type": str(f.get("type") or ""), "ids": sorted(set(ids))})
             continue
         kind = "event" if kind == "event" else "object"
         values = sorted({str(v) for v in f.get("values") or [] if str(v) != ""})[:200]
@@ -164,6 +198,11 @@ def apply(ocel: dict, filters: list[dict], hubs: set[str] | None = None) -> dict
         type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
         if f["kind"] in CASE_KINDS:
             seeds = _case_seeds(ocel, f, type_of, hubs)
+        elif f["kind"] == "ids":
+            wanted = set(f["ids"])
+            seeds = {i for i, t in type_of.items() if t == f["type"] and i in wanted}
+        elif f["kind"] in MODEL_KINDS:
+            continue   # va risolto prima con il modello (explorer.load_model)
         elif f["kind"] == "object":
             values = set(f["values"])
             seeds = {o["id"] for o in ocel.get("objects", [])

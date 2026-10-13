@@ -218,8 +218,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   sull'istogramma dei tempi; il grafico da cui parte la selezione mostra tutti i valori (scelti in evidenza).
   Explorer e Control Tower ricalcolano sui casi filtrati (nella Control Tower i dati mancanti si controllano sul
   dataset intero).
-- ⬜ Fase 2: tutti i grafici della Control Tower selezionabili (fette, barre, paesi, celle...) e cursore del periodo
-  unito ai filtri.
+- ✅ Fase 2: grafici della Control Tower selezionabili. Per gruppo (barre, colonne, tabella, Pareto, bolle, treemap,
+  mappa, fette per dimensione, righe della mappa di calore, linee per gruppo, segmenti delle colonne in pila): filtro
+  «valore di una dimensione»; per categoria (fette con categorie, passi dell'imbuto, classi dell'istogramma): filtro
+  «condizione», con la stessa logica dei grafici (`explorer.resolve`). Andamenti (punti e colonne dei mesi), intestazioni
+  dei mesi e cursore del periodo: filtro «mese di inizio» sugli oggetti dei KPI, che nella Control Tower diventa il
+  periodo (confronto con i mesi precedenti se consecutivi). Il grafico da cui parte una selezione (e quelli con la
+  stessa dimensione) mostra tutti i valori; gli andamenti mostrano tutti i mesi con il periodo in evidenza.
 - ⬜ Fase 3: assistenti che conoscono i filtri, «+ Filtro» per attributi che non sono in nessun grafico, viste salvate.
 
 ## Amministrazione > LLM (13 ottobre 2026)

@@ -723,8 +723,10 @@ def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
         out["issues"] = c["issues"]
         return out
     if kind in TREND_KINDS:
+        # tutti i mesi, con quelli del periodo scelto in evidenza (si selezionano anche toccando il grafico)
         starts = [r[1] for r in rows if r[1]]
-        span = months or (_months(min(starts), max(starts)) if starts else [])
+        span = _months(min(starts + (months or [])), max(starts + (months or []))) if starts or months else []
+        out["selected_months"] = months
         by = defaultdict(list)
         for r in rows:
             if r[1]:
@@ -917,16 +919,51 @@ def currency(ctx: _Ctx, kpi: dict) -> str | None:
     return c.most_common(1)[0][0] if c else None
 
 
+def month_list(period) -> list[str] | None:
+    """«list:2026-01,2026-03» -> ["2026-01", "2026-03"] (mesi scelti uno per uno); None altrimenti."""
+    if not isinstance(period, str) or not period.startswith("list:"):
+        return None
+    out = sorted({m for m in period[5:].split(",") if re.fullmatch(r"\d{4}-\d{2}", m)})
+    return out or None
+
+
+def period_from_months(months: list[str]) -> str:
+    """Mesi scelti (filtro «mese di inizio») -> periodo: intervallo se consecutivi (con confronto), elenco altrimenti."""
+    months = sorted(set(months))
+    if not months:
+        return "all"
+    if _months(months[0], months[-1]) == months:
+        return f"{months[0]}..{months[-1]}"
+    return "list:" + ",".join(months)
+
+
+def own_key(kpi: dict, c: dict) -> str:
+    """Chiave del filtro che parte da questo grafico: lo stesso valore lo calcola il browser (static/filters.js) per
+    riconoscere le selezioni del grafico. Per dimensione (stessa dimensione = stessa selezione in piu' grafici) o per
+    grafico (categorie della composizione, passi dell'imbuto, classi dell'istogramma)."""
+    from app.services.ocel_filter import DIMENSION_KEYS
+    d = c.get("dimension")
+    by_dim = isinstance(d, dict) and (c.get("kind") in GROUP_KINDS + MATRIX_KINDS
+                                      or (c.get("kind") in COMPOSITION_KINDS and not c.get("categories")))
+    if by_dim:
+        dim = {k: d[k] for k in DIMENSION_KEYS if k in d}
+        return "dim:" + str(kpi.get("object_type")) + ":" + json.dumps(dim, sort_keys=True, separators=(",", ":"),
+                                                                       ensure_ascii=False)
+    return "chart:" + str(c.get("id"))
+
+
 def compute(spec: dict, model, period: str = "12", full=None) -> dict:
     """Valori dei KPI e dati dei grafici per il periodo scelto. full: il dataset intero quando `model` e' ridotto dai
     filtri sui casi: i dati mancanti si controllano su quello (un filtro che toglie un'attivita' non e' un dato
     mancante), i valori si calcolano sui casi filtrati."""
     spec, issues = validate(spec, full or model)
     ctx = context(model)
-    period = period if period in PERIODS or parse_range(period) else "all"
+    picked = month_list(period)
+    period = period if period in PERIODS or parse_range(period) or picked else "all"
     types = {k.get("object_type") for k in spec["kpis"] if k.get("object_type")}
     last, first = ctx.last_start(types), ctx.first_start(types)
-    cur, prev = period_months(ctx, period, last, first)
+    # mesi non consecutivi scelti sui grafici: solo quei mesi, senza confronto
+    cur, prev = (picked, None) if picked else period_months(ctx, period, last, first)
     kpis = {}
     for k in spec["kpis"]:
         if k["id"] in issues:

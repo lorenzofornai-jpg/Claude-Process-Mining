@@ -545,12 +545,35 @@ def control_tower_page(request: Request, workspace_id: str, config_id: str | Non
 
 
 def _tower_payload(request: Request, model, spec: dict | None, row, period: str, lang: str, lead: str | None,
-                   filtered=None) -> dict:
-    """model: il dataset intero (catalogo e dati mancanti); filtered: i casi dei filtri condivisi, se ce ne sono."""
+                   path=None, sel: list[dict] | None = None) -> dict:
+    """model: il dataset intero (catalogo e dati mancanti); sel: i filtri condivisi sui casi. I filtri sul mese di
+    inizio degli oggetti dei KPI diventano il periodo (con il confronto con i mesi precedenti); gli altri riducono i
+    casi. Un grafico da cui parte una selezione si calcola senza la sua selezione (mostra tutti i valori)."""
     out = {"info": _tower_info(row, lang), "catalog": control_tower.catalog(model, lead), "spec": None}
     if spec:
         clean, issues = control_tower.validate(spec, model)
-        values = control_tower.compute(clean, filtered or model, period, full=model)
+        sel = sel or []
+        kpi_types = {k.get("object_type") for k in clean["kpis"]}
+        month_f = [f for f in sel if f["kind"] == "start_month" and f["type"] in kpi_types]
+        case_f = [f for f in sel if f not in month_f]
+        if month_f:
+            period = control_tower.period_from_months([m for f in month_f for m in f["values"]])
+        filtered = explorer.load_model(path, case_f) if case_f else model
+        values = control_tower.compute(clean, filtered, period, full=model)
+        if case_f:
+            kpis = {k["id"]: k for k in clean["kpis"]}
+            for s_out, s_spec in zip(values["sections"], clean["sections"]):
+                for i, (c_out, c_spec) in enumerate(zip(s_out["charts"], s_spec["charts"])):
+                    k = kpis.get(c_spec["kpi"])
+                    if k is None or c_out.get("issues"):
+                        continue
+                    key = control_tower.own_key(k, c_spec)
+                    own = [f for f in case_f if f.get("key") == key]
+                    if own:
+                        rest = [f for f in case_f if f not in own]
+                        m2 = explorer.load_model(path, rest) if rest else model
+                        s_out["charts"][i] = control_tower.chart(control_tower.context(m2), k, c_spec, values["months"])
+        values["case_filtered"] = bool(case_f)
         # problemi (dati mancanti) gia' tradotti
         for k in values["kpis"].values():
             if k.get("issues"):
@@ -581,7 +604,6 @@ async def control_tower_data(request: Request):
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
     model = explorer.load_model(run.ocel_file_path)
     sel = _filters(body.get("filters"))
-    filtered = explorer.load_model(run.ocel_file_path, sel) if sel else None
     answers, _ = load_assessment(workspace_id)
     lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
     db = SessionLocal()
@@ -591,7 +613,8 @@ async def control_tower_data(request: Request):
         db.close()
     spec = body.get("spec") if isinstance(body.get("spec"), dict) else (row.spec if row else None)
     period = str(body.get("period") or "all")
-    return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead, filtered))
+    return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead,
+                                                run.ocel_file_path, sel))
 
 
 @router.post("/analysis/control-tower/propose")

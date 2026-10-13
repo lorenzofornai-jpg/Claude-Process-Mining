@@ -1179,3 +1179,14 @@ ul.tight { margin: 6px 0 0; padding-left: 18px; }
 .pm-has-sel .ov-bar-col.pm-on .ov-bar-label { color: var(--text); font-weight: 650; }
 .ov-bar-col.pm-brush .ov-bar { opacity: 1 !important; outline: 2px solid var(--brand); outline-offset: 1px; }
 .pm-hint { margin-top: -4px; }
+/* selezioni sui grafici della Control Tower */
+.pm-pick { cursor: pointer; }
+.pm-pick:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pm-sel-off { opacity: .25; }
+svg .pm-sel-on { stroke: var(--text); stroke-width: 2; }
+.ct-hbar.pm-sel-on .ct-hbar-label, .ct-legend li.pm-sel-on .ct-legend-label, tr.pm-sel-on td:first-child,
+.ct-heat th.pm-sel-on, .ct-funnel-step.pm-sel-on .ct-funnel-label { font-weight: 700; color: var(--text); }
+tr.pm-pick:hover td { background: var(--card-bg-soft); }
+svg .pm-brush { opacity: 1 !important; stroke: var(--text); stroke-width: 2; }
+.ct-hbar.pm-brush { background: var(--card-bg-soft); border-radius: 6px; }
+.ct-sel-band { fill: color-mix(in srgb, var(--brand) 10%, transparent); }

@@ -211,6 +211,30 @@ class ExplorerModel:
         return sorted({act for _, seq in self.sequences_by_type.get(t, []) for _, act, idx in seq if idx in own})
 
 
+def resolve(base: "ExplorerModel", filters: list[dict]) -> list[dict]:
+    """Le selezioni sui grafici della Control Tower (valore di una dimensione, condizione) diventano gli oggetti che le
+    soddisfano, calcolati sul dataset intero con la stessa logica dei grafici."""
+    from app.services import control_tower
+    out = []
+    for f in filters:
+        if f["kind"] not in ("dimension", "condition"):
+            out.append(f)
+            continue
+        ctx = control_tower.context(base)
+        values = set(f.get("values") or [])
+        ids = []
+        for oid, ty in base.type_of.items():
+            if ty != f["type"]:
+                continue
+            if f["kind"] == "dimension":
+                if values.intersection(control_tower.dimension_values(ctx, oid, f["dimension"])):
+                    ids.append(oid)
+            elif control_tower.holds(ctx, oid, f["condition"]):
+                ids.append(oid)
+        out.append({"kind": "ids", "type": f["type"], "ids": ids})
+    return out
+
+
 def load_model(path: str | Path, filters: list[dict] | None = None) -> ExplorerModel:
     """Modello del dataset, eventualmente filtrato per attributo (ocel_filter): in cache per file e filtri."""
     from app.services import ocel_filter
@@ -222,7 +246,8 @@ def load_model(path: str | Path, filters: list[dict] | None = None) -> ExplorerM
         model = _CACHE.get(key)
         if model is None:
             hubs = {t for t in base.types if base.is_hub(t)}
-            model = ExplorerModel(ocel_filter.apply(ocel_filter.load_raw(path), filters, hubs), base.colors, hubs)
+            model = ExplorerModel(ocel_filter.apply(ocel_filter.load_raw(path), resolve(base, filters), hubs),
+                                  base.colors, hubs)
             if len(_CACHE) >= _CACHE_MAX:
                 _CACHE.pop(next(iter(_CACHE)))
             _CACHE[key] = model

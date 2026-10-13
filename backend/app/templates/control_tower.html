@@ -118,6 +118,8 @@
     lightRed: {{ _("Lontano dall'obiettivo")|tojson }},
     tolerance: {{ _("Giallo se manca l'obiettivo di non più di {t}")|tojson }},
     low: {{ _("basso")|tojson }}, high: {{ _("alto")|tojson }},
+    chipActivity: {{ _("attività")|tojson }},
+    selectHint: {{ _("Tocca barre, colonne, fette, punti, bolle o paesi per filtrare i casi (trascina sulle colonne per un intervallo): il filtro vale in tutte le analisi del dataset.")|tojson }},
     // definizioni
     edTitle: {{ _("Definizioni dei KPI")|tojson }},
     edIntro: {{ _("Le domande di business e i KPI con cui si misurano, con come si calcolano. Qui puoi correggere i testi, togliere domande e KPI e scegliere quali KPI vanno nella sintesi. Per cambiare come si calcola un KPI o aggiungere domande e KPI chiedilo all'LLM.")|tojson }},
@@ -166,7 +168,7 @@
   // periodo: «AAAA-MM..AAAA-MM» scelto con il cursore, oppure «all» (tutti i mesi del dataset)
   var PERIOD_KEY = "pm-ct-period-" + CONFIG;
   var data = null, spec = null, editing = false, dirty = false, previewing = false, period = "all", assistant = null;
-  try { period = localStorage.getItem(PERIOD_KEY) || "all"; } catch (e) {}
+  // il periodo arriva dai filtri condivisi (mese di inizio degli oggetti dei KPI): vedi setMonths
 
   // ---------- utilita' ----------
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
@@ -272,7 +274,7 @@
     var same = months.join() === MONTHS.join();
     MONTHS = months;
     rFrom.max = rTo.max = String(MONTHS.length - 1);
-    if (!same || !rFrom.dataset.ready) {
+    if (true) {   // la posizione segue sempre i filtri (anche tolti dalla barra dei filtri o da un'altra analisi)
       var a = 0, b = MONTHS.length - 1;
       if (v.months && v.months.length) { a = Math.max(0, MONTHS.indexOf(v.months[0])); b = MONTHS.indexOf(v.months[v.months.length - 1]); if (b < 0) b = MONTHS.length - 1; }
       rFrom.value = String(a); rTo.value = String(b); rFrom.dataset.ready = "1";
@@ -294,11 +296,10 @@
     rFrom.style.zIndex = which === rFrom ? 3 : 2; rTo.style.zIndex = which === rTo ? 3 : 2;
     paintRange();
   }
+  // il periodo e' il filtro «mese di inizio» degli oggetti dei KPI, condiviso con le altre analisi
   function applyRange() {
     var a = +rFrom.value, b = +rTo.value;
-    period = a === 0 && b === MONTHS.length - 1 ? "all" : MONTHS[a] + ".." + MONTHS[b];
-    try { localStorage.setItem(PERIOD_KEY, period); } catch (e) {}
-    refresh();
+    setMonths(a === 0 && b === MONTHS.length - 1 ? [] : MONTHS.slice(a, b + 1));
   }
   [rFrom, rTo].forEach(function (r) {
     r.addEventListener("input", function () { moved(r); });
@@ -580,6 +581,7 @@
         cg.appendChild(box);
       });
       sec.appendChild(cg);
+      sec.appendChild(el("p", "tiny muted pm-hint", T.selectHint));
     }
     wrap.appendChild(sec);
     wrap.appendChild(nav);
@@ -685,6 +687,12 @@
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
     function x(i) { return L + (pts.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (pts.length - 1)); }
     function y(v) { return TOP + (hi - v) * (H - TOP - B) / (hi - lo); }
+    var ms = monthSel(c);
+    if (ms.active) pts.forEach(function (p, i) {   // fascia dei mesi del periodo scelto
+      if (!ms.isOn(p.month)) return;
+      var half = pts.length > 1 ? (W - L - R) / (pts.length - 1) / 2 : 20;
+      svg.appendChild(svgEl("rect", { x: x(i) - half, y: TOP, width: 2 * half, height: H - TOP - B, "class": "ct-sel-band" }));
+    });
     for (var g = 0; g <= 3; g++) {
       var gv = lo + (hi - lo) * g / 3, gy = y(gv);
       svg.appendChild(svgEl("line", { x1: L, x2: W - R, y1: gy, y2: gy, "class": "ct-grid" }));
@@ -720,6 +728,7 @@
       var bad = target !== null && target !== undefined && k.target && ((k.target.op === ">=" && p.value < target) || (k.target.op === "<=" && p.value > target));
       var dot = svgEl("circle", { cx: x(i), cy: y(p.value), r: 4.5, "class": "ct-dot" + (bad ? " ct-dot-bad" : ""), tabindex: 0 });
       dot.appendChild(svgEl("title", {}, fmt(T.trendTip, { m: monthLabel(p.month), v: value(k, p.value, cur), s: subline(k, p, cur) })));
+      pickable(dot, ms.active, ms.isOn(p.month), function () { ms.pick([p.month], "toggle"); });
       svg.appendChild(dot);
     });
     var sc = el("div", "ov-scroll"); sc.appendChild(svg); area.appendChild(sc);
@@ -735,9 +744,10 @@
     var items = c.items || [];
     if (!items.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var max = Math.max.apply(null, items.map(function (x) { return Math.abs(x.value || 0); }).concat([isPct(k) ? 0 : 1e-9]));
-    var list = el("ol", "ct-hbars");
+    var list = el("ol", "ct-hbars"), gs = groupSel(k, c), lis = [];
     items.forEach(function (x) {
       var li = el("li", "ct-hbar"); li.title = groupLabel(x) + ": " + value(k, x.value, cur) + " · " + subline(k, x, cur);
+      if (gs) { li.classList.add("pm-pick"); if (gs.active) li.classList.add(gs.isOn(x.label) ? "pm-sel-on" : "pm-sel-off"); lis.push(li); }
       var lab = el("span", "ct-hbar-label", groupLabel(x)); lab.title = groupLabel(x); li.appendChild(lab);
       var track = el("span", "ct-hbar-track"), fill = el("span", "ct-hbar-fill" + (violates(k, x.value) ? " ct-bad-fill" : ""));
       fill.style.width = (max ? Math.max(1.5, 100 * Math.abs(x.value || 0) / max) : 0) + "%"; track.appendChild(fill); li.appendChild(track);
@@ -746,6 +756,7 @@
       list.appendChild(li);
     });
     area.appendChild(list);
+    if (gs) attachBarSelection(lis, function (idx, mode) { gs.pick(idx.map(function (i) { return items[i].label; }), mode); });
     if (c.others) area.appendChild(el("p", "tiny muted", fmt(T.others, { n: num(c.others) })));
   }
   function tableChart(area, c, k, cur) {
@@ -757,9 +768,10 @@
     if (k.amount && k.measure !== "sum") cols.push(T.colAmount);
     cols.forEach(function (h, i) { hr.appendChild(el("th", i ? "num" : "", h)); });
     var th = el("thead"); th.appendChild(hr); t.appendChild(th);
-    var tb = el("tbody");
+    var tb = el("tbody"), gs = groupSel(k, c);
     items.forEach(function (x) {
       var tr = el("tr");
+      if (gs) pickable(tr, gs.active, gs.isOn(x.label), function () { gs.pick([x.label], "toggle"); });
       tr.appendChild(el("td", "", groupLabel(x)));
       tr.appendChild(el("td", "num", num(x.den)));
       tr.appendChild(el("td", "num", num(x.num)));
@@ -778,7 +790,7 @@
     var box = el("div", "ct-donut");
     var S = { small: 130, medium: 168, large: 220 }[chartLayout(c.id).height] || 168, R = S * 0.42, r = c.kind === "pie" ? 0 : S * 0.26, cx = S / 2, cy = S / 2;
     var svg = svgEl("svg", { width: S, height: S, viewBox: "0 0 " + S + " " + S, role: "img", "aria-label": tx(c.title) || tx(k.name) });
-    var a0 = -Math.PI / 2;
+    var a0 = -Math.PI / 2, ds = donutSel(k, c);
     items.forEach(function (x, i) {
       var color = x.rest ? "var(--border)" : x.other ? "#9aa1ad" : COLORS[i % COLORS.length];
       x._color = color;
@@ -794,6 +806,8 @@
         path = svgEl("path", { d: p, fill: color });
       }
       path.appendChild(svgEl("title", {}, (x.rest ? T.rest : x.other ? T.other : groupLabel(x)) + ": " + (c.amount ? money(x.value, cur) : num(x.value)) + " · " + pct(frac)));
+      var sid = ds ? ds.idOf(x) : null;
+      if (sid !== null) pickable(path, ds.active, ds.isOn(sid), function () { ds.pick(sid); });
       svg.appendChild(path);
       a0 = a1;
     });
@@ -805,6 +819,8 @@
     var leg = el("ul", "ct-legend");
     items.forEach(function (x) {
       var li = el("li"); var sw = el("span", "swatch"); sw.style.background = x._color; li.appendChild(sw);
+      var lid = ds ? ds.idOf(x) : null;
+      if (lid !== null) pickable(li, ds.active, ds.isOn(lid), function () { ds.pick(lid); });
       li.appendChild(el("span", "ct-legend-label", x.rest ? T.rest : x.other ? T.other : groupLabel(x)));
       li.appendChild(el("span", "ct-legend-value", (c.amount ? money(x.value, cur) : num(x.value)) + " · " + pct(x.value / total, 0)));
       leg.appendChild(li);
@@ -814,6 +830,128 @@
   }
 
 
+
+
+  // ---------- selezioni sui grafici -> filtri sui casi condivisi (static/filters.js) ----------
+  var DIM_KEYS = ["source", "attribute", "object_type", "attributes", "activities", "related"];
+  function specChart(c) { return findChart(c.id) || {}; }
+  function specDim(c) {
+    var d = specChart(c).dimension; if (!d) return null;
+    var o = {}; DIM_KEYS.forEach(function (key) { if (d[key] !== undefined) o[key] = d[key]; }); return o;
+  }
+  function dimTitle(d) {
+    if (d.source === "attribute") return d.attribute;
+    if (d.source === "related") return d.attribute ? d.attribute + " (" + cap(tp(d.object_type, 1)) + ")" : cap(tp(d.object_type, 1));
+    if (d.source === "event_attribute") return (d.attributes || []).join(" / ");
+    return T.chipActivity;
+  }
+  // elemento selezionabile: tocco (o Invio) = aggiunge o toglie; scelti in evidenza, gli altri sbiaditi
+  function pickable(node, active, on, fn) {
+    node.classList.add("pm-pick");
+    if (active) node.classList.add(on ? "pm-sel-on" : "pm-sel-off");
+    if (!fn) return;
+    node.setAttribute("tabindex", "0"); node.setAttribute("role", "button");
+    node.addEventListener("click", function (e) { e.stopPropagation(); fn(); });
+    node.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } });
+  }
+  // valori di una dimensione (cliente, paese, utente...): filtro sugli oggetti del KPI con quei valori
+  function groupSel(k, c) {
+    var d = specDim(c); if (!d) return null;
+    var key = "dim:" + k.object_type + ":" + stableKey(d), f = CF.find({ key: key }), on = f ? f.values : [];
+    return {
+      active: on.length > 0,
+      isOn: function (label) { return on.indexOf(label) >= 0; },
+      pick: function (labels, mode) {
+        var vals = mode === "range" ? labels.slice()
+          : on.indexOf(labels[0]) >= 0 ? on.filter(function (v) { return v !== labels[0]; }) : on.concat([labels[0]]);
+        CF.put({ kind: "dimension", type: k.object_type, dimension: d, values: vals, key: key, title: dimTitle(d) });
+      }
+    };
+  }
+  // mesi: il periodo, cioe' il filtro «mese di inizio» degli oggetti dei KPI (uno solo, sul tipo del periodo)
+  function kpiTypes() { var out = []; (spec.kpis || []).forEach(function (k) { if (k.object_type && out.indexOf(k.object_type) < 0) out.push(k.object_type); }); return out; }
+  function periodType() { var ts = kpiTypes(); return ts.indexOf(LEAD) >= 0 ? LEAD : (ts[0] || LEAD); }
+  function setMonths(vals) {
+    var ts = kpiTypes(), pt = periodType();
+    CF.edit(function (list) {
+      list = list.filter(function (f) { return !(f.kind === "start_month" && ts.indexOf(f.type) >= 0); });
+      if (vals.length) list.push({ kind: "start_month", type: pt, values: vals.slice().sort() });
+      return list;
+    });
+  }
+  function monthSel(c) {
+    var ts = kpiTypes(), on = [];
+    CF.where(function (f) { return f.kind === "start_month" && ts.indexOf(f.type) >= 0; }).forEach(function (f) { on = on.concat(f.values); });
+    return {
+      active: on.length > 0,
+      isOn: function (m) { return on.indexOf(m) >= 0; },
+      pick: function (ms, mode) {
+        setMonths(mode === "range" ? ms : on.indexOf(ms[0]) >= 0 ? on.filter(function (m) { return m !== ms[0]; }) : on.concat([ms[0]]));
+      }
+    };
+  }
+  // categorie di un grafico (passi dell'imbuto, classi dell'istogramma, fette con categorie): conds[i] = condizione
+  function condSel(k, c, conds, labels, merge) {
+    var key = "chart:" + c.id, f = CF.find({ key: key }), on = f ? (f.picked || []) : [];
+    function put(list) {
+      list = list.slice().sort(function (a, b) { return a - b; });
+      CF.put({ kind: "condition", type: k.object_type, key: key, picked: list,
+               condition: list.length === 1 ? conds[list[0]] : { op: "any", items: list.map(function (i) { return conds[i]; }) },
+               label: (merge && merge(list)) || list.map(function (i) { return labels[i]; }).join(", ") });
+    }
+    return {
+      active: on.length > 0,
+      isOn: function (i) { return on.indexOf(i) >= 0; },
+      pick: function (idx, mode) {
+        put(mode === "range" ? idx : on.indexOf(idx[0]) >= 0 ? on.filter(function (i) { return i !== idx[0]; }) : on.concat([idx[0]]));
+      }
+    };
+  }
+  function allOf(items) { items = items.filter(Boolean); return items.length === 1 ? items[0] : { op: "all", items: items }; }
+  // oggetti colpiti dal KPI (popolazione e condizione)
+  function hitCond(k) { return [k.population, k.condition].filter(Boolean); }
+  // classe dell'istogramma: tempo del KPI (o importo) tra i due estremi, sugli oggetti colpiti
+  function binCond(k, c, b, last) {
+    var range;
+    if (k.measure === "duration" && k.duration) {
+      range = [{ op: "duration", from: k.duration.from, to: k.duration.to, cmp: "ge", days: b.from }];
+      if (!last) range.push({ op: "duration", from: k.duration.from, to: k.duration.to, cmp: "lt", days: b.to });
+    } else {
+      range = [{ op: "attribute", attribute: k.amount, cmp: "ge", values: [b.from] }];
+      if (!last) range.push({ op: "attribute", attribute: k.amount, cmp: "lt", values: [b.to] });
+    }
+    return allOf((k.measure === "duration" ? hitCond(k) : []).concat(range));
+  }
+  // fette di ciambella e torta: per dimensione (valori) o per categoria (condizioni)
+  function donutSel(k, c) {
+    var sp = specChart(c), cats = (sp.categories || []).filter(function (x) { return x && x.label; });
+    if (sp.dimension && !cats.length) {
+      var gs = groupSel(k, c);
+      return { active: gs.active, idOf: function (x) { return x.other || x.rest ? null : x.label; },
+               isOn: function (id) { return gs.isOn(id); }, pick: function (id) { gs.pick([id], "toggle"); } };
+    }
+    var conds, labels;
+    if (cats.length) {
+      var catConds = cats.map(function (x) { return x.condition; });
+      conds = catConds.map(function (cd) { return allOf(hitCond(k).concat([cd])); })
+        .concat([allOf(hitCond(k).concat([{ op: "not", item: { op: "any", items: catConds } }]))]);
+      labels = cats.map(function (x) { return tx(x.label); }).concat([T.other]);
+    } else {
+      conds = [allOf(hitCond(k)), allOf([k.population, k.condition ? { op: "not", item: k.condition } : null])];
+      labels = [tx(k.name), T.rest];
+    }
+    var cs = condSel(k, c, conds, labels);
+    function idOf(x) {
+      if (cats.length) {
+        if (x.other) return cats.length;
+        var key = stableKey(x.label);
+        for (var i = 0; i < cats.length; i++) if (stableKey(cats[i].label) === key) return i;
+        return null;
+      }
+      return x.rest ? 1 : 0;
+    }
+    return { active: cs.active, idOf: idOf, isOn: cs.isOn, pick: function (id) { cs.pick([id], "toggle"); } };
+  }
 
   // ---------- altri tipi di grafico (sul modello della galleria di Power BI) ----------
   function chartHeight(c, def) { return { small: Math.round(def * 0.72), medium: def, large: Math.round(def * 1.45) }[chartLayout(c.id).height] || def; }
@@ -875,6 +1013,7 @@
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
     var slot = (W - L - R) / pts.length, bw = Math.max(6, Math.min(44, slot * 0.62));
     function cx(i) { return L + slot * (i + 0.5); }
+    var ms = monthSel(c), cols = [];
     var useAmount = c.kind === "combo" && k.amount && (findChart(c.id) || {}).volume !== "objects";
     var bars = c.kind === "combo" ? pts.map(function (p) { return useAmount ? (p.amount_total || 0) : (p.den || 0); }) : pts.map(function (p) { return p.value; });
     var sb = scaleY(bars, k, c.kind === "combo" ? [] : [c.target]);
@@ -885,6 +1024,7 @@
       var bad = c.kind !== "combo" && violates(k, v);
       var rect = svgEl("rect", { x: cx(i) - bw / 2, y: Math.min(yb(v), yb(0)), width: bw, height: Math.max(1, Math.abs(yb(0) - yb(v))), rx: 3, "class": "ct-col" + (c.kind === "combo" ? " ct-col-soft" : "") + (bad ? " ct-col-bad" : "") });
       tip(rect, monthLabel(p.month) + ": " + (c.kind === "combo" ? (useAmount ? money(v, cur) : num(v) + " " + tp(k.object_type, v)) : value(k, v, cur) + " (" + subline(k, p, cur) + ")"));
+      pickable(rect, ms.active, ms.isOn(p.month)); rect.dataset.i = i; cols.push(rect);
       svg.appendChild(rect);
     });
     if (c.kind !== "combo") targetLine(svg, c.target, yb, L, W, R, k, cur);
@@ -901,6 +1041,7 @@
     }
     var step = Math.ceil(pts.length / Math.max(1, Math.floor((W - L - R) / 52)));
     pts.forEach(function (p, i) { if (i % step === 0 || i === pts.length - 1) svg.appendChild(svgEl("text", { x: cx(i), y: H - 8, "text-anchor": "middle", "class": "ct-axis" }, monthLabel(p.month))); });
+    attachBarSelection(cols, function (idx, mode) { ms.pick(idx.map(function (j) { return pts[+cols[j].dataset.i].month; }), mode); });
     wrapSvg(area, svg);
     if (c.kind === "combo") legend(area, [{ color: "color-mix(in srgb, var(--brand) 30%, var(--card-bg))", label: useAmount ? T.colAmount : cap(tp(k.object_type)) }, { color: "var(--brand)", label: tx(k.name), line: true }]);
   }
@@ -919,10 +1060,12 @@
     gridY(svg, sc, y, L, W, R, function (v) { return pareto ? (amountOf(k) ? money(v, cur) : num(v)) : value(k, v, cur); });
     var slot = (W - L - R) / items.length, bw = Math.max(8, Math.min(46, slot * 0.66));
     function cx(i) { return L + slot * (i + 0.5); }
+    var gs = groupSel(k, c), cols = [];
     items.forEach(function (x, i) {
       var v = vals[i]; if (v === null || v === undefined) return;
       var rect = svgEl("rect", { x: cx(i) - bw / 2, y: Math.min(y(v), y(0)), width: bw, height: Math.max(1, Math.abs(y(0) - y(v))), rx: 3, "class": "ct-col" + (!pareto && violates(k, x.value) ? " ct-col-bad" : "") });
       tip(rect, groupLabel(x) + ": " + (pareto ? impactText(k, v, cur) + " · " + pct(x.cumulative || 0) + " " + T.cumulative : value(k, x.value, cur) + " · " + subline(k, x, cur)));
+      if (gs) { pickable(rect, gs.active, gs.isOn(x.label)); rect.dataset.i = i; cols.push(rect); }
       svg.appendChild(rect);
       var lab = svgEl("text", { x: cx(i), y: H - B + 14, "text-anchor": "end", transform: "rotate(-35 " + cx(i) + " " + (H - B + 14) + ")", "class": "ct-axis" }, clip(groupLabel(x), 16));
       svg.appendChild(lab);
@@ -936,6 +1079,7 @@
       svg.appendChild(svgEl("path", { d: d, "class": "ct-line ct-line-alt" }));
       items.forEach(function (x, i) { svg.appendChild(tip(svgEl("circle", { cx: cx(i), cy: yp(x.cumulative || 0), r: 3.5, "class": "ct-dot ct-dot-alt" }), groupLabel(x) + ": " + pct(x.cumulative || 0) + " " + T.cumulative)); });
     }
+    if (gs) attachBarSelection(cols, function (idx, mode) { gs.pick(idx.map(function (j) { return items[+cols[j].dataset.i].label; }), mode); });
     wrapSvg(area, svg);
     if (pareto) legend(area, [{ color: "var(--brand)", label: amountOf(k) ? T.colAmount : T.colHit }, { color: "#e08a3b", label: T.cumulative, line: true }]);
     if (c.others) area.appendChild(el("p", "tiny muted", fmt(T.others, { n: num(c.others) })));
@@ -956,10 +1100,11 @@
     svg.appendChild(svgEl("text", { x: (L + W - R) / 2, y: H - 6, "text-anchor": "middle", "class": "ct-axis" }, fmt(T.groupObjects, { t: cap(tp(k.object_type, 2)) })));
     targetLine(svg, c.target, py, L, W, R, k, cur);
     var sizes = items.map(function (x) { return c.impact_amount ? (x.amount || 0) : (x.num || 0); }), maxS = Math.max.apply(null, sizes) || 1;
-    var Rmax = Math.max(14, Math.min(42, (W - L - R) / 12)), labels = [];
+    var Rmax = Math.max(14, Math.min(42, (W - L - R) / 12)), labels = [], gsB = groupSel(k, c);
     items.slice().sort(function (a, b) { return (c.impact_amount ? (b.amount || 0) - (a.amount || 0) : b.num - a.num); }).forEach(function (x, i) {
       var s = c.impact_amount ? (x.amount || 0) : (x.num || 0), rr = Math.max(3, Rmax * Math.sqrt(s / maxS));
       var circ = svgEl("circle", { cx: px(x.den), cy: py(x.value), r: rr, "class": "ct-bubble" + (violates(k, x.value) ? " ct-bubble-bad" : "") });
+      if (gsB) pickable(circ, gsB.active, gsB.isOn(x.label), function () { gsB.pick([x.label], "toggle"); });
       tip(circ, groupLabel(x) + ": " + value(k, x.value, cur) + " · " + subline(k, x, cur) + (c.impact_amount && x.amount ? " · " + money(x.amount, cur) : ""));
       svg.appendChild(circ);
       if (i < 5 && rr > 16) labels.push({ x: px(x.den), y: py(x.value) + 4, t: clip(groupLabel(x), Math.max(6, Math.floor(rr / 3.2))) });
@@ -999,11 +1144,13 @@
       }
     })(nodes, 0, 0, W, H);
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
+    var gsT = groupSel(k, c);
     rects.forEach(function (r) {
       var x = r.n.x;
       var g = svgEl("g", {});
       var rect = svgEl("rect", { x: r.x + 1, y: r.y + 1, width: Math.max(0, r.w - 2), height: Math.max(0, r.h - 2), rx: 3, "class": "ct-tile" });
       rect.style.fill = valueColor(k, x.value || 0, vmin, vmax);
+      if (gsT) pickable(rect, gsT.active, gsT.isOn(x.label), function () { gsT.pick([x.label], "toggle"); });
       tip(rect, groupLabel(x) + ": " + impactText(k, impactValue(k, x), cur) + " · " + tx(k.name) + " " + value(k, x.value, cur));
       g.appendChild(rect);
       if (r.w > 60 && r.h > 34) {
@@ -1042,11 +1189,13 @@
       var vmin = Math.min.apply(null, vals), vmax = Math.max.apply(null, vals);
       var W = Math.max(area.clientWidth || 600, 320), H = Math.round(W * world.h / world.w);
       var svg = svgEl("svg", { width: W, height: H, viewBox: "0 0 " + world.w + " " + world.h, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg ct-map" });
+      var gsM = groupSel(k, c);
       world.countries.forEach(function (cn, i) {
         var x = byCountry[i];
         var fill = !x || x.value === null || x.value === undefined ? null : valueColor(k, x.value, vmin, vmax);
         var path = svgEl("path", { d: cn.d, "class": "ct-country" + (x ? " ct-country-data" : "") });
         if (fill) path.style.fill = fill;   // lo stile (non l'attributo) vince sul colore di base della classe
+        if (x && gsM) pickable(path, gsM.active, gsM.isOn(x.label), function () { gsM.pick([x.label], "toggle"); });
         tip(path, (LANG === "it" ? cn.it : cn.en) + ": " + (x ? value(k, x.value, cur) + " · " + subline(k, x, cur) : T.mapNoData));
         svg.appendChild(path);
       });
@@ -1064,6 +1213,7 @@
     if (!months.length || !series.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var amt = c.amount, H = chartHeight(c, 240), W = Math.max(area.clientWidth || 600, months.length * 46), L = 58, R = 14, TOP = 14, B = 30;
     var totals = months.map(function (_, i) { return series.reduce(function (a, sr) { var p = sr.points[i]; return a + (amt ? (p.amount || 0) : (p.num || 0)); }, 0); });
+    var gsS = groupSel(k, c), msS = monthSel(c);
     var sc = scaleY(totals, k);
     function y(v) { return TOP + (sc.hi - v) * (H - TOP - B) / (sc.hi - sc.lo); }
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
@@ -1074,6 +1224,7 @@
       series.forEach(function (sr, j) {
         var p = sr.points[i], v = amt ? (p.amount || 0) : (p.num || 0); if (!v) return;
         var rect = svgEl("rect", { x: cx - bw / 2, y: y(acc + v), width: bw, height: Math.max(0.5, y(acc) - y(acc + v)), fill: sr.other ? "#9aa1ad" : COLORS[j % COLORS.length] });
+        if (gsS && !sr.other) pickable(rect, gsS.active || msS.active, (!gsS.active || gsS.isOn(sr.label)) && (!msS.active || msS.isOn(m)), function () { gsS.pick([sr.label], "toggle"); });
         tip(rect, fmt(T.groupTip, { g: seriesLabel(sr), m: monthLabel(m), v: amt ? money(v, cur) : num(v) + " " + tp(k.object_type, v) }));
         svg.appendChild(rect); acc += v;
       });
@@ -1088,7 +1239,7 @@
     if (!months.length || !series.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var H = chartHeight(c, 240), W = Math.max(area.clientWidth || 600, months.length * 46), L = 58, R = 14, TOP = 14, B = 30;
     var all = []; series.forEach(function (sr) { sr.points.forEach(function (p) { all.push(p.value); }); });
-    var sc = scaleY(all, k, [c.target]);
+    var sc = scaleY(all, k, [c.target]), gsL = groupSel(k, c);
     function y(v) { return TOP + (sc.hi - v) * (H - TOP - B) / (sc.hi - sc.lo); }
     function x(i) { return L + (months.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (months.length - 1)); }
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
@@ -1098,7 +1249,12 @@
       var color = COLORS[j % COLORS.length], d = "", pen = false;
       sr.points.forEach(function (p, i) { if (p.value === null || p.value === undefined) { pen = false; return; } d += (pen ? " L" : " M") + x(i).toFixed(1) + " " + y(p.value).toFixed(1); pen = true; });
       svg.appendChild(svgEl("path", { d: d.trim(), "class": "ct-line", style: "stroke:" + color }));
-      sr.points.forEach(function (p, i) { if (p.value === null || p.value === undefined) return; svg.appendChild(tip(svgEl("circle", { cx: x(i), cy: y(p.value), r: 3.5, "class": "ct-dot", style: "stroke:" + color }), fmt(T.groupTip, { g: seriesLabel(sr), m: monthLabel(months[i]), v: value(k, p.value, cur) + " (" + subline(k, p, cur) + ")" }))); });
+      sr.points.forEach(function (p, i) {
+        if (p.value === null || p.value === undefined) return;
+        var dot = tip(svgEl("circle", { cx: x(i), cy: y(p.value), r: 3.5, "class": "ct-dot", style: "stroke:" + color }), fmt(T.groupTip, { g: seriesLabel(sr), m: monthLabel(months[i]), v: value(k, p.value, cur) + " (" + subline(k, p, cur) + ")" }));
+        if (gsL) pickable(dot, gsL.active, gsL.isOn(sr.label), function () { gsL.pick([sr.label], "toggle"); });
+        svg.appendChild(dot);
+      });
     });
     var step = Math.ceil(months.length / Math.max(1, Math.floor((W - L - R) / 52)));
     months.forEach(function (m, i) { if (i % step === 0 || i === months.length - 1) svg.appendChild(svgEl("text", { x: x(i), y: H - 8, "text-anchor": "middle", "class": "ct-axis" }, monthLabel(m))); });
@@ -1110,12 +1266,14 @@
     if (!months.length || !series.length) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
     var all = []; series.forEach(function (sr) { sr.points.forEach(function (p) { if (p.value !== null && p.value !== undefined && p.den) all.push(p.value); }); });
     var vmin = Math.min.apply(null, all), vmax = Math.max.apply(null, all);
-    var t = el("table", "ct-heat"), hr = el("tr"); hr.appendChild(el("th", "", ""));
-    months.forEach(function (m) { hr.appendChild(el("th", "num", monthLabel(m))); });
+    var t = el("table", "ct-heat"), hr = el("tr"), gsH = groupSel(k, c), msH = monthSel(c); hr.appendChild(el("th", "", ""));
+    months.forEach(function (m) { var th = el("th", "num", monthLabel(m)); pickable(th, msH.active, msH.isOn(m), function () { msH.pick([m], "toggle"); }); hr.appendChild(th); });
     var th = el("thead"); th.appendChild(hr); t.appendChild(th);
     var tb = el("tbody");
     series.forEach(function (sr) {
-      var tr = el("tr"); tr.appendChild(el("th", "ct-heat-row", seriesLabel(sr)));
+      var tr = el("tr"), rh = el("th", "ct-heat-row", seriesLabel(sr)); tr.appendChild(rh);
+      if (gsH && !sr.other) pickable(rh, gsH.active, gsH.isOn(sr.label), function () { gsH.pick([sr.label], "toggle"); });
+      if (gsH && gsH.active && !gsH.isOn(sr.label)) tr.classList.add("pm-sel-off");
       sr.points.forEach(function (p, i) {
         var td = el("td", "num");
         if (p.den && p.value !== null && p.value !== undefined) {
@@ -1137,9 +1295,12 @@
   function funnelChart(area, c, k, cur) {
     var items = c.items || [];
     if (!items.length || !items[0].value) { area.appendChild(el("p", "tiny muted", T.noPoints)); return; }
-    var first = items[0].value, list = el("ol", "ct-funnel");
+    var first = items[0].value, list = el("ol", "ct-funnel"), sp = specChart(c);
+    var fs = condSel(k, c, items.map(function (x) { return { op: "activity", activities: [x.label], related: !!sp.related }; }),
+                     items.map(function (x) { return x.label; }));
     items.forEach(function (x, i) {
       var li = el("li", "ct-funnel-step");
+      pickable(li, fs.active, fs.isOn(i), function () { fs.pick([i], "toggle"); });
       var bar = el("span", "ct-funnel-bar"); bar.style.width = Math.max(4, 100 * x.value / first) + "%"; bar.style.background = COLORS[i % COLORS.length];
       bar.appendChild(el("span", "ct-funnel-value", num(x.value)));
       li.appendChild(el("span", "ct-funnel-label", x.label));
@@ -1163,9 +1324,17 @@
     gridY(svg, sc, y, L, W, R, function (v) { return num(v); });
     var lo = bins[0].from, hi = bins[bins.length - 1].to;
     function x(v) { return L + (v - lo) * (W - L - R) / (hi - lo); }
+    var hs = condSel(k, c, bins.map(function (b, i) { return binCond(k, c, b, i === bins.length - 1); }),
+                     bins.map(function (b, i) { return fmtx(b.from) + " – " + (i === bins.length - 1 && b.open ? "…" : fmtx(b.to)); }),
+                     function (list) {   // classi consecutive: un solo intervallo («10 g – 40 g»)
+                       for (var j = 1; j < list.length; j++) if (list[j] !== list[j - 1] + 1) return null;
+                       var lastB = bins[list[list.length - 1]], isLast = list[list.length - 1] === bins.length - 1;
+                       return fmtx(bins[list[0]].from) + " – " + (isLast && lastB.open ? "…" : fmtx(lastB.to));
+                     }), hcols = [];
     bins.forEach(function (b, i) {
       var rect = svgEl("rect", { x: x(b.from) + 1, y: y(b.count), width: Math.max(1, x(b.to) - x(b.from) - 2), height: Math.max(0.5, y(0) - y(b.count)), "class": "ct-col" + (c.target !== null && c.target !== undefined && violates(k, b.from) ? " ct-col-bad" : "") });
       tip(rect, fmtx(b.from) + " – " + (b.open && i === bins.length - 1 ? "…" : fmtx(b.to)) + ": " + num(b.count) + " " + tp(k.object_type, b.count));
+      pickable(rect, hs.active, hs.isOn(i)); hcols.push(rect);
       svg.appendChild(rect);
     });
     var step = Math.ceil((bins.length + 1) / Math.max(1, Math.floor((W - L - R) / 60)));
@@ -1176,6 +1345,7 @@
       var right = x(v) > W - R - 120;   // vicino al bordo destro: etichetta a sinistra della linea
       svg.appendChild(svgEl("text", { x: x(v) + (right ? -4 : 4), y: TOP + 10 + (m[0] === "p90" ? 14 : 0), "text-anchor": right ? "end" : "start", "class": "ct-axis ct-marker-label" }, fmt(m[1], { v: fmtx(v) })));
     });
+    attachBarSelection(hcols, function (idx, mode) { hs.pick(idx, mode); });
     wrapSvg(area, svg);
     area.appendChild(el("p", "tiny muted", fmt(T.histCount, { n: num(c.count) })));
   }

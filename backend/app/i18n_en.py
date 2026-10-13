@@ -1583,4 +1583,6 @@ EN: dict[str, str] = {
     '{tp} · tempo con gli oggetti collegati: {r}': '{tp} · time with linked objects: {r}',
     '{tp} · tempo di attraversamento: {r}': '{tp} · throughput time: {r}',
     '{tp} · {a}: {v}': '{tp} · {a}: {v}',
+    'Tocca barre, colonne, fette, punti, bolle o paesi per filtrare i casi (trascina sulle colonne per un intervallo): il filtro vale in tutte le analisi del dataset.': 'Tap bars, columns, slices, points, bubbles or countries to filter the cases (drag across columns for a range): the filter applies to all analyses of the dataset.',
+    '{tp} · {l}': '{tp} · {l}',
 }

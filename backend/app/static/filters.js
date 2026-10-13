@@ -34,13 +34,19 @@ function initCaseFilters(opts) {
   function rangesText(ranges) {
     return ranges.map(function (r) { return r[1] === null || r[1] === undefined ? "> " + daysText(r[0]) : daysText(r[0]) + " – " + daysText(r[1]); }).join(", ");
   }
+  function text(v) { return v && typeof v === "object" ? (v[LANG] || v.it || v.en || "") : (v || ""); }
+  function valueText(v) { return v === "" ? T.empty : v; }
   function label(f) {
+    if (f.kind === "dimension") return fmt(T.chipAttr, { tp: plural(f.type), a: f.title, v: f.values.map(valueText).join(", ") });
+    if (f.kind === "condition") return fmt(T.chipCond, { tp: plural(f.type), l: text(f.label) });
     if (f.kind === "start_month") return fmt(T.chipStart, { tp: plural(f.type), m: monthsText(f.values) });
     if (f.kind === "duration") return fmt(f.scope === "related" ? T.chipDurationRel : T.chipDuration, { tp: plural(f.type), r: rangesText(f.ranges) });
     if (f.kind === "event") return fmt(T.chipEvent, { a: f.attribute, v: f.values.join(", ") });
     return fmt(T.chipAttr, { tp: plural(f.type), a: f.attribute, v: f.values.join(", ") });
   }
-  function same(a, b) { return a.kind === b.kind && (a.type || null) === (b.type || null) && (a.attribute || null) === (b.attribute || null) && (a.scope || null) === (b.scope || null); }
+  function same(a, b) {
+    if (a.key || b.key) return (a.key || "") === (b.key || "");
+    return a.kind === b.kind && (a.type || null) === (b.type || null) && (a.attribute || null) === (b.attribute || null) && (a.scope || null) === (b.scope || null); }
 
   function render() {
     if (!bar) return;
@@ -65,14 +71,20 @@ function initCaseFilters(opts) {
     get: function () { return filters.slice(); },
     param: function () { return filters.length ? JSON.stringify(filters) : ""; },
     find: function (proto) { return filters.filter(function (f) { return same(f, proto); })[0] || null; },
+    // tutti i filtri che soddisfano una condizione (es. i mesi di inizio dei tipi dei KPI)
+    where: function (fn) { return filters.filter(fn); },
+    // toglie piu' filtri insieme (un solo ricalcolo)
+    removeWhere: function (fn) { var n = filters.length; filters = filters.filter(function (f) { return !fn(f); }); if (filters.length !== n) changed(); },
     // sostituisce (o toglie, se values/ranges vuoti) il filtro dello stesso tipo
     put: function (f) {
-      var empty = !(f.values && f.values.length) && !(f.ranges && f.ranges.length);
+      var empty = f.kind === "condition" ? !(f.picked && f.picked.length) : !(f.values && f.values.length) && !(f.ranges && f.ranges.length);
       var idx = -1; filters.forEach(function (x, i) { if (same(x, f)) idx = i; });
       if (empty) { if (idx >= 0) filters.splice(idx, 1); }
       else if (idx >= 0) filters[idx] = f; else filters.push(f);
       changed();
     },
+    // piu' cambiamenti insieme, un solo ricalcolo: fn riceve una copia dei filtri e restituisce quelli nuovi
+    edit: function (fn) { filters = fn(filters.slice()).filter(Boolean); changed(); },
     onChange: function (fn) { listeners.push(fn); },
     label: label
   };
@@ -108,4 +120,12 @@ function attachBarSelection(items, onPick) {
   }
   host.addEventListener("pointerup", end);
   host.addEventListener("pointerleave", function () { if (start !== null) end(); });
+}
+
+/* JSON con le chiavi in ordine (stesso testo di json.dumps(sort_keys=True, separators=(",", ":")) in Python):
+ * serve a costruire la chiave che lega un filtro al grafico da cui parte. */
+function stableKey(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableKey).join(",") + "]";
+  return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stableKey(v[k]); }).join(",") + "}";
 }
