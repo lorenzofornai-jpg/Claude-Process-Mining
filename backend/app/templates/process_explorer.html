@@ -147,7 +147,7 @@
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   // filtri sui casi condivisi con le altre analisi (static/filters.js): il grafo mostra solo i casi filtrati
-  var CF = initCaseFilters({ config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
+  var CF = initCaseFilters({ ws: WS, config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
   CF.onChange(function () { if (filterMode === "vars" && vType) loadVariants(); else schedule(); });
   var COLORS = {}, TYPES = {};
   {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};

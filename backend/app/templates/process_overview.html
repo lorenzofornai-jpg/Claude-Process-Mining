@@ -158,7 +158,7 @@
   });
 
   // filtri sui casi condivisi con le altre analisi (static/filters.js): ogni cambiamento ricalcola la pagina
-  var CF = initCaseFilters({ config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: PLURALS });
+  var CF = initCaseFilters({ ws: WS, config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: PLURALS });
   CF.onChange(function () { load(); });
 
   function load() {

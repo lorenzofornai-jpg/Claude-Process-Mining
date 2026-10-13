@@ -225,7 +225,11 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   dei mesi e cursore del periodo: filtro «mese di inizio» sugli oggetti dei KPI, che nella Control Tower diventa il
   periodo (confronto con i mesi precedenti se consecutivi). Il grafico da cui parte una selezione (e quelli con la
   stessa dimensione) mostra tutti i valori; gli andamenti mostrano tutti i mesi con il periodo in evidenza.
-- ⬜ Fase 3: assistenti che conoscono i filtri, «+ Filtro» per attributi che non sono in nessun grafico, viste salvate.
+- ✅ Fase 3: gli assistenti (Overview, Explorer, Control Tower) ricevono i filtri attivi e rispondono sui casi
+  filtrati (numeri della pagina e tabelle da interrogare), dicendolo. Barra dei filtri sempre visibile con «+ Filtro»
+  (attributo di un tipo di oggetto o degli eventi, ricerca tra i valori, più valori) e «Viste»: i filtri attivi
+  salvati con un nome per il dataset (tabella `analysis_view`), visibili a tutti i Data Analyst del processo, tolte
+  solo da chi le ha create.
 
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o

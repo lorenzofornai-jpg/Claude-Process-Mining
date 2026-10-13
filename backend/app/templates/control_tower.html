@@ -49,7 +49,7 @@
   var LEAD = {{ lead|tojson }}, QUESTIONS = {{ questions|tojson }}, CLAUDE = {{ claude|tojson }};
   var TYPE_NAMES = {{ type_names|tojson }};   // tipi di oggetto nelle frasi, nella lingua attiva
   // filtri sui casi condivisi con le altre analisi (static/filters.js): i valori si ricalcolano sui casi filtrati
-  var CF = initCaseFilters({ config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
+  var CF = initCaseFilters({ ws: WS, config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
   CF.onChange(function () { refresh(); });
   var T = {
     intro: {{ _("La Control Tower traduce le domande di business dell'assessment in KPI misurati sul dataset: per ogni domanda i numeri chiave con obiettivo, l'andamento nel tempo e dove si concentra il fenomeno. L'LLM propone le definizioni una volta sola; tu le controlli, le modifichi se serve e le approvi. I valori li calcola l'app, senza altre chiamate all'LLM.")|tojson }},

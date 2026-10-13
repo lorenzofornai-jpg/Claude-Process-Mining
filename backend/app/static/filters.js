@@ -51,22 +51,150 @@ function initCaseFilters(opts) {
   function render() {
     if (!bar) return;
     bar.textContent = "";
-    bar.hidden = !filters.length;
-    if (!filters.length) return;
-    bar.appendChild(el("span", "pm-filters-title", T.title));
+    bar.hidden = false;
+    bar.classList.toggle("pm-filters-empty", !filters.length);
+    bar.appendChild(el("span", "pm-filters-title", filters.length ? T.title : T.none));
     filters.forEach(function (f, i) {
       var chip = el("span", "pm-chip"); chip.appendChild(el("span", "pm-chip-text", label(f)));
       var x = el("button", "pm-chip-x", "✕"); x.type = "button"; x.title = T.remove; x.setAttribute("aria-label", T.remove + ": " + label(f));
       x.addEventListener("click", function () { filters.splice(i, 1); changed(); });
       chip.appendChild(x); bar.appendChild(chip);
     });
-    var all = el("button", "link-btn pm-chip-clear", T.clear); all.type = "button";
-    all.addEventListener("click", function () { filters = []; changed(); });
-    bar.appendChild(all);
-    bar.appendChild(el("span", "tiny muted pm-filters-note", T.note));
+    var tools = el("span", "pm-filters-tools");
+    if (filters.length) {
+      var all = el("button", "link-btn pm-chip-clear", T.clear); all.type = "button";
+      all.addEventListener("click", function () { filters = []; changed(); });
+      tools.appendChild(all);
+    }
+    if (opts.ws) {
+      var add = el("button", "secondary pm-tool", "+ " + T.add); add.type = "button";
+      add.addEventListener("click", function () { togglePanel("add"); });
+      var views = el("button", "secondary pm-tool", T.views + " ▾"); views.type = "button";
+      views.addEventListener("click", function () { togglePanel("views"); });
+      tools.appendChild(add); tools.appendChild(views);
+    }
+    bar.appendChild(tools);
+    if (filters.length) bar.appendChild(el("span", "tiny muted pm-filters-note", T.note));
+    if (panel) bar.appendChild(panel);
   }
+
+  // ---------- pannelli «+ Filtro» e «Viste» ----------
+  var panel = null, panelKind = null, catalog = null;
+  function call(url, body) {
+    var o = body ? { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { credentials: "same-origin" };
+    return fetch(url, o).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
+  }
+  function q(extra) { var p = new URLSearchParams({ workspace_id: opts.ws, config_id: opts.config }); return p.toString() + (extra || ""); }
+  function closePanel() { panel = null; panelKind = null; render(); }
+  function togglePanel(kind) {
+    if (panelKind === kind) { closePanel(); return; }
+    panelKind = kind; panel = el("div", "pm-panel");
+    panel.appendChild(el("p", "tiny muted", T.loading));
+    render();
+    if (kind === "add") (catalog ? Promise.resolve(catalog) : call("/analysis/filters/catalog?" + q()).then(function (j) { catalog = j; return j; }))
+      .then(addPanel).catch(function (e) { panel.textContent = e.message; });
+    else call("/analysis/views?" + q()).then(viewsPanel).catch(function (e) { panel.textContent = e.message; });
+  }
+  function addPanel(cat) {
+    if (panelKind !== "add") return;
+    panel.textContent = "";
+    var hubs = {}; (cat.types || []).forEach(function (t) { hubs[t.name] = t.hub; });
+    var owners = [];
+    (cat.attributes || []).forEach(function (a) { var k = a.kind === "event" ? "" : a.type; if (owners.indexOf(k) < 0) owners.push(k); });
+    var row = el("div", "pm-panel-row");
+    var who = el("select"); who.setAttribute("aria-label", T.what);
+    owners.forEach(function (o) { var op = el("option", "", o ? plural(o) : T.events); op.value = o; who.appendChild(op); });
+    var attr = el("select"); attr.setAttribute("aria-label", T.attribute);
+    var search = el("input"); search.type = "search"; search.placeholder = T.search;
+    row.appendChild(field(T.what, who)); row.appendChild(field(T.attribute, attr)); row.appendChild(field(T.searchLabel, search));
+    panel.appendChild(row);
+    var help = el("p", "tiny muted"); panel.appendChild(help);
+    var list = el("div", "pm-values"); panel.appendChild(list);
+    var chosen = [];
+    function current() { var o = who.value; return (cat.attributes || []).filter(function (a) { return (a.kind === "event" ? "" : a.type) === o && a.attribute === attr.value; })[0]; }
+    function fillAttrs() {
+      attr.textContent = "";
+      (cat.attributes || []).filter(function (a) { return (a.kind === "event" ? "" : a.type) === who.value; }).forEach(function (a) {
+        var op = el("option", "", fmt(T.attrOption, { a: a.attribute, n: a.distinct.toLocaleString(LANG) })); op.value = a.attribute; attr.appendChild(op);
+      });
+      fillValues(true);
+    }
+    function fillValues(reset) {
+      var a = current(); list.textContent = "";
+      if (!a) return;
+      if (reset) {
+        var f = filters.filter(function (x) { return x.kind === a.kind && (x.type || "") === (a.type || "") && x.attribute === a.attribute; })[0];
+        chosen = f ? f.values.slice() : [];
+      }
+      help.textContent = a.kind === "event" ? T.eventHelp : (hubs[a.type] ? fmt(T.hubHelp, { tp: plural(a.type) }) : fmt(T.objectHelp, { tp: plural(a.type) }));
+      var term = search.value.trim().toLowerCase(), shown = 0;
+      a.values.forEach(function (v) {
+        if (term && String(v.value).toLowerCase().indexOf(term) < 0) return;
+        if (shown >= 200) return; shown++;
+        var lab = el("label", "pm-value"); var cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.indexOf(v.value) >= 0;
+        cb.addEventListener("change", function () { chosen = cb.checked ? chosen.concat([v.value]) : chosen.filter(function (x) { return x !== v.value; }); });
+        lab.appendChild(cb); lab.appendChild(el("span", "", v.value)); lab.appendChild(el("span", "tiny muted", " " + v.count.toLocaleString(LANG)));
+        list.appendChild(lab);
+      });
+      if (!shown) list.appendChild(el("p", "tiny muted", T.noValues));
+    }
+    who.addEventListener("change", fillAttrs); attr.addEventListener("change", function () { fillValues(true); });
+    search.addEventListener("input", function () { fillValues(false); });
+    var acts = el("div", "pm-panel-actions");
+    var ok = el("button", "primary", T.apply); ok.type = "button";
+    ok.addEventListener("click", function () {
+      var a = current(); if (!a) return;
+      var f = { kind: a.kind, attribute: a.attribute, values: chosen.slice() };
+      if (a.kind !== "event") f.type = a.type;
+      panel = null; panelKind = null; api_put(f);
+    });
+    var no = el("button", "secondary", T.cancel); no.type = "button"; no.addEventListener("click", closePanel);
+    acts.appendChild(no); acts.appendChild(ok); panel.appendChild(acts);
+    fillAttrs();
+  }
+  function viewsPanel(j) {
+    if (panelKind !== "views") return;
+    panel.textContent = "";
+    var views = j.views || [];
+    if (!views.length) panel.appendChild(el("p", "tiny muted", T.noViews));
+    var ul = el("ul", "pm-views");
+    views.forEach(function (v) {
+      var li = el("li");
+      var open = el("button", "link-btn pm-view-open", v.name); open.type = "button";
+      open.title = (v.filters || []).map(label).join(" · ");
+      open.addEventListener("click", function () { panel = null; panelKind = null; filters = (v.filters || []).slice(); changed(); });
+      li.appendChild(open);
+      var nf = (v.filters || []).length;
+      li.appendChild(el("span", "tiny muted", " " + fmt(nf === 1 ? T.viewBy1 : T.viewBy, { u: v.created_by || "", n: nf })));
+      if (v.mine) {
+        var del = el("button", "pm-chip-x pm-view-del", "✕"); del.type = "button"; del.title = T.deleteView;
+        del.addEventListener("click", function () {
+          if (!window.confirm(fmt(T.confirmDelete, { v: v.name }))) return;
+          call("/analysis/views/" + encodeURIComponent(v.id) + "/delete", { workspace_id: opts.ws }).then(function () { panelKind = null; togglePanel("views"); })
+            .catch(function (e) { alert(e.message); });
+        });
+        li.appendChild(del);
+      }
+      ul.appendChild(li);
+    });
+    panel.appendChild(ul);
+    var row = el("div", "pm-panel-row");
+    var name = el("input"); name.type = "text"; name.maxLength = 200; name.placeholder = T.viewName; name.disabled = !filters.length;
+    var save = el("button", "primary", T.saveView); save.type = "button"; save.disabled = !filters.length;
+    save.addEventListener("click", function () {
+      if (!name.value.trim()) { name.focus(); return; }
+      call("/analysis/views", { workspace_id: opts.ws, config_id: opts.config, name: name.value.trim(), filters: filters })
+        .then(function () { panelKind = null; togglePanel("views"); }).catch(function (e) { alert(e.message); });
+    });
+    row.appendChild(field(filters.length ? T.saveAs : T.saveNeedsFilters, name)); row.appendChild(save);
+    panel.appendChild(row);
+  }
+  function field(text, control) { var l = el("label", "pm-field"); l.appendChild(el("span", "tiny muted", text)); l.appendChild(control); return l; }
+  function api_put(f) { api_obj.put(f); }
+
   function changed() { write(filters); render(); listeners.forEach(function (fn) { fn(filters.slice()); }); }
 
+  var api_obj = null;
   var api = {
     get: function () { return filters.slice(); },
     param: function () { return filters.length ? JSON.stringify(filters) : ""; },
@@ -88,7 +216,9 @@ function initCaseFilters(opts) {
     onChange: function (fn) { listeners.push(fn); },
     label: label
   };
+  api_obj = api;
   render();
+  window.CASE_FILTERS = api;   // per l'assistente (static/assistant.js)
   return api;
 }
 

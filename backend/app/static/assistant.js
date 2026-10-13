@@ -20,7 +20,10 @@ function initAssistant(opts) {
     return fetch(opts.endpoint || "/analysis/assistant", {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workspace_id: opts.ws, config_id: opts.config, page: opts.page, messages: messages,
-                             view: opts.getView(), focus: focus, estimate: !!estimateOnly })
+                             view: opts.getView(), focus: focus, estimate: !!estimateOnly,
+                             // filtri sui casi della pagina (static/filters.js): l'assistente risponde sui casi filtrati
+                             filters: window.CASE_FILTERS ? window.CASE_FILTERS.get() : [],
+                             filter_labels: window.CASE_FILTERS ? window.CASE_FILTERS.get().map(window.CASE_FILTERS.label) : [] })
     }).then(function (r) { return r.json(); });
   }
   function updateEstimate() {

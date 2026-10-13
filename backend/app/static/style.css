@@ -1190,3 +1190,22 @@ tr.pm-pick:hover td { background: var(--card-bg-soft); }
 svg .pm-brush { opacity: 1 !important; stroke: var(--text); stroke-width: 2; }
 .ct-hbar.pm-brush { background: var(--card-bg-soft); border-radius: 6px; }
 .ct-sel-band { fill: color-mix(in srgb, var(--brand) 10%, transparent); }
+/* barra dei filtri sempre visibile, «+ Filtro» e «Viste» */
+.pm-filters-empty { background: var(--card-bg-soft); border-color: var(--border); }
+.pm-filters-empty .pm-filters-title { font-weight: 500; color: var(--muted); }
+.pm-filters-tools { display: inline-flex; gap: 8px; align-items: center; margin-left: auto; }
+.pm-tool { margin: 0; padding: 6px 12px; min-height: 0; font-size: 13px; }
+.pm-panel { flex-basis: 100%; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pm-panel-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.pm-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.pm-field select, .pm-field input { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); color: var(--text); font-size: 15px; width: 100%; box-sizing: border-box; }
+.pm-values { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; max-height: 260px; overflow: auto;
+  padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
+.pm-value { display: flex; align-items: center; gap: 6px; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.pm-panel-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.pm-panel-actions button { margin: 0; min-width: 120px; }
+.pm-views { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pm-views li { display: flex; align-items: center; gap: 8px; }
+.pm-view-open { font-weight: 600; }
+.pm-view-del { background: var(--card-bg-soft); color: var(--muted); }
+@media (max-width: 760px) { .pm-filters-tools { margin-left: 0; } }

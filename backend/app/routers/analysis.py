@@ -18,7 +18,7 @@ from app.auth import current_user, has_process_access
 from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels, utc_iso
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
-from app.models import AnalysisObjective, ControlTower, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
+from app.models import AnalysisObjective, AnalysisView, ControlTower, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
 from app.routers.assessment import load_assessment
 from app.services import analysis_assistant, control_tower, control_tower_assistant, explain, explorer, objectives, ocel_filter, overview
 
@@ -200,7 +200,8 @@ async def analysis_assistant_ask(request: Request):
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
     view = body.get("view") or {}
-    model = explorer.load_model(run.ocel_file_path)
+    sel = _filters(body.get("filters"))
+    model = explorer.load_model(run.ocel_file_path, sel)
 
     page = "overview" if body.get("page") == "overview" else "explorer"
     focus = str(body.get("focus") or "")[:300] or None
@@ -221,6 +222,8 @@ async def analysis_assistant_ask(request: Request):
                                      "all" if view.get("hub") == "all" else "own",
                                      view.get("vtype") or None, [int(x) for x in view.get("var") or [] if str(x).isdigit()])
         page_view = analysis_assistant.explorer_view(graph, focus)
+    if isinstance(page_view, dict):
+        page_view["case_filters"] = _filter_labels(body)
     db = SessionLocal()
     try:
         ws = db.get(ProcessWorkspace, workspace_id)
@@ -249,7 +252,7 @@ async def analysis_assistant_ask(request: Request):
         return JSONResponse({"available": True, **est})
     try:
         # il dataset (con gli stessi filtri della pagina) come tabelle da interrogare in sola lettura
-        data = ocel_filter.tables(ocel_filter.load_raw(run.ocel_file_path))
+        data = await run_in_threadpool(_filtered_tables, run.ocel_file_path, sel)
         result = await run_in_threadpool(analysis_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente dell'analisi non riuscito ({exc!r}).")
@@ -274,9 +277,117 @@ def _filters(raw) -> list[dict]:
     return ocel_filter.clean(raw if isinstance(raw, list) else [])
 
 
+def _filtered_tables(path, sel: list[dict]) -> dict:
+    """Il dataset (ridotto ai casi dei filtri, se ce ne sono) come tabelle per le interrogazioni dell'assistente."""
+    raw = ocel_filter.load_raw(path)
+    if not sel:
+        return ocel_filter.tables(raw)
+    full = explorer.load_model(path)
+    hubs = {t for t in full.types if full.is_hub(t)}
+    return ocel_filter.tables(ocel_filter.apply(raw, explorer.resolve(full, sel), hubs))
+
+
+def _filter_labels(body: dict) -> list[str]:
+    """Come l'utente vede i filtri attivi (testo della barra dei filtri), per il contesto dell'assistente."""
+    return [str(x)[:300] for x in (body.get("filter_labels") or []) if x][:20]
+
+
 def _without(filters: list[dict], kind: str, type_: str) -> list[dict]:
     """I filtri senza quelli di un grafico (il grafico da cui parte la selezione mostra tutti i valori)."""
     return [f for f in filters if not (f["kind"] == kind and f.get("type") == type_)]
+
+
+@router.get("/analysis/filters/catalog")
+def filters_catalog(request: Request, workspace_id: str, config_id: str):
+    """Attributi su cui si puo' filtrare (per tipo di oggetto e degli eventi) con i valori: per «+ Filtro»."""
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
+    full = explorer.load_model(run.ocel_file_path)
+    hubs = {t for t in full.types if full.is_hub(t)}
+    return JSONResponse({"attributes": ocel_filter.catalog(ocel_filter.load_raw(run.ocel_file_path)),
+                         "types": [{"name": t, "hub": t in hubs} for t in full.types]})
+
+
+def _view_json(v: AnalysisView, user) -> dict:
+    return {"id": v.id, "name": v.name, "filters": v.filters or [], "created_by": v.created_by,
+            "created_at": utc_iso(v.created_at), "mine": v.created_by_id == user.id}
+
+
+@router.get("/analysis/views")
+def views_list(request: Request, workspace_id: str, config_id: str):
+    """Viste salvate del dataset (filtri con un nome), visibili a tutti i Data Analyst del processo."""
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    config, _, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None:
+        return JSONResponse({"views": []})
+    db = SessionLocal()
+    try:
+        views = db.query(AnalysisView).filter_by(ingestion_config_id=config.id).order_by(AnalysisView.name).all()
+        return JSONResponse({"views": [_view_json(v, user) for v in views]})
+    finally:
+        db.close()
+
+
+@router.post("/analysis/views")
+async def views_save(request: Request):
+    """Salva i filtri attivi come vista (stesso nome: la sostituisce, se e' dell'utente)."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, _, _ = _explorer_dataset(workspace_id, config_id)
+    name = str(body.get("name") or "").strip()[:200]
+    filters = _filters(body.get("filters"))
+    # le etichette dei filtri restano (servono alla barra dei filtri), come le ha mandate il browser
+    raw = [f for f in body.get("filters") or [] if isinstance(f, dict) and ocel_filter._small_json(f)]
+    if config is None or not name or not filters:
+        return JSONResponse({"error": t(lang, "Dai un nome alla vista e scegli almeno un filtro.")}, status_code=400)
+    db = SessionLocal()
+    try:
+        v = db.query(AnalysisView).filter_by(ingestion_config_id=config.id, name=name).first()
+        if v is not None and v.created_by_id != user.id:
+            return JSONResponse({"error": t(lang, "Esiste già una vista con questo nome, creata da un altro utente.")},
+                                status_code=400)
+        if v is None:
+            v = AnalysisView(ingestion_config_id=config.id, name=name, created_by_id=user.id, created_by=user.name)
+        v.filters = raw[:30]
+        v.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.add(v)
+        db.commit()
+        return JSONResponse({"saved": True, "view": _view_json(v, user)})
+    finally:
+        db.close()
+
+
+@router.post("/analysis/views/{view_id}/delete")
+async def views_delete(request: Request, view_id: str):
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    db = SessionLocal()
+    try:
+        v = db.get(AnalysisView, view_id)
+        config, _, _ = _explorer_dataset(workspace_id, v.ingestion_config_id) if v else (None, None, None)
+        if v is None or config is None or config.id != v.ingestion_config_id:
+            return JSONResponse({"error": t(lang, "Vista non trovata.")}, status_code=404)
+        if v.created_by_id != user.id:
+            return JSONResponse({"error": t(lang, "Solo chi ha creato la vista può toglierla.")}, status_code=403)
+        db.delete(v)
+        db.commit()
+        return JSONResponse({"deleted": True})
+    finally:
+        db.close()
 
 
 # ---------- Process Overview ----------
@@ -764,15 +875,15 @@ async def control_tower_assistant_ask(request: Request):
     # le definizioni che l'utente sta guardando (anche modifiche non ancora salvate)
     spec = view.pop("spec", None) if isinstance(view.get("spec"), dict) else (row.spec if row else None)
     view.pop("spec", None)
-    period = str(view.get("period") or "all")
+    sel = _filters(body.get("filters"))
     values = None
     if spec:
-        spec, _ = control_tower.validate(spec, model)
-        values = await run_in_threadpool(control_tower.compute, spec, model, period)
-        for k in values["kpis"].values():
-            if k.get("issues"):
-                k["issues"] = [render(lang, x) for x in k["issues"]]
+        # stessi numeri della pagina: periodo e casi dai filtri condivisi
+        payload = await run_in_threadpool(_tower_payload, request, model, spec, row, "all", lang, lead,
+                                          run.ocel_file_path, sel)
+        spec, values = payload["spec"], payload.get("values")
     view["focus"] = str(body.get("focus") or "")[:300] or None
+    view["case_filters"] = _filter_labels(body)
     context = control_tower_assistant.build_context(
         language=lang, process_name=ws.process_name, assessment=answers, cat=control_tower.catalog(model, lead),
         spec=spec, values=values, view=view)
@@ -781,7 +892,7 @@ async def control_tower_assistant_ask(request: Request):
     if body.get("estimate"):
         return JSONResponse({"available": True, **est})
     try:
-        data = ocel_filter.tables(ocel_filter.load_raw(run.ocel_file_path))
+        data = await run_in_threadpool(_filtered_tables, run.ocel_file_path, sel)
         result = await run_in_threadpool(control_tower_assistant.ask, context, history, data)
     except Exception as exc:
         print(f"Assistente della Control Tower non riuscito ({exc!r}).")

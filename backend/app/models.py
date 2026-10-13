@@ -425,3 +425,18 @@ class LLMSettings(Base):
     mapping_budget_usd: Mapped[float] = mapped_column(Float, default=0.5)
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AnalysisView(Base):
+    """Vista salvata delle analisi: un insieme di filtri sui casi con un nome (es. «Italia, primo trimestre»), per un
+    dataset. La vedono tutti i Data Analyst del processo; la toglie chi l'ha creata."""
+
+    __tablename__ = "analysis_view"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    filters: Mapped[list] = mapped_column(JSON, default=list)
+    created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

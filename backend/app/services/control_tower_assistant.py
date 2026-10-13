@@ -66,6 +66,9 @@ Cosa fai:
 - Vocabolario delle definizioni (uguale a quello delle definizioni attuali in "spec"):
 """ + control_tower.GRAMMAR + """
 Regole:
+- Se "view.case_filters" non è vuoto, l'utente ha filtrato i casi toccando i grafici o con «+ Filtro» (es. un
+  cliente, un paese, alcuni mesi): "values" e le tabelle da interrogare riguardano solo quei casi. Dillo quando
+  spieghi un numero. Le modifiche alle definizioni valgono invece sempre per tutto il dataset.
 - Usa solo nomi di tipi, attività e attributi del catalogo ("catalog"); un importo è un attributo "number".
 - Con query_rows sulle tabelle del dataset (una per tipo di oggetto e "events") verifichi valori, utenti, attributi
   prima di proporre, se serve. Poche interrogazioni mirate.
