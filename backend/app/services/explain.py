@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import json
 
-from app.config import EXPLAIN_MODEL
 from app.connectors.base import TableSchema
-from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+from app.services.ai_mapping import _CHARS_PER_TOKEN
+from app.services import llm
 
 # Limite largo: il modello puo' usare parte dei token per ragionare prima di rispondere, e con un
 # limite stretto la risposta veniva troncata a meta' frase. Il costo massimo mostrato tiene conto di questo.
@@ -51,7 +51,7 @@ funzioni che l'app non ha. Testo semplice: niente titoli markdown, al massimo el
 
 
 def _price() -> tuple[float, float]:
-    return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    return llm.price(llm.model("assistant"))
 
 
 # Etichette dell'interfaccia che la spiegazione puo' citare (testi italiani = chiavi del catalogo)
@@ -88,19 +88,19 @@ def estimate(payload: str) -> dict:
     tokens_in = int(len(SYSTEM_PROMPT + payload) / _CHARS_PER_TOKEN) + 50
     typical = (tokens_in * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000
     maximum = (tokens_in * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000
-    return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": EXPLAIN_MODEL}
+    return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": llm.model("assistant")}
 
 
 def ask(payload: str) -> dict:
     """Chiama Claude. Ritorna {"answer", "cost_usd"}; solleva eccezione se la chiamata non riesce."""
     import anthropic
 
-    client = anthropic.Anthropic()
-    request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT,
+    client = llm.client()
+    request = dict(model=llm.model("assistant"), max_tokens=llm.max_tokens("assistant", MAX_OUTPUT_TOKENS), system=SYSTEM_PROMPT,
                    messages=[{"role": "user", "content": payload}])
     try:
         # ragionamento minimo: e' una spiegazione breve, non un problema difficile
-        response = client.messages.create(**request, output_config={"effort": "low"})
+        response = client.messages.create(**request, output_config={"effort": llm.effort("assistant")})
     except (TypeError, anthropic.BadRequestError):
         response = client.messages.create(**request)  # modello che non accetta il parametro
     price_in, price_out = _price()
@@ -112,10 +112,4 @@ def ask(payload: str) -> dict:
 
 def available() -> bool:
     """Claude e' utilizzabile su questo server (credenziali presenti)?"""
-    try:
-        import anthropic
-
-        anthropic.Anthropic()
-        return True
-    except Exception:
-        return False
+    return llm.available()

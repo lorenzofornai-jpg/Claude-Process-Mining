@@ -180,7 +180,9 @@ def converse(*, model: str, system_text: str, messages: list[dict], max_tokens: 
     Ritorna {"answer", "actions", "cost_usd", "truncated", "queries"}."""
     import anthropic
 
-    client = anthropic.Anthropic()
+    from app.services import llm
+
+    client = llm.client()
     system = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
     actions_only = list(action_tools or [])
     tools = actions_only + (TOOLS if tables is not None else [])
@@ -193,7 +195,7 @@ def converse(*, model: str, system_text: str, messages: list[dict], max_tokens: 
         if use:
             request["tools"] = use
         try:
-            response = client.messages.create(**request, output_config={"effort": "low"})
+            response = client.messages.create(**request, output_config={"effort": llm.effort("assistant")})
         except (TypeError, anthropic.BadRequestError):
             response = client.messages.create(**request)
         u = response.usage

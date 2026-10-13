@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+{% set f = form or {} %}
+{% macro val(name, default) %}{{ f[name] if name in f else (default if default is not none else "") }}{% endmacro %}
+<div class="card wide">
+  <h1>{{ _("LLM") }}</h1>
+  <p class="muted">
+    {{ _("Il modello linguistico (LLM) che l'app usa per il mapping delle tabelle, la Control Tower e gli assistenti. Qui scegli i modelli, i parametri delle chiamate API e la chiave API, che viene salvata cifrata. I parametri seguono l'API di Anthropic (Claude).") }}
+  </p>
+
+  {% if saved %}<div class="banner ok">{{ _("Impostazioni salvate: valgono da subito per tutte le nuove chiamate.") }}</div>{% endif %}
+  {% if errors %}
+  <div class="banner error">
+    <strong>{{ _("Impostazioni non salvate:") }}</strong>
+    <ul class="tight">{% for e in errors %}<li>{{ e|tr }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% if tests is not none %}
+  <div class="banner {{ 'ok' if tests and tests|selectattr('ok')|list|length == tests|length else 'error' }}">
+    <strong>{{ _("Verifica della connessione") }}</strong>
+    <ul class="tight">
+      {% for t in tests %}
+      <li>{% if t.ok %}✓ {{ _("{m}: raggiungibile", m=t.model) }}{% elif t.model %}✗ {{ _("{m}: errore", m=t.model) }} — <span class="mono tiny">{{ t.error }}</span>{% else %}✗ <span class="mono tiny">{{ t.error }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/admin/llm" class="llm-form" autocomplete="off">
+    <h2>{{ _("Connessione") }}</h2>
+    <div class="llm-grid">
+      <label class="checkbox llm-wide">
+        <input type="checkbox" name="enabled" value="1" {{ 'checked' if (f.get('enabled') == '1' if form else s.enabled) }}>
+        {{ _("LLM attivo (se lo disattivi l'app lavora senza LLM: mapping solo con regole, assistenti non disponibili)") }}
+      </label>
+      <label>{{ _("Fornitore") }}
+        <select name="provider" disabled><option>Anthropic (Claude)</option></select>
+      </label>
+      <label>{{ _("Indirizzo dell'API (facoltativo)") }}
+        <input type="url" name="base_url" value="{{ val('base_url', s.base_url) }}" placeholder="https://api.anthropic.com">
+        <span class="tiny muted">{{ _("Vuoto = indirizzo standard di Anthropic. Serve solo con un gateway o un proxy aziendale.") }}</span>
+      </label>
+      <label class="llm-wide">{{ _("Chiave API") }}
+        <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false"
+               placeholder="{% if s.api_key_hint %}{{ _("Chiave salvata ({h}): lascia vuoto per tenerla", h=s.api_key_hint) }}{% else %}sk-ant-…{% endif %}">
+        <span class="tiny muted">
+          {% if s.key_error %}<span class="ct-bad">{{ _("La chiave salvata non si può decifrare (la chiave di cifratura del server è cambiata): inseriscila di nuovo.") }}</span>
+          {% elif key_source == "saved" %}{{ _("Chiave salvata qui, cifrata ({h}). Non viene mai mostrata.", h=s.api_key_hint) }}
+          {% elif key_source == "environment" %}{{ _("Nessuna chiave salvata qui: l'app usa quella dell'ambiente del server (ANTHROPIC_API_KEY).") }}
+          {% else %}{{ _("Nessuna chiave: inseriscila per attivare l'LLM.") }}{% endif %}
+        </span>
+      </label>
+      {% if s.api_key_hint %}
+      <label class="checkbox llm-wide"><input type="checkbox" name="remove_key" value="1"> {{ _("Rimuovi la chiave salvata") }}</label>
+      {% endif %}
+      <label>{{ _("Timeout di una chiamata (secondi)") }}
+        <input type="number" name="timeout_s" min="10" max="3600" value="{{ val('timeout_s', s.timeout_s) }}">
+      </label>
+      <label>{{ _("Tentativi in caso di errore temporaneo") }}
+        <input type="number" name="max_retries" min="0" max="10" value="{{ val('max_retries', s.max_retries) }}">
+        <span class="tiny muted">{{ _("Errori di rete, sovraccarico (429, 5xx): l'SDK riprova da solo.") }}</span>
+      </label>
+    </div>
+
+    <h2>{{ _("Modelli per uso") }}</h2>
+    <p class="tiny muted">{{ _("Effort: quanto ragiona il modello (low, medium, high, xhigh, max); più alto = risposte più accurate ma più lente e costose. Tetto di output: limite massimo di token per risposta (vuoto = quello previsto dall'app).") }}</p>
+    <div class="table-scroll">
+    <table class="admin-table llm-uses">
+      <thead><tr><th>{{ _("Uso") }}</th><th>{{ _("Modello") }}</th><th>Effort</th><th>{{ _("Tetto di output (token)") }}</th></tr></thead>
+      <tbody>
+        {% for u in uses %}{% set cur = s.uses[u] %}
+        <tr>
+          <td>{{ use_labels[u]|tr }}</td>
+          <td><input type="text" name="model_{{ u }}" list="llm-models" value="{{ val('model_' ~ u, cur.model) }}" required spellcheck="false"></td>
+          <td>
+            <select name="effort_{{ u }}">
+              {% set e = f.get('effort_' ~ u) if form else cur.effort %}
+              {% for x in efforts %}<option value="{{ x }}" {{ 'selected' if x == e }}>{{ x }}</option>{% endfor %}
+            </select>
+          </td>
+          <td><input type="number" name="max_tokens_{{ u }}" min="256" max="128000" step="256" value="{{ val('max_tokens_' ~ u, cur.max_tokens) }}" placeholder="{{ _("automatico") }}"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <datalist id="llm-models">{% for m in models %}<option value="{{ m }}">{% endfor %}</datalist>
+
+    <h2>{{ _("Costi") }}</h2>
+    <div class="llm-grid">
+      <label>{{ _("Tetto di spesa del mapping, per elaborazione (USD)") }}
+        <input type="number" name="mapping_budget_usd" min="0.01" max="100" step="0.01" value="{{ val('mapping_budget_usd', s.mapping_budget_usd) }}">
+        <span class="tiny muted">{{ _("Le tabelle riconosciute senza LLM non costano nulla; per le altre l'app limita le risposte in modo da non superare questa cifra.") }}</span>
+      </label>
+    </div>
+    <p class="tiny muted">{{ _("Listino usato per stimare i costi prima di ogni chiamata e per i tetti di spesa, in USD per milione di token. Aggiornalo se cambiano i prezzi o aggiungi un modello nuovo nell'ultima riga.") }}</p>
+    {% set rows = s.prices|dictsort %}
+    <div class="table-scroll">
+    <table class="admin-table llm-prices">
+      <thead><tr><th>{{ _("Modello") }}</th><th>{{ _("Input (USD / M token)") }}</th><th>{{ _("Output (USD / M token)") }}</th></tr></thead>
+      <tbody>
+        {% for m, p in rows %}
+        <tr>
+          <td><input type="text" name="price_model_{{ loop.index0 }}" value="{{ val('price_model_' ~ loop.index0, m) }}" spellcheck="false"></td>
+          <td><input type="number" name="price_in_{{ loop.index0 }}" min="0" step="0.01" value="{{ val('price_in_' ~ loop.index0, p[0]) }}"></td>
+          <td><input type="number" name="price_out_{{ loop.index0 }}" min="0" step="0.01" value="{{ val('price_out_' ~ loop.index0, p[1]) }}"></td>
+        </tr>
+        {% endfor %}
+        {% set n = rows|length %}
+        <tr>
+          <td><input type="text" name="price_model_{{ n }}" value="{{ val('price_model_' ~ n, '') }}" placeholder="{{ _("nuovo modello") }}" spellcheck="false"></td>
+          <td><input type="number" name="price_in_{{ n }}" min="0" step="0.01" value="{{ val('price_in_' ~ n, '') }}"></td>
+          <td><input type="number" name="price_out_{{ n }}" min="0" step="0.01" value="{{ val('price_out_' ~ n, '') }}"></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <input type="hidden" name="price_rows" value="{{ rows|length }}">
+    <p class="tiny muted">{{ _("Per togliere un modello dal listino svuota il suo nome.") }}</p>
+
+    {% if s.updated_by %}<p class="tiny muted">{{ _("Ultima modifica di {u} il {d}.", u=s.updated_by, d=s.updated_at|localtime) }}</p>{% endif %}
+    <div class="actions">
+      <a class="secondary button-link" href="/admin">← {{ _("Amministrazione") }}</a>
+      <button type="submit" name="action" value="test" class="secondary">{{ _("Salva e verifica la connessione") }}</button>
+      <button type="submit" name="action" value="save" class="primary">{{ _("Salva") }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

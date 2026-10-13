@@ -20,11 +20,11 @@ import hashlib
 import json
 import re
 
-from app.config import EXPLAIN_MODEL
 from app.connectors.base import TableSchema
 from app.i18n import msg
 from app.services import sap_dictionary
-from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+from app.services.ai_mapping import _CHARS_PER_TOKEN
+from app.services import llm
 
 MAX_OUTPUT_TOKENS = 3500
 TYPICAL_OUTPUT_TOKENS = 1600
@@ -286,7 +286,7 @@ Regole:
 
 
 def _price():
-    return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    return llm.price(llm.model("assistant"))
 
 
 def build_payload(*, language: str, process_name: str, answers: dict, tables: list[TableSchema], found: dict) -> str:
@@ -312,7 +312,7 @@ def estimate(payload: str) -> dict:
     tokens_in = int(len(SYSTEM_PROMPT + payload) / _CHARS_PER_TOKEN) + 50
     return {"cost_usd": round((tokens_in * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000, 4),
             "max_usd": round((tokens_in * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000, 4),
-            "model": EXPLAIN_MODEL}
+            "model": llm.model("assistant")}
 
 
 def _parse(text: str) -> dict:
@@ -335,11 +335,11 @@ def ask(payload: str) -> dict:
     """Chiama Claude; ritorna {"result", "cost_usd", "truncated"}."""
     import anthropic
 
-    client = anthropic.Anthropic()
-    request = dict(model=EXPLAIN_MODEL, max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT,
+    client = llm.client()
+    request = dict(model=llm.model("assistant"), max_tokens=llm.max_tokens("assistant", MAX_OUTPUT_TOKENS), system=SYSTEM_PROMPT,
                    messages=[{"role": "user", "content": payload}])
     try:
-        response = client.messages.create(**request, output_config={"effort": "low"})
+        response = client.messages.create(**request, output_config={"effort": llm.effort("assistant")})
     except (TypeError, anthropic.BadRequestError):
         response = client.messages.create(**request)
     price_in, price_out = _price()

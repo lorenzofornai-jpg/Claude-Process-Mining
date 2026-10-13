@@ -403,3 +403,25 @@ class ControlTower(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     approved_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LLMSettings(Base):
+    """Configurazione dell'LLM scelta dall'amministratore (services/llm.py): una sola riga. La chiave API e'
+    salvata cifrata (Fernet); in chiaro non si salva mai e non torna mai all'interfaccia (solo le ultime 4 cifre).
+    Senza chiave salvata qui vale quella dell'ambiente del server (ANTHROPIC_API_KEY o le credenziali dell'SDK)."""
+
+    __tablename__ = "llm_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    provider: Mapped[str] = mapped_column(String(40), default="anthropic")
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_hint: Mapped[str | None] = mapped_column(String(20), nullable=True)   # «…a1b2»
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    timeout_s: Mapped[int] = mapped_column(Integer, default=600)
+    max_retries: Mapped[int] = mapped_column(Integer, default=2)
+    uses: Mapped[dict] = mapped_column(JSON, default=dict)      # {uso: {"model", "effort", "max_tokens"}}
+    prices: Mapped[dict] = mapped_column(JSON, default=dict)    # {modello: [input, output]} USD per milione di token
+    mapping_budget_usd: Mapped[float] = mapped_column(Float, default=0.5)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.config import RELEVANCE_CHECK_MODEL
+from app.services import llm
 from app.connectors.base import TableSchema
 
 
@@ -52,7 +52,7 @@ def check_relevance(process_context: dict, tables: list[TableSchema]) -> Relevan
     try:
         import anthropic
 
-        client = anthropic.Anthropic()
+        client = llm.client()
         payload = {
             "process_name": process_context.get("process_name", ""),
             # risposte dell'assessment (oggetto principale, sistemi, obiettivi...), se compilato
@@ -70,9 +70,9 @@ def check_relevance(process_context: dict, tables: list[TableSchema]) -> Relevan
             ],
         }
         response = client.messages.parse(
-            model=RELEVANCE_CHECK_MODEL,
-            max_tokens=4000,
-            output_config={"effort": "low"},
+            model=llm.model("relevance"),
+            max_tokens=llm.max_tokens("relevance", 4000),
+            output_config={"effort": llm.effort("relevance")},
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             output_format=RelevanceVerdict,

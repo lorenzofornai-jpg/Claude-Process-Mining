@@ -7,3 +7,4 @@ backend/data/output/
 backend/.env
 .DS_Store
 backend/data/documents/
+backend/data/secret/

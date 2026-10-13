@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.auth import current_user, has_process_access
 from app.i18n import get_lang, joined, msg, render, setup_templates, t, to_text, ui_labels, utc_iso
-from app.config import AI_MAPPER, AI_MAPPING_BUDGET_USD, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
+from app.config import AI_MAPPER, AUTO_ACCEPT_CONFIDENCE_THRESHOLD, DATA_DIR, STATIC_VERSION
 from app.connectors.file_connector import FileConnector
 from app.db import SessionLocal
 from app.models import (
@@ -36,7 +36,7 @@ from app.models import (
 )
 from app import state
 from app.services.deterministic_mapping import TEMPLATE_LABELS
-from app.services import business_objects, coverage, derived_columns, explain, names_i18n, review_assistant
+from app.services import business_objects, coverage, derived_columns, explain, llm, names_i18n, review_assistant
 from app.services.ai_mapping import AIMapper, ClaudeAIMapper, HeuristicAIMapper, MappingBudgetError, MappingProposal
 from app.routers.analysis import available_datasets
 from app.routers.assessment import assessment_status, documents_for_mapping, load_assessment, mapping_context
@@ -1067,7 +1067,7 @@ def review_page(request: Request, workspace_id: str, error: str | None = None):
             "workspace_id": workspace_id,
             "context": sess["context"],
             "dataset_label": sess["dataset_label"],
-            "mapping_cost_usd": sess.get("mapping_cost_usd"), "mapping_budget_usd": AI_MAPPING_BUDGET_USD,
+            "mapping_cost_usd": sess.get("mapping_cost_usd"), "mapping_budget_usd": llm.mapping_budget_usd(),
             "mapping_known_tables": sess.get("mapping_known_tables") or [],
             "document_context": _document_context(sess),
             "mapping_budget_skipped": sess.get("mapping_budget_skipped") or [],

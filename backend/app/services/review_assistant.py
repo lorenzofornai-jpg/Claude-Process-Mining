@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import json
 
-from app.config import EXPLAIN_MODEL
 from app.i18n import msg, render
 from app.services import data_query
-from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+from app.services.ai_mapping import _CHARS_PER_TOKEN
+from app.services import llm
 
 MAX_OUTPUT_TOKENS = 2500
 TYPICAL_OUTPUT_TOKENS = 500
@@ -155,7 +155,7 @@ UI_LABELS = {
 
 
 def _price():
-    return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    return llm.price(llm.model("assistant"))
 
 
 def _row(r: dict, lang: str) -> dict:
@@ -245,7 +245,7 @@ def estimate(context: str, history: list[dict]) -> dict:
     extra = MAX_DATA_ROUNDS * (tokens_in * 0.1 * price_in + 2500 * price_in + 300 * price_out)
     return {"cost_usd": round((tokens_in * 1.25 * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000, 4),
             "max_usd": round((tokens_in * 1.25 * price_in + MAX_OUTPUT_TOKENS * price_out + extra) / 1_000_000, 4),
-            "model": EXPLAIN_MODEL}
+            "model": llm.model("assistant")}
 
 
 def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None = None) -> dict:
@@ -254,8 +254,8 @@ def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None 
     messages = _messages(history)
     if not messages:
         raise ValueError("nessuna domanda")
-    return data_query.converse(model=EXPLAIN_MODEL, system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
-                               messages=messages, max_tokens=MAX_OUTPUT_TOKENS, price=_price(), tables=tables,
+    return data_query.converse(model=llm.model("assistant"), system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
+                               messages=messages, max_tokens=llm.max_tokens("assistant", MAX_OUTPUT_TOKENS), price=_price(), tables=tables,
                                action_tools=TOOLS, max_rounds=MAX_DATA_ROUNDS)
 
 

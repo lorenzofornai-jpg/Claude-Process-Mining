@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 
-from app.config import EXPLAIN_MODEL
 from app.services import control_tower, data_query
-from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+from app.services.ai_mapping import _CHARS_PER_TOKEN
+from app.services import llm
 from app.services.analysis_assistant import _messages
 
 MAX_OUTPUT_TOKENS = 6000
@@ -98,7 +98,7 @@ TOOL = {
 
 
 def _price() -> tuple[float, float]:
-    return _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    return llm.price(llm.model("assistant"))
 
 
 def values_view(values: dict | None) -> dict:
@@ -138,7 +138,7 @@ def estimate(context: str, history: list[dict]) -> dict:
     typical = (tokens_in * 1.25 * price_in + TYPICAL_OUTPUT_TOKENS * price_out) / 1_000_000
     maximum = ((tokens_in * 1.25 * price_in + MAX_OUTPUT_TOKENS * price_out) / 1_000_000
                + data_query.extra_cost(tokens_in, (price_in, price_out)))
-    return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": EXPLAIN_MODEL}
+    return {"cost_usd": round(typical, 4), "max_usd": round(maximum, 4), "model": llm.model("assistant")}
 
 
 def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None = None) -> dict:
@@ -146,6 +146,6 @@ def ask(context: str, history: list[dict], tables: dict[str, list[dict]] | None 
     messages = _messages(history)
     if not messages:
         raise ValueError("nessuna domanda")
-    return data_query.converse(model=EXPLAIN_MODEL, system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
-                               messages=messages, max_tokens=MAX_OUTPUT_TOKENS, price=_price(), tables=tables,
+    return data_query.converse(model=llm.model("assistant"), system_text=SYSTEM_PROMPT + "\nDATI:\n" + context,
+                               messages=messages, max_tokens=llm.max_tokens("assistant", MAX_OUTPUT_TOKENS), price=_price(), tables=tables,
                                action_tools=[TOOL])

@@ -208,6 +208,19 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   città; esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 
+## Amministrazione > LLM (13 ottobre 2026)
+- ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o
+  proxy), chiave API, timeout, tentativi; per ogni uso (mapping, controllo di pertinenza, Control Tower,
+  assistenti/spiegazioni/traduzioni) modello, effort e tetto di output; tetto di spesa del mapping; listino dei prezzi
+  per le stime. «Salva e verifica la connessione» chiede all'API ogni modello configurato (nessun costo).
+- ✅ Chiave API cifrata con Fernet (`cryptography`): chiave di cifratura da `APP_SECRET_KEY` o file generato in
+  `backend/data/secret/` (fuori da git, permessi 600); in pagina solo le ultime 4 cifre. Senza chiave salvata vale
+  quella dell'ambiente (`ANTHROPIC_API_KEY`).
+- ✅ Tutte le chiamate passano da `services/llm.py` (client, modello, effort, prezzi): le impostazioni valgono subito,
+  senza riavviare.
+- Da fare: altri fornitori (es. Claude su Amazon Bedrock, Google Vertex AI, Microsoft Foundry), registro della spesa
+  per mese e tetto di spesa mensile.
+
 ## Modulo 2 — Analisi
 - ✅ **Pulsante «Apri analisi»** attivo solo con almeno un dataset pronto; disattivato con il messaggio
   «Nessun dataset disponibile».

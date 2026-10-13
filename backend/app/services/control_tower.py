@@ -1093,13 +1093,13 @@ TOOL = {
 
 
 def _model_name() -> str:
-    from app.config import CONTROL_TOWER_MODEL
-    return CONTROL_TOWER_MODEL
+    from app.services import llm
+    return llm.model("control_tower")
 
 
 def _price() -> tuple[float, float]:
-    from app.services.ai_mapping import _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
-    return _PRICES_USD_PER_MTOK.get(_model_name(), _FALLBACK_PRICE)
+    from app.services import llm
+    return llm.price(_model_name())
 
 
 def _compact_catalog(cat: dict) -> dict:
@@ -1169,8 +1169,10 @@ def propose(payload: str) -> dict:
     lunga e una richiesta normale potrebbe scadere."""
     import anthropic
 
-    client = anthropic.Anthropic()
-    request = dict(model=_model_name(), max_tokens=MAX_OUTPUT_TOKENS, system=SYSTEM_PROMPT, tools=[TOOL],
+    from app.services import llm
+
+    client = llm.client()
+    request = dict(model=_model_name(), max_tokens=llm.max_tokens("control_tower", MAX_OUTPUT_TOKENS), system=SYSTEM_PROMPT, tools=[TOOL],
                    messages=[{"role": "user", "content": payload}])
 
     def call(**extra):
@@ -1178,7 +1180,7 @@ def propose(payload: str) -> dict:
             return stream.get_final_message()
     try:
         try:
-            response = call(output_config={"effort": "medium"})
+            response = call(output_config={"effort": llm.effort("control_tower")})
         except (TypeError, anthropic.BadRequestError):
             response = call()
     except anthropic.APIStatusError as exc:
@@ -1509,36 +1511,35 @@ def translate_payload(spec: dict, base_lang: str) -> str | None:
 
 
 def translate_estimate(payload: str) -> dict:
-    from app.config import EXPLAIN_MODEL
-    from app.services.ai_mapping import _CHARS_PER_TOKEN, _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
-    price_in, price_out = _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    from app.services import llm
+    from app.services.ai_mapping import _CHARS_PER_TOKEN
+    price_in, price_out = llm.price(llm.model("assistant"))
     tokens_in = int(len(TRANSLATE_PROMPT + json.dumps(TRANSLATE_TOOL) + payload) / _CHARS_PER_TOKEN) + 50
     tokens_out = int(len(payload) / _CHARS_PER_TOKEN * 1.6) + 200
     return {"cost_usd": round((tokens_in * price_in + tokens_out * price_out) / 1_000_000, 4),
             "max_usd": round((tokens_in * price_in + (tokens_out * 2 + 1500) * price_out) / 1_000_000, 4),
-            "model": EXPLAIN_MODEL}
+            "model": llm.model("assistant")}
 
 
 def translate(spec: dict, base_lang: str) -> dict:
     """Completa con Claude i testi che hanno una lingua sola. Ritorna {"spec", "cost_usd"}."""
     import anthropic
-    from app.config import EXPLAIN_MODEL
-    from app.services.ai_mapping import _FALLBACK_PRICE, _PRICES_USD_PER_MTOK
+    from app.services import llm
 
     spec = copy.deepcopy(spec)
     payload = translate_payload(spec, base_lang)
     if payload is None:
         return {"spec": spec, "cost_usd": 0.0}
-    client = anthropic.Anthropic()
-    request = dict(model=EXPLAIN_MODEL, max_tokens=8000, system=TRANSLATE_PROMPT, tools=[TRANSLATE_TOOL],
+    client = llm.client()
+    request = dict(model=llm.model("assistant"), max_tokens=llm.max_tokens("assistant", 8000), system=TRANSLATE_PROMPT, tools=[TRANSLATE_TOOL],
                    messages=[{"role": "user", "content": payload}])
     try:
-        with client.messages.stream(**request, output_config={"effort": "low"}) as stream:
+        with client.messages.stream(**request, output_config={"effort": llm.effort("assistant")}) as stream:
             response = stream.get_final_message()
     except (TypeError, anthropic.BadRequestError):
         with client.messages.stream(**request) as stream:
             response = stream.get_final_message()
-    price_in, price_out = _PRICES_USD_PER_MTOK.get(EXPLAIN_MODEL, _FALLBACK_PRICE)
+    price_in, price_out = llm.price(llm.model("assistant"))
     u = response.usage
     cost = ((u.input_tokens or 0) * price_in + (u.output_tokens or 0) * price_out) / 1_000_000
     out = next((b.input for b in response.content if getattr(b, "type", "") == "tool_use"), None)

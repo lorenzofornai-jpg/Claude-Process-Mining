@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -23,6 +24,7 @@ from app.models import (
     ProcessWorkspace,
     User,
 )
+from app.services import llm
 from app.services.structures import delete_structures, remove_files, workspace_config_ids
 
 router = APIRouter(prefix="/admin")
@@ -259,3 +261,102 @@ def delete_process(request: Request, workspace_id: str):
     state.drop_workspace(workspace_id)
 
     return RedirectResponse("/admin", status_code=303)
+
+
+# ---------- LLM: modello, parametri delle chiamate e chiave API (cifrata) ----------
+
+USE_LABELS = {
+    "mapping": msg("Mapping delle tabelle sorgente"),
+    "relevance": msg("Controllo di pertinenza dei dati caricati"),
+    "control_tower": msg("Proposta della Control Tower"),
+    "assistant": msg("Assistenti, spiegazioni e traduzioni"),
+}
+_MODEL_RE = re.compile(r"^[A-Za-z0-9._:@/\-]{2,120}$")
+
+
+def _llm_page(request: Request, user: User, errors: list | None = None, tests: list | None = None,
+              saved: bool = False, form: dict | None = None, status_code: int = 200):
+    s = llm.settings()
+    models = sorted(set(llm.PRICES_USD_PER_MTOK) | set(s["prices"]) | {s["uses"][u]["model"] for u in llm.USES})
+    return templates.TemplateResponse(
+        "admin_llm.html",
+        {
+            "request": request, "user": user, "s": s, "uses": llm.USES, "use_labels": USE_LABELS,
+            "efforts": llm.EFFORTS, "models": models, "key_source": llm.key_source(), "errors": errors or [],
+            "tests": tests, "saved": saved, "form": form,
+        },
+        status_code=status_code,
+    )
+
+
+@router.get("/llm", response_class=HTMLResponse)
+def llm_settings_page(request: Request):
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    return _llm_page(request, user)
+
+
+def _num(value, cast, lo, hi, label, errors, required=True):
+    value = (value or "").strip().replace(",", ".")
+    if not value:
+        if required:
+            errors.append(msg("Valore mancante: {f}.", f=label))
+        return None
+    try:
+        x = cast(float(value))
+    except ValueError:
+        errors.append(msg("Valore non valido per {f}: «{v}».", f=label, v=value))
+        return None
+    if not lo <= x <= hi:
+        errors.append(msg("{f} deve essere tra {a} e {b}.", f=label, a=lo, b=hi))
+        return None
+    return x
+
+
+@router.post("/llm")
+async def llm_settings_save(request: Request):
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    form = await request.form()
+    errors: list = []
+    enabled = form.get("enabled") == "1"
+    api_key = (form.get("api_key") or "").strip()
+    remove_key = form.get("remove_key") == "1"
+    if api_key and (len(api_key) < 20 or any(ch.isspace() for ch in api_key)):
+        errors.append(msg("La chiave API non sembra valida (troppo corta o con spazi)."))
+    base_url = (form.get("base_url") or "").strip().rstrip("/")
+    if base_url and not re.match(r"^https?://[^\s]+$", base_url):
+        errors.append(msg("L'indirizzo dell'API deve iniziare con https:// (o http:// per un proxy locale)."))
+    timeout_s = _num(form.get("timeout_s"), int, 10, 3600, "timeout", errors)
+    max_retries = _num(form.get("max_retries"), int, 0, 10, "max_retries", errors)
+    budget = _num(form.get("mapping_budget_usd"), float, 0.01, 100, "mapping_budget_usd", errors)
+    uses = {}
+    for u in llm.USES:
+        model = (form.get(f"model_{u}") or "").strip()
+        if not _MODEL_RE.match(model):
+            errors.append(msg("Nome del modello non valido: «{v}».", v=model))
+        effort = form.get(f"effort_{u}") or "low"
+        if effort not in llm.EFFORTS:
+            errors.append(msg("Valore non valido per {f}: «{v}».", f="effort", v=effort))
+        cap = _num(form.get(f"max_tokens_{u}"), int, 256, 128000, "max_tokens", errors, required=False)
+        uses[u] = {"model": model, "effort": effort, "max_tokens": cap}
+    prices = {}
+    for i in range(int(form.get("price_rows") or 0) + 1):
+        m = (form.get(f"price_model_{i}") or "").strip()
+        if not m:
+            continue
+        if not _MODEL_RE.match(m):
+            errors.append(msg("Nome del modello non valido: «{v}».", v=m))
+            continue
+        pin = _num(form.get(f"price_in_{i}"), float, 0, 1000, f"{m} input", errors)
+        pout = _num(form.get(f"price_out_{i}"), float, 0, 1000, f"{m} output", errors)
+        if pin is not None and pout is not None:
+            prices[m] = [pin, pout]
+    if errors:
+        return _llm_page(request, user, errors=errors, form=dict(form), status_code=400)
+    llm.save(user=user.name, enabled=enabled, api_key=api_key or None, remove_key=remove_key, base_url=base_url or None,
+             timeout_s=timeout_s, max_retries=max_retries, uses=uses, prices=prices, mapping_budget_usd=budget)
+    tests = llm.test_connection() if form.get("action") == "test" else None
+    return _llm_page(request, user, tests=tests, saved=True)

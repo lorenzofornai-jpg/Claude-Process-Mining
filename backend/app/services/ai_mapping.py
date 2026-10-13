@@ -28,7 +28,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from app.config import AI_MAPPING_BUDGET_USD, AI_MAPPING_EFFORT, ANTHROPIC_MODEL
+from app.services import llm
 from app.connectors.base import TableSchema
 from app.i18n import msg, render
 from app.services import catalog, deterministic_mapping, documents, names_i18n
@@ -474,16 +474,7 @@ Regole per contenere costi e lavoro di revisione:
   la data che ha "with_time" (es. CPUDT con CPUTM invece di BUDAT, che e' solo un giorno).
 """
 
-# Prezzi in USD per milione di token (input, output). Modello sconosciuto: si usa
-# il listino piu' alto tra quelli noti, cosi' il tetto di spesa resta prudente.
-_PRICES_USD_PER_MTOK = {
-    "claude-opus-5-5": (4.0, 20.0),
-    "claude-opus-5": (5.0, 25.0),
-    "claude-sonnet-5-5": (2.0, 10.0),
-    "claude-sonnet-5": (2.0, 10.0),
-    "claude-haiku-4-5": (1.0, 5.0),
-}
-_FALLBACK_PRICE = (5.0, 25.0)
+# Prezzi, modello, effort e tetto di spesa: services/llm.py (pagina Amministrazione > LLM).
 _CHARS_PER_TOKEN = 3.0          # stima prudente per JSON con testo italiano
 _MIN_OUTPUT_PER_COLUMN = 25     # sotto questa soglia il mapping non sarebbe affidabile
 _SKELETON_MAX_TOKENS = 6000
@@ -527,7 +518,7 @@ class ClaudeAIMapper(AIMapper):
 
     Costo sotto controllo: prima di chiamare Claude si stima l'input di ogni
     chiamata e si assegna a ciascuna un limite di output (max_tokens) tale che
-    il costo massimo possibile stia nel tetto AI_MAPPING_BUDGET_USD. Se non
+    il costo massimo possibile stia nel tetto di spesa del mapping (Amministrazione > LLM). Se non
     tutte le tabelle ci stanno, le piu' grandi restano escluse (budget_skipped)
     e si possono rigenerare dalla revisione; se non ci sta nulla e nulla e'
     stato riconosciuto, si ferma prima di spendere (MappingBudgetError)."""
@@ -535,11 +526,11 @@ class ClaudeAIMapper(AIMapper):
     PARALLEL_CALLS = 6
 
     def __init__(self, model: str | None = None):
-        import anthropic  # import locale: il pacchetto non deve essere richiesto se non si usa questa classe
-
-        self._client = anthropic.Anthropic()
-        self._model = model or ANTHROPIC_MODEL
-        self._price_in, self._price_out = _PRICES_USD_PER_MTOK.get(self._model, _FALLBACK_PRICE)
+        self._client = llm.client()
+        self._model = model or llm.model("mapping")
+        self._price_in, self._price_out = llm.price(self._model)
+        self._effort = llm.effort("mapping")
+        self._budget_usd = llm.mapping_budget_usd()
         self._lock = threading.Lock()
         self.spent_usd = 0.0
         self.last_missing_tables: list[str] = []
@@ -548,7 +539,7 @@ class ClaudeAIMapper(AIMapper):
 
     @property
     def budget_usd(self) -> float:
-        return AI_MAPPING_BUDGET_USD
+        return self._budget_usd
 
     @staticmethod
     def _known_pattern_for(table_name: str, current_columns: list[str]) -> list[dict] | None:
@@ -579,10 +570,10 @@ class ClaudeAIMapper(AIMapper):
     def _stream(self, system: str, content: str, max_tokens: int, output_format):
         with self._client.messages.stream(
             model=self._model,
-            max_tokens=max_tokens,
+            max_tokens=llm.max_tokens("mapping", max_tokens),
             system=system,
             messages=[{"role": "user", "content": content}],
-            output_config={"effort": AI_MAPPING_EFFORT},
+            output_config={"effort": self._effort},
             output_format=output_format,
         ) as stream:
             response = stream.get_final_message()
@@ -716,8 +707,8 @@ class ClaudeAIMapper(AIMapper):
                     total_cols = sum(len(t.columns) for t in unknown)
                     raise MappingBudgetError(msg(
                         "Con {t} tabelle e {c} colonne da mappare con l'AI il costo supererebbe il limite di $ {b} per "
-                        "elaborazione. Carica meno tabelle (o solo le colonne che servono) e riprova; il limite si cambia "
-                        "con AI_MAPPING_BUDGET_USD nel file .env.", t=len(unknown), c=total_cols, b=f"{self.budget_usd:.2f}"))
+                        "elaborazione. Carica meno tabelle (o solo le colonne che servono) e riprova; l'amministratore può "
+                        "cambiare il limite nella pagina LLM.", t=len(unknown), c=total_cols, b=f"{self.budget_usd:.2f}"))
                 unknown = []
             else:
                 table_in, max_out, unknown_in_budget = plan

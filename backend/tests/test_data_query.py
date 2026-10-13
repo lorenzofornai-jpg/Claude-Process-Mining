@@ -50,7 +50,7 @@ def test_ask_runs_data_queries_then_answers(monkeypatch):
                                    content=[SimpleNamespace(type="text", text="MANSP: 1 rimozione su 3 modifiche.")])
 
     import anthropic
-    monkeypatch.setattr(anthropic, "Anthropic", lambda: SimpleNamespace(messages=Msgs()))
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **kw: SimpleNamespace(messages=Msgs()))   # il client riceve timeout e tentativi
     out = review_assistant.ask("{}", [{"role": "user", "content": "ci sono rimozioni del blocco?"}], TABLES)
     assert out["answer"] == "MANSP: 1 rimozione su 3 modifiche." and out["queries"] == 1 and out["actions"] == []
     result = calls[1]["messages"][-1]["content"][0]

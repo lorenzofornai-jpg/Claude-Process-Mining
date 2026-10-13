@@ -210,7 +210,14 @@ bisogno di conoscere in anticipo lo schema sorgente. Richiede
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-`ANTHROPIC_MODEL` (opzionale, default `claude-opus-5`) per cambiare modello.
+`ANTHROPIC_MODEL` (opzionale, default `claude-opus-5-5`) per cambiare modello.
+
+**Più semplice: Amministrazione > «Configura l'LLM».** L'amministratore inserisce lì la chiave API (salvata cifrata
+nel database con Fernet; la chiave di cifratura è `APP_SECRET_KEY` nell'ambiente oppure il file generato in
+`backend/data/secret/llm.key`, da conservare: se va perso la chiave API va reinserita), sceglie modello, effort e
+tetto di output per ogni uso, timeout, tentativi, indirizzo di un eventuale gateway, tetto di spesa del mapping e
+listino prezzi. Quello che si salva nella pagina vale al posto di `.env`; finché non si salva valgono i valori di
+`.env`. Il codice legge tutto da `app/services/llm.py`.
 
 **In alternativa alla chiave statica, è supportata Workload Identity
 Federation (WIF)** — nessuna modifica al codice: `ClaudeAIMapper` istanzia

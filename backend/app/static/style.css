@@ -155,7 +155,8 @@ h2 { font-size: 14.5px; color: var(--text); margin: 24px 0 8px; letter-spacing: 
 
 .form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
 .form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text); }
-.form input, .form select, .form textarea {
+.form input, .form select, .form textarea,
+.llm-form input:not([type=checkbox]), .llm-form select {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -166,7 +167,8 @@ h2 { font-size: 14.5px; color: var(--text); margin: 24px 0 8px; letter-spacing: 
   resize: vertical;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.form input:focus, .form select:focus, .form textarea:focus {
+.form input:focus, .form select:focus, .form textarea:focus,
+.llm-form input:focus, .llm-form select:focus {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-soft);
@@ -1139,3 +1141,19 @@ table.ov-acts td.strong { font-weight: 600; }
 .ct-bubble-label { paint-order: stroke; stroke: var(--card-bg); stroke-width: 3px; }
 .ct-scale { flex-wrap: wrap; }
 .ct-scale-bad { background: linear-gradient(90deg, color-mix(in srgb, var(--error) 25%, var(--card-bg)), color-mix(in srgb, var(--error) 90%, var(--card-bg))); }
+
+/* Amministrazione > LLM */
+.llm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; margin: 8px 0 18px; }
+.llm-grid label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.llm-grid label .tiny { font-weight: 400; }
+.llm-grid .checkbox { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
+.llm-wide { grid-column: 1 / -1; }
+.llm-grid input[type=text], .llm-grid input[type=url], .llm-grid input[type=password], .llm-grid input[type=number], .llm-grid select,
+.llm-uses input, .llm-uses select, .llm-prices input { width: 100%; box-sizing: border-box; }
+.llm-uses input, .llm-uses select, .llm-prices input { padding: 7px 10px; font-size: 14px; }
+.llm-form select:disabled { opacity: .7; }
+.llm-uses td, .llm-prices td { vertical-align: middle; }
+.llm-uses td:first-child { min-width: 200px; }
+.llm-prices { max-width: 720px; }
+ul.tight { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 760px) { .llm-grid { grid-template-columns: minmax(0, 1fr); } }
