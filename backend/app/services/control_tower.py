@@ -15,9 +15,12 @@ Una definizione e' un JSON con un vocabolario chiuso, valido per qualunque proce
   (valore di un attributo dell'oggetto); duration (tempo tra due punti oltre o entro N giorni).
 - Punti nel tempo: la prima o l'ultima volta di un'attivita', oppure una data negli attributi dell'oggetto piu'
   eventuali giorni (es. data base di scadenza + giorni di pagamento = scadenza).
-- Grafici: trend (andamento mensile), bars e table (per dimensione: attributo dell'oggetto, attributo di un oggetto
-  collegato come il nome del cliente, attributo degli eventi come l'utente, attivita'), donut (composizione per
-  categorie o per dimensione).
+- Grafici (sul modello della galleria di Power BI): andamento mensile (linea, area, colonne, combinato volume +
+  KPI), per gruppo di una dimensione (barre, colonne, tabella, Pareto, bolle, treemap, mappa geografica; dimensione
+  = attributo dell'oggetto, attributo di un oggetto collegato come il nome del cliente, attributo degli eventi come
+  l'utente, attivita'), gruppo per mese (colonne in pila, linee per gruppo, mappa di calore), composizione (ciambella,
+  torta, imbuto delle attivita'), distribuzione (istogramma di tempi o importi), valore singolo (tachimetro,
+  semaforo).
 
 Il periodo (ultimi 3, 6, 12 mesi o tutto) si conta sul mese del primo evento di ogni oggetto, fino all'ultimo mese
 del dataset; il confronto e' con lo stesso numero di mesi precedente.
@@ -36,7 +39,16 @@ from datetime import datetime, timezone
 from app.i18n import msg
 
 MEASURES = ("share", "count", "sum", "share_amount", "duration")
-CHART_KINDS = ("trend", "bars", "donut", "table")
+# tipi di grafico, per famiglia di dati
+TREND_KINDS = ("trend", "area", "column_trend", "combo")                       # andamento mensile del KPI
+GROUP_KINDS = ("bars", "columns", "table", "pareto", "bubble", "treemap", "map")  # KPI per gruppo di una dimensione
+MATRIX_KINDS = ("stacked_columns", "multi_line", "heatmap")                    # gruppo per mese
+COMPOSITION_KINDS = ("donut", "pie")                                           # composizione dei colpiti
+SINGLE_KINDS = ("gauge", "traffic_light")                                      # valore del KPI contro l'obiettivo
+CHART_KINDS = TREND_KINDS + GROUP_KINDS + MATRIX_KINDS + COMPOSITION_KINDS + ("funnel", "histogram") + SINGLE_KINDS
+MAP_GROUPS = 250    # una mappa mostra tutti i paesi
+SERIES = 5          # gruppi nei grafici per mese (il resto in «Altro»)
+HIST_BINS = 10
 STATS = ("median", "mean", "p90")
 PERIODS = {"3": 3, "6": 6, "12": 12, "all": None}
 TOP = 10            # gruppi nei grafici a barre e nelle tabelle
@@ -239,6 +251,20 @@ def validate(spec: dict, model) -> tuple[dict, dict[str, list[dict]]]:
                 continue
             probs: list[dict] = []
             _check_dim(c.get("dimension"), k.get("object_type"), all_acts, ev_attrs, attrs_of, model, probs)
+            kind = c.get("kind")
+            if kind in GROUP_KINDS + MATRIX_KINDS and not isinstance(c.get("dimension"), dict):
+                probs.append(msg("Per questo grafico serve una dimensione (per cosa raggruppare)."))
+            if kind == "funnel":
+                acts = [a for a in c.get("activities") or [] if isinstance(a, str)]
+                if len(acts) < 2:
+                    probs.append(msg("L'imbuto ha bisogno di almeno due attività, nell'ordine del processo."))
+                for a in acts:
+                    if a not in all_acts:
+                        probs.append(msg("L'attività «{a}» non è nel dataset.", a=a))
+            if kind == "histogram" and k.get("measure") != "duration" and not k.get("amount"):
+                probs.append(msg("L'istogramma mostra come si distribuiscono tempi o importi: serve un KPI di tempo o con un importo."))
+            if kind == "traffic_light" and target_value(k) is None:
+                probs.append(msg("Il semaforo confronta il KPI con il suo obiettivo: imposta un obiettivo."))
             for cat in c.get("categories") or []:
                 if isinstance(cat, dict):
                     _check_cond(cat.get("condition"), k.get("object_type"), all_acts, ev_attrs, attrs_of, probs)
@@ -647,13 +673,56 @@ def _impact(kpi, agg):
     return agg["num"]
 
 
+def _sorted_items(kpi: dict, items: list[dict], order: str) -> list[dict]:
+    """Ordine dei gruppi: per impatto (default), per valore (crescente o decrescente) o per nome."""
+    if order in ("value_desc", "value_asc"):
+        items.sort(key=lambda x: (x["value"] is None, -(x["value"] or 0) if order == "value_desc" else (x["value"] or 0), x["label"]))
+    elif order == "label":
+        items.sort(key=lambda x: x["label"])
+    else:
+        # per le quote contano i gruppi con piu' oggetti colpiti (non il 100% di un gruppo da un oggetto solo)
+        items.sort(key=lambda x: (-_impact(kpi, x), -(x["den"]), x["label"]))
+    return items
+
+
+def _group_rows(ctx, kpi, rows, d) -> dict[str, list]:
+    groups = _groups(ctx, kpi, rows, d)
+    if d.get("source") in ("event_attribute", "activity"):
+        groups.pop("", None)   # oggetti senza nessun valore: non sono un gruppo (es. nessun intervento)
+    return groups
+
+
+def _nice_bins(values: list[float], n: int) -> list[dict]:
+    """Classi di uguale ampiezza dal minimo al 99° percentile (i valori oltre vanno nell'ultima classe)."""
+    s = sorted(values)
+    lo, hi = s[0], s[min(len(s) - 1, max(0, math.ceil(0.99 * len(s)) - 1))]
+    if hi <= lo:
+        hi = lo + 1.0
+    raw = (hi - lo) / n
+    mag = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw)
+    start = math.floor(lo / step) * step
+    bins = []
+    while start + step * len(bins) <= hi or not bins:
+        a = start + step * len(bins)
+        bins.append({"from": a, "to": a + step, "count": 0})
+        if len(bins) > 60:
+            break
+    for v in s:
+        i = min(len(bins) - 1, max(0, int((v - start) // step)))
+        bins[i]["count"] += 1
+    bins[-1]["open"] = s[-1] > bins[-1]["to"]
+    return bins
+
+
 def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
     rows = kpi_rows(ctx, kpi)
-    out = {"id": c["id"], "kind": c["kind"], "kpi": kpi["id"], "title": c.get("title") or kpi.get("name")}
+    kind = c["kind"]
+    out = {"id": c["id"], "kind": kind, "kpi": kpi["id"], "title": c.get("title") or kpi.get("name")}
     if c.get("issues"):
         out["issues"] = c["issues"]
         return out
-    if c["kind"] == "trend":
+    if kind in TREND_KINDS:
         starts = [r[1] for r in rows if r[1]]
         span = months or (_months(min(starts), max(starts)) if starts else [])
         by = defaultdict(list)
@@ -663,28 +732,96 @@ def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
         out["points"] = [{"month": m, **aggregate(kpi, by.get(m, []))} for m in span]
         out["target"] = target_value(kpi)
         return out
-    rows = _in(rows, months)
-    if c["kind"] in ("bars", "table"):
+    if kind in MATRIX_KINDS:
         d = c.get("dimension") or {}
-        groups = _groups(ctx, kpi, rows, d)
-        if d.get("source") in ("event_attribute", "activity"):
-            groups.pop("", None)   # oggetti senza nessun valore: non sono un gruppo (es. nessun intervento)
-        items = [{"label": k, **aggregate(kpi, v)} for k, v in groups.items()]
-        # per le quote contano i gruppi con piu' oggetti colpiti (non il 100% di un gruppo da un oggetto solo)
-        # ordine: per impatto (default), per valore (crescente o decrescente) o per nome del gruppo
-        order = c.get("sort") or "impact"
-        if order in ("value_desc", "value_asc"):
-            items.sort(key=lambda x: (x["value"] is None, -(x["value"] or 0) if order == "value_desc" else (x["value"] or 0), x["label"]))
-        elif order == "label":
-            items.sort(key=lambda x: x["label"])
+        starts = [r[1] for r in rows if r[1]]
+        span = months or (_months(min(starts), max(starts)) if starts else [])
+        rows = _in(rows, months)
+        groups = _group_rows(ctx, kpi, rows, d)
+        ranked = _sorted_items(kpi, [{"label": g, **aggregate(kpi, v)} for g, v in groups.items()], c.get("sort") or "impact")
+        n = max(2, min(12, int(number(c.get("series")) or (12 if kind == "heatmap" else SERIES))))
+        keep = [x["label"] for x in ranked[:n]]
+        series = []
+        for g in keep:
+            by = defaultdict(list)
+            for r in groups[g]:
+                by[r[1]].append(r)
+            series.append({"label": g, "points": [{"month": m, **aggregate(kpi, by.get(m, []))} for m in span]})
+        rest = [r for g, v in groups.items() if g not in keep for r in v]
+        if rest and kind == "stacked_columns":
+            by = defaultdict(list)
+            for r in rest:
+                by[r[1]].append(r)
+            series.append({"label": None, "other": True,
+                           "points": [{"month": m, **aggregate(kpi, by.get(m, []))} for m in span]})
+        out.update(months=span, series=series, others=max(0, len(ranked) - len(keep)), dimension=d,
+                   target=target_value(kpi), amount=kpi.get("measure") in ("sum", "share_amount"))
+        return out
+    rows = _in(rows, months)
+    if kind in GROUP_KINDS:
+        d = c.get("dimension") or {}
+        groups = _group_rows(ctx, kpi, rows, d)
+        items = _sorted_items(kpi, [{"label": k, **aggregate(kpi, v)} for k, v in groups.items()], c.get("sort") or "impact")
+        if kind == "map":
+            top = MAP_GROUPS
         else:
-            items.sort(key=lambda x: (-_impact(kpi, x), -(x["den"]), x["label"]))
-        top = max(3, min(30, int(number(c.get("top")) or TOP)))
+            top = max(3, min(30, int(number(c.get("top")) or (15 if kind in ("bubble", "treemap", "pareto") else TOP))))
         out["items"] = items[:top]
         out["others"] = max(0, len(items) - top)
         out["dimension"] = d
+        out["target"] = target_value(kpi)
+        if kind == "pareto":
+            total = sum(_impact(kpi, x) for x in items) or 0.0
+            run = 0.0
+            for x in out["items"]:
+                run += _impact(kpi, x)
+                x["cumulative"] = run / total if total else None
+            out["impact_amount"] = kpi.get("measure") in ("sum", "share_amount")
+        if kind in ("bubble", "treemap"):
+            out["impact_amount"] = kpi.get("measure") in ("sum", "share_amount") or (
+                kind == "bubble" and bool(kpi.get("amount")) and c.get("size") != "objects")
         return out
-    # donut: composizione degli oggetti colpiti (o dell'importo) per categoria o per dimensione
+    if kind in SINGLE_KINDS:
+        agg = aggregate(kpi, rows)
+        goal = target_value(kpi)
+        out.update(value=agg["value"], num=agg["num"], den=agg["den"], amount=agg.get("amount"),
+                   amount_total=agg.get("amount_total"), measured=agg.get("measured"), target=goal,
+                   op=(kpi.get("target") or {}).get("op") if isinstance(kpi.get("target"), dict) else None)
+        tol = number(c.get("tolerance"))
+        tol = 10.0 if tol is None else max(0.0, tol)
+        out["tolerance"] = tol
+        out["light"] = _light(kpi, agg["value"], goal, tol)
+        if kind == "gauge":
+            out.update(_gauge_scale(kpi, agg["value"], goal, tol, c))
+        return out
+    if kind == "funnel":
+        acts = [a for a in c.get("activities") or [] if isinstance(a, str)]
+        related = bool(c.get("related"))
+        counts = []
+        for a in acts:
+            n = 0
+            for r in rows:
+                if any(x == a for _, x, _ in ctx.events(r[0], related)):
+                    n += 1
+            counts.append({"label": a, "value": n})
+        out["items"] = counts
+        out["den"] = len(rows)
+        return out
+    if kind == "histogram":
+        if kpi.get("measure") == "duration":
+            values = [r[4] for r in rows if r[2] and r[4] is not None]
+            out["unit"] = "days"
+        else:
+            values = [r[3] for r in rows if (r[2] or kpi.get("measure") in ("count", "share")) and r[3] is not None]
+            out["unit"] = "amount"
+        n = max(4, min(30, int(number(c.get("bins")) or HIST_BINS)))
+        out["bins"] = _nice_bins(values, n) if values else []
+        out["count"] = len(values)
+        out["median"] = _stat(values, "median") if values else None
+        out["p90"] = _stat(values, "p90") if values else None
+        out["target"] = target_value(kpi) if kpi.get("measure") == "duration" else None
+        return out
+    # donut / pie: composizione degli oggetti colpiti (o dell'importo) per categoria o per dimensione
     weight_amount = kpi.get("measure") in ("sum", "share_amount")
     hits = [r for r in rows if r[2]]
 
@@ -716,6 +853,58 @@ def chart(ctx: _Ctx, kpi: dict, c: dict, months: list[str] | None) -> dict:
     out["items"] = [x for x in items if x["value"]]
     out["amount"] = weight_amount
     return out
+
+
+def _light(kpi: dict, value, goal, tol: float) -> str | None:
+    """Semaforo: verde se rispetta l'obiettivo, giallo se lo manca di poco (entro la tolleranza in % dell'obiettivo,
+    o in punti percentuali per le quote), rosso altrimenti."""
+    t = kpi.get("target") if isinstance(kpi.get("target"), dict) else {}
+    op = t.get("op")
+    if value is None or goal is None or op not in (">=", "<="):
+        return None
+    if (value >= goal) if op == ">=" else (value <= goal):
+        return "green"
+    margin = tol / 100.0 if kpi.get("measure") in ("share", "share_amount") else abs(goal) * tol / 100.0
+    gap = goal - value if op == ">=" else value - goal
+    return "amber" if gap <= margin else "red"
+
+
+def _nice_max(x: float) -> float:
+    if x <= 0:
+        return 1.0
+    mag = 10 ** math.floor(math.log10(x))
+    return next(m * mag for m in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10) if m * mag >= x)
+
+
+def _gauge_scale(kpi: dict, value, goal, tol: float, c: dict) -> dict:
+    """Scala del tachimetro e fasce rosso / giallo / verde attorno all'obiettivo."""
+    pct = kpi.get("measure") in ("share", "share_amount")
+    lo = number(c.get("min"))
+    hi = number(c.get("max"))
+    if pct:
+        lo = 0.0 if lo is None else (lo / 100.0 if lo > 1 else lo)
+        hi = 1.0 if hi is None else (hi / 100.0 if hi > 1 else hi)
+    else:
+        lo = 0.0 if lo is None else lo
+        if hi is None:
+            hi = _nice_max(max([x for x in (value, goal) if x is not None] or [1.0]) * 1.25)
+    if hi <= lo:
+        hi = lo + 1.0
+    bands = []
+    t = kpi.get("target") if isinstance(kpi.get("target"), dict) else {}
+    if goal is not None and t.get("op") in (">=", "<="):
+        margin = tol / 100.0 if pct else abs(goal) * tol / 100.0
+        g = min(max(goal, lo), hi)
+        if t["op"] == ">=":
+            a = min(max(goal - margin, lo), hi)
+            bands = [{"from": lo, "to": a, "light": "red"}, {"from": a, "to": g, "light": "amber"},
+                     {"from": g, "to": hi, "light": "green"}]
+        else:
+            a = min(max(goal + margin, lo), hi)
+            bands = [{"from": lo, "to": g, "light": "green"}, {"from": g, "to": a, "light": "amber"},
+                     {"from": a, "to": hi, "light": "red"}]
+        bands = [x for x in bands if x["to"] > x["from"]]
+    return {"min": lo, "max": hi, "bands": bands}
 
 
 def currency(ctx: _Ctx, kpi: dict) -> str | None:
@@ -798,18 +987,41 @@ GRAMMAR = """\
   Punti nel tempo P: {"activity":X,"which":"first"|"last","related":bool} oppure una data negli attributi
   dell'oggetto {"attribute":A,"plus_days_attribute":B,"plus_days":n} (es. data base + giorni di pagamento =
   scadenza).
-- charts: {"kind": "trend"|"bars"|"donut"|"table", "kpi": id, "title": titolo breve, ...}
-  * trend: andamento mensile del KPI (mese del primo evento di ogni oggetto), con la linea dell'obiettivo.
-  * bars / table: il KPI per gruppo, primi 10 gruppi per impatto; "dimension" obbligatoria:
-    {"source":"attribute","attribute":A} (attributo dell'oggetto), {"source":"related","object_type":T,
-    "attribute":A} (attributo di un oggetto collegato, es. il nome del cliente), {"source":"event_attribute",
+- charts: {"kind": tipo, "kpi": id, "title": titolo breve, ...}. Tipi (come nella galleria di Power BI):
+  * andamento mensile del KPI (mese del primo evento di ogni oggetto, con la linea dell'obiettivo):
+    "trend" (linea), "area" (area), "column_trend" (colonne verticali per mese), "combo" (colonne del volume:
+    oggetti, o importo se il KPI ha un importo, più la linea del KPI; opzione "volume": "objects" | "amount").
+  * il KPI per gruppo di una dimensione ("dimension" obbligatoria, vedi sotto; primi 10 gruppi per impatto, "top"
+    3-30 per cambiarlo): "bars" (barre orizzontali), "columns" (colonne verticali), "table" (tabella),
+    "pareto" (colonne per impatto più la linea del cumulato %: dove si concentra l'80%), "bubble" (grafico a bolle:
+    una bolla per gruppo, x = oggetti del gruppo, y = valore del KPI, dimensione = importo o oggetti colpiti;
+    opzione "size": "amount" | "objects"), "treemap" (rettangoli grandi quanto l'impatto, colore = valore rispetto
+    all'obiettivo), "map" (mappa geografica dei paesi colorata con il valore del KPI: la dimensione deve dare il
+    paese, codice ISO a 2 o 3 lettere come LAND1 di SAP o nome del paese).
+  * gruppo per mese ("dimension" obbligatoria; "series" = quanti gruppi, default 5): "stacked_columns" (colonne in
+    pila: oggetti colpiti o importo per gruppo e mese, il resto in «altro»), "multi_line" (una linea del KPI per
+    gruppo), "heatmap" (mappa di calore: righe = gruppi, colonne = mesi, colore = valore del KPI).
+  * composizione: "donut" (ciambella) o "pie" (torta) degli oggetti colpiti dal KPI (o del loro importo per
+    sum/share_amount): con "categories" [{"label":..., "condition":{...}}] (vale la prima che si applica; il resto
+    va in «altro»), oppure con una "dimension", oppure senza nulla (colpiti contro gli altri).
+  * "funnel" (imbuto): "activities" = attività nell'ordine del processo (almeno 2), "related": bool; per ogni
+    attività quanti oggetti della population ci arrivano e la % rispetto al primo passo.
+  * "histogram" (istogramma): distribuzione dei giorni per un KPI di tempo, o degli importi ("amount") per gli
+    altri; "bins" = numero di classi (default 10). Mostra mediana e 90° percentile.
+  * valore singolo del periodo contro l'obiettivo: "gauge" (tachimetro con fasce rosso / giallo / verde attorno
+    all'obiettivo; "min" e "max" facoltativi, per le quote in %), "traffic_light" (semaforo: verde se rispetta
+    l'obiettivo, giallo se lo manca entro "tolerance" — default 10, in punti % per le quote, in % dell'obiettivo
+    per gli altri KPI —, rosso oltre; serve un obiettivo).
+  Dimensioni: {"source":"attribute","attribute":A} (attributo dell'oggetto), {"source":"related","object_type":T,
+    "attribute":A} (attributo di un oggetto collegato, es. il nome o il paese del cliente), {"source":"event_attribute",
     "attributes":[...],"activities":[...],"related":bool} (es. chi ha fatto l'intervento),
     {"source":"activity","activities":[...],"related":bool} (quali di queste attività ci sono).
-  * donut: composizione degli oggetti colpiti dal KPI (o del loro importo per sum/share_amount): con "categories"
-    [{"label":..., "condition":{...}}] (vale la prima che si applica; il resto va in «altro»), oppure con una
-    "dimension", oppure senza nulla (colpiti contro gli altri).
-  Preferisci per ogni sezione: un trend del KPI principale, una scomposizione (bars o table) per la dimensione che
-  spiega il fenomeno (cliente, utente, tipo di intervento) e, se utile, un donut della composizione.
+  Scegli il tipo che risponde meglio alla domanda: tempo -> trend/area/combo; dove si concentra -> bars, pareto,
+  treemap, map (se c'è un paese); confronto tra gruppi su due misure -> bubble; composizione -> donut/pie;
+  passaggi del processo -> funnel; distribuzione di tempi -> histogram; stato rispetto all'obiettivo -> gauge o
+  traffic_light; gruppi nel tempo -> stacked_columns, multi_line, heatmap.
+  Preferisci per ogni sezione: un andamento del KPI principale, una scomposizione per la dimensione che spiega il
+  fenomeno e, se utile, un grafico di composizione o di stato.
 
 """
 

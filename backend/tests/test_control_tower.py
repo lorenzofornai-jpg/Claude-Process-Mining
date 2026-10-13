@@ -20,8 +20,8 @@ def _a(**kw):
 def _ocel():
     """4 fatture (gen, feb, mar, mar) di due clienti; F2 ha un blocco solleciti; l'incasso di F3 e' registrato
     a mano (utente MROSSI), gli altri da SYSTEM_AUTO; F4 non e' ancora incassata."""
-    objects = [{"id": "C1", "type": "Cliente", "attributes": _a(NAME1="Acme")},
-               {"id": "C2", "type": "Cliente", "attributes": _a(NAME1="Beta")}]
+    objects = [{"id": "C1", "type": "Cliente", "attributes": _a(NAME1="Acme", LAND1="IT")},
+               {"id": "C2", "type": "Cliente", "attributes": _a(NAME1="Beta", LAND1="DE")}]
     events = []
     months = {"F1": "2026-01", "F2": "2026-02", "F3": "2026-03", "F4": "2026-03"}
     amounts = {"F1": "100.00", "F2": "200.00", "F3": "300.00", "F4": "400.00"}
@@ -112,6 +112,51 @@ def test_charts():
     # il cliente (tipo trasversale o no) arriva dagli eventi della fattura
     assert {x["label"]: (x["num"], x["den"]) for x in bars["items"]} == {"Acme": (1, 2), "Beta": (1, 2)}
     assert charts["s1c4"].get("issues")
+
+
+def test_more_chart_kinds():
+    """Tipi sul modello di Power BI: colonne, combinato, Pareto, bolle, mappa, gruppo per mese, imbuto, istogramma,
+    tachimetro e semaforo; requisiti mancanti segnalati come problemi del grafico."""
+    m = ExplorerModel(_ocel())
+    country = {"source": "related", "object_type": "Cliente", "attribute": "LAND1"}
+    spec = _spec()
+    spec["sections"][0]["charts"] = [
+        {"kind": "columns", "kpi": "k1", "dimension": country},
+        {"kind": "combo", "kpi": "k1"},
+        {"kind": "pareto", "kpi": "k2", "dimension": country},
+        {"kind": "bubble", "kpi": "k1", "dimension": country},
+        {"kind": "map", "kpi": "k1", "dimension": country},
+        {"kind": "stacked_columns", "kpi": "k1", "dimension": country},
+        {"kind": "heatmap", "kpi": "k1", "dimension": country},
+        {"kind": "funnel", "kpi": "k4", "activities": ["Registra fattura", "Pareggia partita"]},
+        {"kind": "histogram", "kpi": "k4", "bins": 4},
+        {"kind": "gauge", "kpi": "k1"},
+        {"kind": "traffic_light", "kpi": "k1", "tolerance": 50},
+        {"kind": "traffic_light", "kpi": "k2"},
+        {"kind": "columns", "kpi": "k1"},
+        {"kind": "funnel", "kpi": "k1", "activities": ["Registra fattura"]},
+        {"kind": "pie", "kpi": "k1"},
+    ]
+    ch = ct.compute(spec, m, "all")["sections"][0]["charts"]
+    by = {c["kind"] + str(i): c for i, c in enumerate(ch)}
+    assert {x["label"]: (x["num"], x["den"]) for x in by["columns0"]["items"]} == {"IT": (1, 2), "DE": (1, 2)}
+    assert len(by["combo1"]["points"]) == 3
+    pareto = by["pareto2"]["items"]
+    assert pareto[0]["label"] == "DE" and pareto[0]["cumulative"] == 0.6 and pareto[-1]["cumulative"] == 1.0
+    assert by["bubble3"]["impact_amount"] is True and by["map4"]["items"]
+    st = by["stacked_columns5"]
+    assert st["months"] == ["2026-01", "2026-02", "2026-03"] and {s["label"] for s in st["series"]} == {"IT", "DE"}
+    assert [x["value"] for x in by["funnel7"]["items"]] == [4, 3]
+    hist = by["histogram8"]
+    assert sum(b["count"] for b in hist["bins"]) == 3 and hist["unit"] == "days"
+    g = by["gauge9"]
+    assert g["value"] == 0.5 and g["max"] == 1.0 and [b["light"] for b in g["bands"]] == ["green", "amber", "red"]
+    # obiettivo <= 10%, valore 50%: con tolleranza di 50 punti e' giallo (vicino), con 10 sarebbe rosso
+    assert by["traffic_light10"]["light"] == "amber" and g["light"] == "red"
+    assert by["traffic_light11"].get("issues")       # senza obiettivo
+    assert by["columns12"].get("issues")             # senza dimensione
+    assert by["funnel13"].get("issues")              # una sola attivita'
+    assert by["pie14"]["items"]
 
 
 def test_validate_drops_unknown_references_and_keeps_shape():

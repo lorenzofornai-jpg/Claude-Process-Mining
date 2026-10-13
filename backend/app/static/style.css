@@ -1078,3 +1078,64 @@ table.ov-acts td.strong { font-weight: 600; }
   .ct-kpis.ct-kcols-2, .ct-kpis.ct-kcols-3, .ct-kpis.ct-kcols-4 { grid-template-columns: minmax(0, 1fr); }
 }
 .ct-detail-save { margin-bottom: 16px; }
+
+/* Control Tower: altri tipi di grafico */
+.ct-area { fill: color-mix(in srgb, var(--brand) 18%, transparent); stroke: none; }
+.ct-col { fill: var(--brand); }
+.ct-col-soft { fill: color-mix(in srgb, var(--brand) 30%, var(--card-bg)); }
+.ct-col-bad { fill: var(--error); }
+.ct-col:hover { opacity: .85; }
+.ct-grid-strong { stroke: #e08a3b; stroke-dasharray: 3 3; }
+.ct-line-alt { stroke: #e08a3b; }
+.ct-dot-alt { stroke: #e08a3b; }
+.ct-legend-row { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; min-width: 0; }
+.ct-legend .swatch-line { height: 3px; border-radius: 2px; }
+.ct-bubble { fill: color-mix(in srgb, var(--brand) 45%, transparent); stroke: var(--brand); stroke-width: 1.5; }
+.ct-bubble-bad { fill: color-mix(in srgb, var(--error) 40%, transparent); stroke: var(--error); }
+.ct-bubble-label { fill: var(--text); font-size: 11px; font-weight: 600; pointer-events: none; }
+.ct-tile { stroke: var(--card-bg); stroke-width: 1; }
+.ct-tile-label { fill: var(--text); font-size: 12px; font-weight: 650; pointer-events: none; }
+.ct-tile-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.ct-map { width: 100%; height: auto; }
+.ct-country { fill: var(--card-bg-soft); stroke: var(--border); stroke-width: .5; }
+.ct-country-data { stroke: var(--card-bg); }
+.ct-country:hover { stroke: var(--text); stroke-width: 1; }
+.ct-scale { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ct-scale-bar { flex: 0 1 180px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--brand) 15%, var(--card-bg)), color-mix(in srgb, var(--brand) 90%, var(--card-bg))); }
+.ct-heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ct-heat th { font-weight: 600; color: var(--muted); padding: 4px 6px; white-space: nowrap; }
+.ct-heat td { padding: 6px 8px; border-radius: 4px; text-align: right; white-space: nowrap; }
+.ct-heat-row { text-align: left; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.ct-funnel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ct-funnel-step { display: grid; grid-template-columns: minmax(110px, 30%) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.ct-funnel-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-funnel-row { display: flex; justify-content: center; }
+.ct-funnel-bar { display: flex; justify-content: center; align-items: center; height: 26px; border-radius: 4px; min-width: 34px; }
+.ct-funnel-value { color: #fff; font-weight: 650; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ct-marker { stroke: var(--text); stroke-width: 1.2; stroke-dasharray: 4 3; opacity: .7; }
+.ct-marker-label { fill: var(--text); font-weight: 600; }
+.ct-gauge-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ct-gauge { max-width: 100%; height: auto; }
+.ct-gauge-value { fill: var(--text); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ct-gauge-target { stroke: var(--text); stroke-width: 3; }
+.ct-needle { stroke: var(--text); stroke-width: 3; stroke-linecap: round; }
+.ct-needle-hub { fill: var(--text); }
+.ct-gauge-info { text-align: center; }
+.ct-light-box { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.ct-light { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #2b2f36; border-radius: 16px; }
+.ct-lamp { width: 34px; height: 34px; border-radius: 50%; opacity: .22; }
+.ct-lamp.on { opacity: 1; box-shadow: 0 0 14px currentColor; }
+.ct-lamp-red { background: var(--error); color: var(--error); }
+.ct-lamp-amber { background: #e0a43b; color: #e0a43b; }
+.ct-lamp-green { background: var(--ok); color: var(--ok); }
+.ct-light-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ct-light-state { font-weight: 650; }
+.ct-light-green { color: var(--ok); }
+.ct-light-amber { color: #a6720a; }
+.ct-light-red { color: var(--error); }
+@media (max-width: 760px) { .ct-funnel-step { grid-template-columns: 1fr auto; } .ct-funnel-row { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; } }
+.ct-gauge-number { margin-top: -6px; }
+.ct-bubble-label { paint-order: stroke; stroke: var(--card-bg); stroke-width: 3px; }
+.ct-scale { flex-wrap: wrap; }
+.ct-scale-bad { background: linear-gradient(90deg, color-mix(in srgb, var(--error) 25%, var(--card-bg)), color-mix(in srgb, var(--error) 90%, var(--card-bg))); }

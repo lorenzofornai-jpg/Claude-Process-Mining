@@ -196,7 +196,16 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   L'impaginazione non chiede una nuova approvazione.
 - ✅ Un solo «Salva» (vale anche come conferma delle definizioni, al posto di «Salva e approva»); con modifiche non
   salvate la barra con «Salva» compare anche nel dettaglio di una domanda.
-- Da fare: esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
+- ✅ 20 tipi di grafico sul modello della galleria di Power BI, che l'assistente può aggiungere o scambiare:
+  andamento (linea, area, colonne per mese, combinato volume + KPI), per gruppo (barre, colonne verticali, tabella,
+  Pareto con cumulato, bolle, treemap, mappa geografica dei paesi), gruppo per mese (colonne in pila, linee per
+  gruppo, mappa di calore), composizione (ciambella, torta, imbuto delle attività), istogramma di tempi o importi
+  con mediana e 90° percentile, tachimetro con fasce attorno all'obiettivo, semaforo con tolleranza. Disegnati in
+  SVG senza librerie; i confini della mappa (Natural Earth 1:110m, dominio pubblico) sono in
+  `static/world-110m.json` e si caricano solo se c'è una mappa; i paesi si riconoscono da codice ISO a 2 o 3
+  lettere (es. LAND1 di SAP) o dal nome in italiano o in inglese.
+- Da fare: grafico a cascata (variazione tra periodi per gruppo), albero di scomposizione, mappe per regione o
+  città; esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 
 ## Modulo 2 — Analisi
