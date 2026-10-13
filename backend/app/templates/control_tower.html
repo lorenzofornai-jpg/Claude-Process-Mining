@@ -443,12 +443,27 @@
     var sec = has && !editing ? openSection() : null;
     document.getElementById("ct-head").hidden = !!sec;
     document.getElementById("ct-status").hidden = !!sec;
-    var body = document.getElementById("ct-body"); body.textContent = "";
-    if (!has) { body.appendChild(emptyState()); return; }
-    if (editing) { body.appendChild(editor()); return; }
+    var body = document.getElementById("ct-body");
+    // ridisegno da capo (es. dopo un filtro): resta fermo il grafico che si sta guardando, anche se quelli sopra
+    // cambiano altezza
+    var anchor = null, cand = [];
+    body.querySelectorAll("[data-chart]").forEach(function (a) {
+      var r = (a.closest("figure") || a).getBoundingClientRect();
+      if (r.bottom > 80 && r.top < window.innerHeight) cand.push({ id: a.dataset.chart, top: r.top });
+    });
+    anchor = cand.filter(function (c) { return c.top >= 60; })[0] || cand[0] || null;   // meglio uno visto dall'inizio
+    body.style.minHeight = body.offsetHeight + "px";
+    body.textContent = "";
+    if (!has) { body.style.minHeight = ""; body.appendChild(emptyState()); return; }
+    if (editing) { body.style.minHeight = ""; body.appendChild(editor()); return; }
     if (!sec) body.appendChild(periodNote());
     if (sec) { body.appendChild(detail(sec)); drawCharts(); }
     else { body.appendChild(summaryView()); drawSparks(); }
+    body.style.minHeight = "";
+    if (anchor) {
+      var again = body.querySelector('[data-chart="' + anchor.id + '"]');
+      if (again) window.scrollBy(0, (again.closest("figure") || again).getBoundingClientRect().top - anchor.top);
+    }
     if (assistant) assistant.refresh();
   }
 

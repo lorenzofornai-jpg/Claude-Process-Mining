@@ -161,6 +161,7 @@
   var CF = initCaseFilters({ ws: WS, config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: PLURALS });
   CF.onChange(function () { load(); });
 
+  var varsOpen = true;   // riquadro delle varianti aperto o chiuso dall'utente
   function load() {
     document.getElementById("ov-body").style.opacity = 0.5;
     picked = null;   // nuovo oggetto guida o nuovo tempo: varianti diverse, si riparte da tutte
@@ -241,6 +242,7 @@
 
   function renderCharts() {
     var box = document.getElementById("ov-charts"); if (!box) return;
+    var hold = box.offsetHeight; box.style.minHeight = hold + "px";   // niente salto della pagina mentre si ridisegna
     box.textContent = "";
     var st = data.throughput.stats, vol = data.volumes, cs = data.chart_scope;
     if (cs) box.appendChild(el("p", "tiny ov-filter-note", fmt(cs.variants === 1 ? T.chartScope1 : T.chartScope,
@@ -259,6 +261,7 @@
     grid.appendChild(el("p", "tiny muted pm-hint", T.selectHint));
     box.appendChild(grid);
     box.appendChild(timesSection());
+    box.style.minHeight = "";
   }
 
   // ---------- selezioni sui grafici -> filtri sui casi ----------
@@ -359,7 +362,17 @@
     document.getElementById("scope-help").textContent = fmt(scope === "related" ? T.scopeRelated : T.scopeObject, { t: tn(lead) })
         // perche' due misure possono coincidere: detto, non lasciato da indovinare
         + (scope === "related" && data.related_adds === 0 ? " " + fmt(T.relatedSame, { t: tn(lead) }) : "");
-    var body = document.getElementById("ov-body"); body.textContent = "";
+    var body = document.getElementById("ov-body");
+    // la pagina si ridisegna da capo: si tiene ferma la sezione che si sta guardando (es. l'istogramma su cui si e'
+    // appena applicato un filtro), anche se sopra cambia l'altezza (meno varianti, riquadro chiuso)
+    var cand = [], anchor = null;
+    body.querySelectorAll(".ov-section").forEach(function (x, si) {
+      var rr = x.getBoundingClientRect();
+      if (rr.bottom > 80 && rr.top < window.innerHeight) cand.push({ i: si, top: rr.top });
+    });
+    anchor = cand.filter(function (c) { return c.top >= 60; })[0] || cand[0] || null;   // meglio una vista dall'inizio
+    body.style.minHeight = body.offsetHeight + "px";
+    body.textContent = "";
     var L = tn(lead), st = data.throughput.stats, vol = data.volumes;
 
     // KPI
@@ -387,7 +400,8 @@
 
 
     // varianti: riquadro richiudibile, una casella per variante (i grafici sotto contano solo quelle spuntate)
-    var s4 = el("details", "ov-section ov-collapse"); s4.open = true;
+    var s4 = el("details", "ov-section ov-collapse"); s4.open = varsOpen;
+    s4.addEventListener("toggle", function () { varsOpen = s4.open; });   // chiuso resta chiuso quando si filtra
     var sum = el("summary"); var h = el("h2", "ov-title", T.varTitle); var sumNote = el("span", "tiny muted ov-var-count");
     sum.appendChild(h); sum.appendChild(sumNote); s4.appendChild(sum);
     s4.appendChild(el("p", "tiny muted", fmt(scope === "related" ? T.varDescRelated : T.varDesc, { t: L })));
@@ -434,6 +448,11 @@
     body.appendChild(s4);
     var charts = el("div"); charts.id = "ov-charts"; body.appendChild(charts);
     renderCharts();
+    body.style.minHeight = "";
+    if (anchor) {
+      var again = body.querySelectorAll(".ov-section")[anchor.i];
+      if (again) window.scrollBy(0, again.getBoundingClientRect().top - anchor.top);
+    }
 
   }
 
