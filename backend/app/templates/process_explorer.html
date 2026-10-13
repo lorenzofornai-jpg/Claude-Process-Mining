@@ -27,6 +27,7 @@
     </div>
   </div>
 
+  {% include "_case_filters.html" %}
   <div class="explorer-body">
     <aside class="explorer-side">
       <div class="side-head">
@@ -145,6 +146,9 @@
 <script>
 (function () {
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
+  // filtri sui casi condivisi con le altre analisi (static/filters.js): il grafo mostra solo i casi filtrati
+  var CF = initCaseFilters({ config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
+  CF.onChange(function () { if (filterMode === "vars" && vType) loadVariants(); else schedule(); });
   var COLORS = {}, TYPES = {};
   {% for ot in object_types %}COLORS[{{ ot.name|tojson }}] = {{ ot.color|tojson }}; TYPES[{{ ot.name|tojson }}] = {{ ot|tojson }};
   {% endfor %}
@@ -288,6 +292,7 @@
     types.forEach(function (t) { q.append("type", t); });
     if (actMode === "top") q.set("top", actTop); else actSet.forEach(function (a) { q.append("act", a); });
     if (filterMode === "vars" && vType) { q.set("vtype", vType); vSel.forEach(function (v) { q.append("var", v); }); }
+    if (CF.param()) q.set("filters", CF.param());
     document.getElementById("graph-loading").hidden = false;
     fetch("/analysis/explorer/graph?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -789,6 +794,7 @@
     if (!vType) { vData = null; vSel = []; renderVariants(); schedule(); return; }
     var q = new URLSearchParams({ workspace_id: WS, config_id: CONFIG, type: vType });
     selectedTypes().forEach(function (t) { if (t !== vType) q.append("with_type", t); });
+    if (CF.param()) q.set("filters", CF.param());
     fetch("/analysis/explorer/variants?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (j) { vData = j; vSel = j.variants.length ? [1] : []; renderVariants(); schedule(); });

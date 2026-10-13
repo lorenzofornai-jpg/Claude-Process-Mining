@@ -127,6 +127,7 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
             "object_types": model.type_summary(), "default_types": model.default_types(business_focus(config)),
             "aliases": _aliases(user.id, config.id),
             "event_count": model.event_count,
+            "plurals": _plurals(get_lang(request), model.types, _aliases(user.id, config.id)),
         },
     )
 
@@ -135,7 +136,7 @@ def process_explorer(request: Request, workspace_id: str, config_id: str | None 
 def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
                            type: list[str] = Query(default=[]), act: list[str] = Query(default=[]),
                            acts: str = "top", top: int | None = None, paths: int = 100,
-                           hub: str = "own", vtype: str = "", var: list[int] = Query(default=[])):
+                           hub: str = "own", vtype: str = "", var: list[int] = Query(default=[]), filters: str = ""):
     """Grafo aggregato in JSON per i filtri scelti.
 
     type=...&type=...: tipi di oggetto. acts=top: le `top` attivita' piu' frequenti;
@@ -148,7 +149,7 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    model = explorer.load_model(run.ocel_file_path)
+    model = explorer.load_model(run.ocel_file_path, _filters(filters))
     activities = list(act) if acts == "list" else None
     return JSONResponse(explorer.build_graph(model, list(type), activities, top, paths,
                                              "all" if hub == "all" else "own", vtype or None, list(var)))
@@ -156,7 +157,7 @@ def process_explorer_graph(request: Request, workspace_id: str, config_id: str,
 
 @router.get("/analysis/explorer/variants")
 def process_explorer_variants(request: Request, workspace_id: str, config_id: str, type: str,
-                              with_type: list[str] = Query(default=[])):
+                              with_type: list[str] = Query(default=[]), filters: str = ""):
     """Varianti di un tipo di oggetto (sequenze di attivita'), dalla piu' frequente: per il filtro per varianti."""
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -164,7 +165,7 @@ def process_explorer_variants(request: Request, workspace_id: str, config_id: st
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    model = explorer.load_model(run.ocel_file_path)
+    model = explorer.load_model(run.ocel_file_path, _filters(filters))
     others = [x for x in with_type if x in model.object_counts and x != type and not model.is_hub(x)]
     variants = model.variants(type, others) if type in model.object_counts else []
     return JSONResponse({"type": type, "with_types": others, "total": len(variants), "objects": sum(v["count"] for v in variants),
@@ -260,6 +261,24 @@ async def analysis_assistant_ask(request: Request):
     return JSONResponse({"available": True, **result})
 
 
+# ---------- filtri sui casi, condivisi tra le analisi dello stesso dataset ----------
+
+def _filters(raw) -> list[dict]:
+    """Filtri ricevuti dal browser (JSON nella query o lista nel corpo), normalizzati."""
+    import json as _json
+    if isinstance(raw, str):
+        try:
+            raw = _json.loads(raw) if raw.strip() else []
+        except ValueError:
+            raw = []
+    return ocel_filter.clean(raw if isinstance(raw, list) else [])
+
+
+def _without(filters: list[dict], kind: str, type_: str) -> list[dict]:
+    """I filtri senza quelli di un grafico (il grafico da cui parte la selezione mostra tutti i valori)."""
+    return [f for f in filters if not (f["kind"] == kind and f.get("type") == type_)]
+
+
 # ---------- Process Overview ----------
 
 @router.get("/analysis/overview", response_class=HTMLResponse)
@@ -291,7 +310,7 @@ def process_overview(request: Request, workspace_id: str, config_id: str | None 
 
 @router.get("/analysis/overview/data")
 def process_overview_data(request: Request, workspace_id: str, config_id: str, lead: str = "", scope: str = "objective",
-                          var: list[int] = Query(default=[]), vsel: int = 0):
+                          var: list[int] = Query(default=[]), vsel: int = 0, filters: str = ""):
     """Volumi, tempi e varianti visti dall'oggetto guida `lead`; scope=object|related per i tempi."""
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -299,9 +318,11 @@ def process_overview_data(request: Request, workspace_id: str, config_id: str, l
     config, run, _ = _explorer_dataset(workspace_id, config_id)
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    model = explorer.load_model(run.ocel_file_path)
-    if lead not in overview.lead_options(model):
-        lead = overview.default_lead(model)
+    sel = _filters(filters)
+    model = explorer.load_model(run.ocel_file_path, sel)
+    full = explorer.load_model(run.ocel_file_path)
+    if lead not in overview.lead_options(full):   # il tipo guida si sceglie sul dataset intero, non su quello filtrato
+        lead = overview.default_lead(full)
     if lead is None:
         return JSONResponse({"error": t(get_lang(request), "Nessun tipo di oggetto con eventi propri da analizzare.")},
                             status_code=404)
@@ -309,7 +330,23 @@ def process_overview_data(request: Request, workspace_id: str, config_id: str, l
     # o con gli oggetti collegati
     scope = scope if scope in ("object", "related") else "object"
     # vsel=1: var sono le varianti spuntate (anche nessuna); senza vsel tutte
-    return JSONResponse(overview.build_overview(model, lead, scope, None, list(var) if vsel else None))
+    if lead not in overview.lead_options(model):   # nessun oggetto del tipo guida nei casi filtrati
+        return JSONResponse({"empty": True, "lead": lead, "lead_options": overview.lead_options(full),
+                             "scope": scope, "filters": sel})
+    out = overview.build_overview(model, lead, scope, None, list(var) if vsel else None)
+    # i grafici da cui parte una selezione mostrano tutti i valori (con gli altri filtri), i valori scelti evidenziati
+    month_f = _without(sel, "start_month", lead)
+    if month_f != sel:
+        m2 = explorer.load_model(run.ocel_file_path, month_f)
+        if lead in overview.lead_options(m2):
+            out["volumes"]["months"] = overview.build_overview(m2, lead, scope, None, None)["volumes"]["months"]
+    dur_f = [f for f in sel if not (f["kind"] == "duration" and f.get("type") == lead and f.get("scope") == scope)]
+    if dur_f != sel:
+        m3 = explorer.load_model(run.ocel_file_path, dur_f)
+        if lead in overview.lead_options(m3):
+            out["throughput"]["histogram"] = overview.build_overview(m3, lead, scope, None, None)["throughput"]["histogram"]
+    out["filters"] = sel
+    return JSONResponse(out)
 
 
 # ---------- obiettivo misurabile (pagina Risultato del Data Engineer e Process Overview) ----------
@@ -501,16 +538,19 @@ def control_tower_page(request: Request, workspace_id: str, config_id: str | Non
             "config": config, "run": run, "lead": lead,
             "questions": (answers.get("key_questions") or "").strip(),
             "type_names": _type_names(get_lang(request), model.types),
+            "plurals": _plurals(get_lang(request), model.types, _aliases(user.id, config.id)),
             "claude": explain.available(),
         },
     )
 
 
-def _tower_payload(request: Request, model, spec: dict | None, row, period: str, lang: str, lead: str | None) -> dict:
+def _tower_payload(request: Request, model, spec: dict | None, row, period: str, lang: str, lead: str | None,
+                   filtered=None) -> dict:
+    """model: il dataset intero (catalogo e dati mancanti); filtered: i casi dei filtri condivisi, se ce ne sono."""
     out = {"info": _tower_info(row, lang), "catalog": control_tower.catalog(model, lead), "spec": None}
     if spec:
         clean, issues = control_tower.validate(spec, model)
-        values = control_tower.compute(clean, model, period)
+        values = control_tower.compute(clean, filtered or model, period, full=model)
         # problemi (dati mancanti) gia' tradotti
         for k in values["kpis"].values():
             if k.get("issues"):
@@ -540,6 +580,8 @@ async def control_tower_data(request: Request):
     if config is None or run is None or not Path(run.ocel_file_path).exists():
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
     model = explorer.load_model(run.ocel_file_path)
+    sel = _filters(body.get("filters"))
+    filtered = explorer.load_model(run.ocel_file_path, sel) if sel else None
     answers, _ = load_assessment(workspace_id)
     lead = overview.default_lead(model, with_business_lead(answers, config.id).get("main_object"))
     db = SessionLocal()
@@ -549,7 +591,7 @@ async def control_tower_data(request: Request):
         db.close()
     spec = body.get("spec") if isinstance(body.get("spec"), dict) else (row.spec if row else None)
     period = str(body.get("period") or "all")
-    return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead))
+    return JSONResponse(await run_in_threadpool(_tower_payload, request, model, spec, row, period, lang, lead, filtered))
 
 
 @router.post("/analysis/control-tower/propose")

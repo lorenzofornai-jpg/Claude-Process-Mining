@@ -917,9 +917,11 @@ def currency(ctx: _Ctx, kpi: dict) -> str | None:
     return c.most_common(1)[0][0] if c else None
 
 
-def compute(spec: dict, model, period: str = "12") -> dict:
-    """Valori dei KPI e dati dei grafici per il periodo scelto."""
-    spec, issues = validate(spec, model)
+def compute(spec: dict, model, period: str = "12", full=None) -> dict:
+    """Valori dei KPI e dati dei grafici per il periodo scelto. full: il dataset intero quando `model` e' ridotto dai
+    filtri sui casi: i dati mancanti si controllano su quello (un filtro che toglie un'attivita' non e' un dato
+    mancante), i valori si calcolano sui casi filtrati."""
+    spec, issues = validate(spec, full or model)
     ctx = context(model)
     period = period if period in PERIODS or parse_range(period) else "all"
     types = {k.get("object_type") for k in spec["kpis"] if k.get("object_type")}

@@ -7,12 +7,21 @@ Il dataset filtrato tiene gli oggetti di partenza, gli oggetti collegati a loro 
 trasversali, come il cliente, che collegherebbero tutto) e gli eventi di questi oggetti: la fattura di un ordine
 del cliente resta con tutta la sua storia, fino al pagamento. Piu' filtri valgono insieme (uno dopo l'altro).
 
+Altri filtri sui casi (selezioni fatte sui grafici delle analisi, condivise tra le pagine dello stesso dataset):
+- mese di inizio: gli oggetti di un tipo con il primo evento in uno dei mesi (es. ordini iniziati a gen o feb);
+- tempo di attraversamento: gli oggetti di un tipo con il tempo dal primo all'ultimo evento (solo l'oggetto, o con
+  gli oggetti collegati non trasversali) in uno degli intervalli di giorni scelti.
+Per i filtri su un tipo di oggetto, gli altri oggetti dello stesso tipo collegati per caso (es. due ordini nella
+stessa fattura) non entrano: il filtro «gennaio» non porta con se' un ordine di marzo.
+
 Funziona su qualunque OCEL 2.0 e qualunque processo: gli attributi sono quelli che il mapping ha prodotto.
 """
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_VALUES = 2000
@@ -66,13 +75,37 @@ def catalog(ocel: dict) -> list[dict]:
     return sorted(out, key=lambda x: (x["kind"] != "object", x["type"] or "", x["attribute"]))
 
 
+CASE_KINDS = ("start_month", "duration")
+
+
 def clean(filters) -> list[dict]:
     """Filtri ricevuti dal browser, normalizzati (ordine stabile: servono anche come chiave di cache)."""
     out = []
     for f in filters or []:
         if not isinstance(f, dict):
             continue
-        kind = "event" if f.get("kind") == "event" else "object"
+        kind = f.get("kind")
+        if kind == "start_month":
+            months = sorted({str(v) for v in f.get("values") or [] if len(str(v)) == 7 and str(v)[4] == "-"})[:240]
+            if f.get("type") and months:
+                out.append({"kind": kind, "type": str(f["type"]), "values": months})
+            continue
+        if kind == "duration":
+            ranges = []
+            for r in f.get("ranges") or []:
+                try:
+                    a = float(r[0])
+                    b = None if r[1] is None else float(r[1])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if math.isfinite(a) and (b is None or (math.isfinite(b) and b >= a)):
+                    ranges.append([round(a, 6), None if b is None else round(b, 6)])
+            if f.get("type") and ranges:
+                out.append({"kind": kind, "type": str(f["type"]),
+                            "scope": "related" if f.get("scope") == "related" else "object",
+                            "ranges": sorted(ranges, key=lambda r: r[0])[:50]})
+            continue
+        kind = "event" if kind == "event" else "object"
         values = sorted({str(v) for v in f.get("values") or [] if str(v) != ""})[:200]
         attribute = str(f.get("attribute") or "")
         if attribute and values and (kind == "event" or f.get("type")):
@@ -81,24 +114,72 @@ def clean(filters) -> list[dict]:
     return out
 
 
+def _ts(value) -> float | None:
+    s = str(value or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _case_seeds(ocel: dict, f: dict, type_of: dict[str, str], hubs: set[str]) -> set[str]:
+    """Oggetti di partenza per i filtri sui casi (mese di inizio, tempo di attraversamento)."""
+    times: dict[str, list[float]] = defaultdict(list)
+    linked: dict[str, set[str]] = defaultdict(set)
+    want = f["kind"] == "duration" and f["scope"] == "related"
+    for e in ocel.get("events", []):
+        t = _ts(e.get("time"))
+        ids = [r["objectId"] for r in e.get("relationships", []) if r.get("objectId") in type_of]
+        for i in ids:
+            if t is not None:
+                times[i].append(t)
+            if want and type_of[i] == f["type"]:
+                linked[i].update(x for x in ids if x != i and type_of[x] not in hubs)
+    seeds = set()
+    for oid, ty in type_of.items():
+        if ty != f["type"] or not times.get(oid):
+            continue
+        own = times[oid]
+        if f["kind"] == "start_month":
+            if datetime.fromtimestamp(min(own), tz=timezone.utc).strftime("%Y-%m") in f["values"]:
+                seeds.add(oid)
+            continue
+        ts = list(own)
+        if want:
+            for x in linked.get(oid, ()):
+                ts += times.get(x, [])
+        days = (max(ts) - min(ts)) / 86400
+        if any(r[0] - 1e-9 <= days and (r[1] is None or days <= r[1] + 1e-9) for r in f["ranges"]):
+            seeds.add(oid)
+    return seeds
+
+
 def apply(ocel: dict, filters: list[dict], hubs: set[str] | None = None) -> dict:
     """Il dataset ridotto ai casi che soddisfano tutti i filtri (vedi la descrizione del modulo)."""
     hubs = hubs or set()
     for f in clean(filters):
         type_of = {o["id"]: o["type"] for o in ocel.get("objects", [])}
-        values = set(f["values"])
-        if f["kind"] == "object":
+        if f["kind"] in CASE_KINDS:
+            seeds = _case_seeds(ocel, f, type_of, hubs)
+        elif f["kind"] == "object":
+            values = set(f["values"])
             seeds = {o["id"] for o in ocel.get("objects", [])
                      if o["type"] == f["type"] and _object_attrs(o).get(f["attribute"]) in values}
         else:
+            values = set(f["values"])
             seeds = {r["objectId"] for e in ocel.get("events", []) if _event_attrs(e).get(f["attribute"]) in values
                      for r in e.get("relationships", []) if type_of.get(r.get("objectId")) not in hubs}
-        # oggetti collegati ai casi di partenza da un evento (non i trasversali)
+        # oggetti collegati ai casi di partenza da un evento (non i trasversali; per un filtro su un tipo, non gli
+        # altri oggetti dello stesso tipo)
+        same = f.get("type") if f["kind"] != "event" else None
         core = set(seeds)
         for e in ocel.get("events", []):
             ids = [r["objectId"] for r in e.get("relationships", [])]
             if seeds.intersection(ids):
-                core.update(i for i in ids if i in type_of and type_of[i] not in hubs)
+                core.update(i for i in ids if i in type_of and type_of[i] not in hubs and type_of[i] != same)
         events, kept = [], set()
         for e in ocel.get("events", []):
             rels = [r for r in e.get("relationships", []) if r.get("objectId") in type_of]

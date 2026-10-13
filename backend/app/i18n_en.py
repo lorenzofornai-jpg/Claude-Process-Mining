@@ -1573,4 +1573,14 @@ EN: dict[str, str] = {
     '{f} deve essere tra {a} e {b}.': '{f} must be between {a} and {b}.',
     '{m}: errore': '{m}: error',
     '{m}: raggiungibile': '{m}: reachable',
+    # Filtri sui casi condivisi tra le analisi
+    'Filtri attivi:': 'Active filters:',
+    'Nessun oggetto di tipo {t} nei casi filtrati: togli o cambia un filtro.': 'No objects of type {t} in the filtered cases: remove or change a filter.',
+    'Tocca una barra per filtrare i casi, trascina per scegliere un intervallo: il filtro vale in tutte le analisi del dataset.': 'Tap a bar to filter the cases, drag to choose a range: the filter applies to all analyses of the dataset.',
+    'Valgono in tutte le analisi di questo dataset.': 'They apply to all analyses of this dataset.',
+    'eventi · {a}: {v}': 'events · {a}: {v}',
+    '{tp} · inizio: {m}': '{tp} · start: {m}',
+    '{tp} · tempo con gli oggetti collegati: {r}': '{tp} · time with linked objects: {r}',
+    '{tp} · tempo di attraversamento: {r}': '{tp} · throughput time: {r}',
+    '{tp} · {a}: {v}': '{tp} · {a}: {v}',
 }

@@ -31,6 +31,7 @@
     </div>
     <div class="ct-range-ends tiny muted"><span id="ct-range-min"></span><span id="ct-range-max"></span></div>
   </div>
+  {% include "_case_filters.html" %}
   <div id="ct-status" aria-live="polite"></div>
   <div id="ct-body" aria-live="polite"><p class="muted">{{ _("Calcolo in corso…") }}</p></div>
 
@@ -47,6 +48,9 @@
   var WS = {{ workspace_id|tojson }}, CONFIG = {{ config.id|tojson }}, LANG = {{ current_lang()|tojson }};
   var LEAD = {{ lead|tojson }}, QUESTIONS = {{ questions|tojson }}, CLAUDE = {{ claude|tojson }};
   var TYPE_NAMES = {{ type_names|tojson }};   // tipi di oggetto nelle frasi, nella lingua attiva
+  // filtri sui casi condivisi con le altre analisi (static/filters.js): i valori si ricalcolano sui casi filtrati
+  var CF = initCaseFilters({ config: CONFIG, T: CASE_FILTER_T, lang: LANG, plurals: {{ plurals|tojson }} });
+  CF.onChange(function () { refresh(); });
   var T = {
     intro: {{ _("La Control Tower traduce le domande di business dell'assessment in KPI misurati sul dataset: per ogni domanda i numeri chiave con obiettivo, l'andamento nel tempo e dove si concentra il fenomeno. L'LLM propone le definizioni una volta sola; tu le controlli, le modifichi se serve e le approvi. I valori li calcola l'app, senza altre chiamate all'LLM.")|tojson }},
     questions: {{ _("Domande di business dell'assessment")|tojson }},
@@ -240,8 +244,7 @@
   // ---------- caricamento ----------
   function load(withSpec) {
     var body = document.getElementById("ct-body"); body.style.opacity = 0.5;
-    var p = withSpec ? api("/analysis/control-tower/data", { workspace_id: WS, config_id: CONFIG, period: period, spec: withSpec })
-                     : api("/analysis/control-tower/data?" + new URLSearchParams({ workspace_id: WS, config_id: CONFIG, period: period }));
+    var p = api("/analysis/control-tower/data", { workspace_id: WS, config_id: CONFIG, period: period, spec: withSpec || null, filters: CF.get() });
     return p.then(function (d) {
       data = d;
       if (!withSpec) { spec = d.spec ? clone(d.spec) : null; dirty = false; previewing = false; }

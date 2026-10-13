@@ -208,6 +208,20 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   città; esportazione PDF/immagine per il management; filtro in testata (cliente, società); avvisi quando un KPI
   esce dall'obiettivo.
 
+## Filtri dinamici sui casi (13 ottobre 2026)
+- Decisioni: filtri **condivisi** tra le analisi dello stesso dataset (Overview, Explorer, Control Tower; nella scheda
+  del browser) e **sui casi**: gli oggetti scelti con gli oggetti collegati e tutta la loro storia (`ocel_filter`).
+  Valori dello stesso grafico in OR, filtri di grafici diversi in AND.
+- ✅ Fase 1: motore (filtri «mese di inizio» e «tempo di attraversamento» per tipo di oggetto; un altro oggetto dello
+  stesso tipo collegato per caso non entra), barra «Filtri attivi» con ✕ e «Togli tutti» (`static/filters.js`),
+  Process Overview: tocco su una barra = aggiunge o toglie, trascinamento = intervallo, sul grafico dei mesi e
+  sull'istogramma dei tempi; il grafico da cui parte la selezione mostra tutti i valori (scelti in evidenza).
+  Explorer e Control Tower ricalcolano sui casi filtrati (nella Control Tower i dati mancanti si controllano sul
+  dataset intero).
+- ⬜ Fase 2: tutti i grafici della Control Tower selezionabili (fette, barre, paesi, celle...) e cursore del periodo
+  unito ai filtri.
+- ⬜ Fase 3: assistenti che conoscono i filtri, «+ Filtro» per attributi che non sono in nessun grafico, viste salvate.
+
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o
   proxy), chiave API, timeout, tentativi; per ogni uso (mapping, controllo di pertinenza, Control Tower,

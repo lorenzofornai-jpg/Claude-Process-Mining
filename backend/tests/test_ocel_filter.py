@@ -60,3 +60,32 @@ def test_filtered_model_keeps_colors_and_tables_for_the_assistant(tmp_path):
     t = ocel_filter.tables(ocel_filter.apply(_ocel(), f, {"Customer"}))
     res = data_query.query_rows(t, {"table": "Order", "group_by": ["customer", "activities"]})
     assert res["groups"] == [{"customer": "C2", "activities": "Create Order > Create Invoice", "rows": 2}]
+
+
+def test_case_filters_start_month_and_duration():
+    """Filtri sui casi dalle selezioni sui grafici: mese di inizio e tempo di attraversamento (solo l'oggetto o con
+    gli oggetti collegati); un altro ordine nella stessa fattura non entra con il filtro sugli ordini."""
+    ocel = _ocel()
+    ocel["objects"].append({"id": "O9", "type": "Order", "attributes": []})
+    ocel["events"].append({"id": "co9", "type": "Create Order", "time": "2026-03-05T00:00:00", "attributes": [],
+                           "relationships": [{"objectId": "O9"}]})
+    # una fattura che riguarda sia O0 (gennaio) sia O9 (marzo)
+    ocel["events"].append({"id": "mix", "type": "Change Invoice", "time": "2026-03-06T00:00:00", "attributes": [],
+                           "relationships": [{"objectId": "I0"}, {"objectId": "O0"}, {"objectId": "O9"}]})
+    jan = ocel_filter.apply(ocel, [{"kind": "start_month", "type": "Order", "values": ["2026-01"]}], hubs={"Customer"})
+    ids = {o["id"] for o in jan["objects"]}
+    assert {"O0", "O1", "O2", "O3", "I0"} <= ids and "O9" not in ids
+    assert all("O9" not in [r["objectId"] for r in e["relationships"]] for e in jan["events"])
+    mar = ocel_filter.apply(ocel, [{"kind": "start_month", "type": "Order", "values": ["2026-03"]}], hubs={"Customer"})
+    assert {o["id"] for o in mar["objects"] if o["type"] == "Order"} == {"O9"}
+    # tempo dell'ordine: O0 va dal 1/1 al 6/3 (evento «mix»); con gli oggetti collegati conta anche il pagamento di I0
+    long_ = ocel_filter.apply(ocel, [{"kind": "duration", "type": "Order", "scope": "object", "ranges": [[30, None]]}],
+                              hubs={"Customer"})
+    assert {o["id"] for o in long_["objects"] if o["type"] == "Order"} == {"O0"}
+    short = ocel_filter.apply(ocel, [{"kind": "duration", "type": "Order", "scope": "object", "ranges": [[0, 10]]}],
+                              hubs={"Customer"})
+    assert {o["id"] for o in short["objects"] if o["type"] == "Order"} == {"O1", "O2", "O3", "O9"}
+    # filtri normalizzati: valori non validi scartati, intervalli ordinati
+    assert ocel_filter.clean([{"kind": "start_month", "type": "Order", "values": ["2026-1", "x"]},
+                              {"kind": "duration", "type": "Order", "ranges": [[5, 2], [3, None], [1, 2]]}]) == [
+        {"kind": "duration", "type": "Order", "scope": "object", "ranges": [[1.0, 2.0], [3.0, None]]}]

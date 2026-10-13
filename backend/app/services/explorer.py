@@ -35,7 +35,7 @@ START = "__start__"
 END = "__end__"
 
 _CACHE: dict[tuple, "ExplorerModel"] = {}
-_CACHE_MAX = 6
+_CACHE_MAX = 16   # dataset intero e versioni filtrate (le selezioni sui grafici)
 
 
 def _epoch(raw: str) -> float:

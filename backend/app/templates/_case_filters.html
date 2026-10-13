@@ -1,0 +1,17 @@
+{# Barra dei filtri sui casi, condivisa tra le analisi dello stesso dataset (static/filters.js) #}
+<div id="pm-filters" class="pm-filters" hidden aria-live="polite"></div>
+<script src="/static/filters.js?v={{ static_version }}"></script>
+<script>
+  var CASE_FILTER_T = {
+    title: {{ _("Filtri attivi:")|tojson }},
+    remove: {{ _("Togli il filtro")|tojson }},
+    clear: {{ _("Togli tutti")|tojson }},
+    note: {{ _("Valgono in tutte le analisi di questo dataset.")|tojson }},
+    chipStart: {{ _("{tp} · inizio: {m}")|tojson }},
+    chipDuration: {{ _("{tp} · tempo di attraversamento: {r}")|tojson }},
+    chipDurationRel: {{ _("{tp} · tempo con gli oggetti collegati: {r}")|tojson }},
+    chipAttr: {{ _("{tp} · {a}: {v}")|tojson }},
+    chipEvent: {{ _("eventi · {a}: {v}")|tojson }},
+    days: {{ _("{n} g")|tojson }}
+  };
+</script>
