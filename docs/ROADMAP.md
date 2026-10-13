@@ -238,6 +238,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   Tolto «+ Filtro» (filtri scelti a mano da un elenco di attributi): troppo complesso, i filtri si mettono dai grafici.
   La versione degli script nella pagina si ricalcola a ogni pagina, così dopo un git pull il browser non tiene
   quelli vecchi anche senza riavviare il server.
+- ✅ Il pennello scatta a colonne o righe intere: il riquadro va da metà strada dall'elemento precedente a metà strada
+  dal successivo e, trascinando una maniglia o il riquadro, include o esclude la colonna/riga successiva appena si
+  supera la metà. I pulsanti ✓ ✕ ◐ restano sempre nella parte visibile del grafico e dello schermo (colonne ai bordi,
+  pagina ingrandita con due dita, grafici che scorrono).
 
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o

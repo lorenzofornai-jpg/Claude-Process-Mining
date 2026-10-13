@@ -200,24 +200,60 @@ function attachBarSelection(items, onPick) {
   }
   function mark(list) { items.forEach(function (it, i) { it.classList.toggle("pm-brush", !!list && list.indexOf(i) >= 0); }); }
 
-  var brush = null, tools = null, a = 0, b = 0, drag = null;
+  var brush = null, tools = null, a = 0, b = 0, drag = null, snap = null;
   var INVERT = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>';
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function cross() { var h = rect(host); return horizontal ? [0, Math.max(host.scrollHeight, h.height)] : [0, Math.max(host.scrollWidth, h.width)]; }
+  // «cella» di ogni elemento: da meta' strada dal precedente a meta' strada dal successivo, cosi' il riquadro
+  // contiene sempre colonne o righe intere e scatta all'elemento successivo quando si supera la meta'
+  function cells() {
+    var cs = items.map(function (it, i) { var r = span(it); return { i: i, c: (r[0] + r[1]) / 2, s: r }; });
+    var o = cs.slice().sort(function (x, y) { return x.c - y.c; }), out = [];
+    o.forEach(function (x, k) {
+      var prev = o[k - 1], next = o[k + 1];
+      var lo = prev ? (prev.c + x.c) / 2 : Math.min(x.s[0], next ? x.c - (next.c - x.c) / 2 : x.s[0]);
+      var hi = next ? (x.c + next.c) / 2 : Math.max(x.s[1], prev ? x.c + (x.c - prev.c) / 2 : x.s[1]);
+      out[x.i] = [Math.max(0, lo), hi];
+    });
+    return out;
+  }
   function draw() {
-    var lo = Math.min(a, b), hi = Math.max(a, b), c = cross();
+    var lo = Math.min(a, b), hi = Math.max(a, b), c = cross(), list = inside(a, b);
+    if (list.length) {
+      var cl = cells();
+      lo = Math.min.apply(null, list.map(function (i) { return cl[i][0]; }));
+      hi = Math.max.apply(null, list.map(function (i) { return cl[i][1]; }));
+    }
+    snap = list.length ? [lo, hi] : null;
     if (horizontal) { brush.style.left = lo + "px"; brush.style.width = (hi - lo) + "px"; brush.style.top = c[0] + "px"; brush.style.height = c[1] + "px"; }
     else {
       brush.style.top = lo + "px"; brush.style.height = (hi - lo) + "px"; brush.style.left = c[0] + "px"; brush.style.width = c[1] + "px";
-      // tabelle larghe che scorrono: maniglie e pulsanti nella parte visibile
+      // tabelle larghe che scorrono: maniglie nella parte visibile
       var mid = host.scrollLeft + Math.min(host.clientWidth || c[1], c[1]) / 2;
       brush.querySelectorAll(".pm-brush-handle").forEach(function (hd) { hd.style.left = mid + "px"; });
-      tools.style.left = Math.max(4, host.scrollLeft + Math.min(host.clientWidth || c[1], c[1]) - tools.offsetWidth - 10) + "px";
     }
-    mark(inside(a, b));
+    mark(list);
+    placeTools();
   }
+  // pulsanti ✓ ✕ ◐ sempre visibili: dentro il riquadro se c'e' posto, altrimenti spostati nella parte visibile
+  // del grafico e dello schermo (colonne ai bordi della pagina, grafici che scorrono)
+  function placeTools() {
+    var br = rect(brush), hr = rect(host), vv = window.visualViewport;
+    var vx = vv ? vv.offsetLeft : 0, vy = vv ? vv.offsetTop : 0, vw = vv ? vv.width : window.innerWidth, vh = vv ? vv.height : window.innerHeight;
+    var tw = tools.offsetWidth, th = tools.offsetHeight, m = 6;
+    var L = Math.max(hr.left, vx) + m, R = Math.min(hr.right, vx + vw) - m, Tp = Math.max(hr.top, vy) + m, Bt = Math.min(hr.bottom, vy + vh) - m;
+    var x = horizontal ? br.left + 14 : Math.min(br.right, R) - tw - 10;
+    var y = horizontal ? br.top + 4 : br.top + (br.height - th) / 2;
+    x = Math.max(L, Math.min(x, R - tw)); y = Math.max(Tp, Math.min(y, Bt - th));
+    tools.style.left = (x - br.left) + "px"; tools.style.top = (y - br.top) + "px";
+  }
+  function onResize() { if (brush) draw(); }
+  function onScroll() { if (brush) placeTools(); }
   host.addEventListener("scroll", function () { if (brush && !horizontal) draw(); });
-  function remove() { if (brush) brush.remove(); brush = null; mark(null); document.removeEventListener("keydown", keys); }
+  function remove() {
+    if (brush) brush.remove(); brush = null; mark(null);
+    document.removeEventListener("keydown", keys); window.removeEventListener("resize", onResize); window.removeEventListener("scroll", onScroll);
+  }
   function finish(invert) {
     var list = inside(a, b);
     if (invert) list = items.map(function (_, i) { return i; }).filter(function (i) { return list.indexOf(i) < 0; });
@@ -239,7 +275,7 @@ function attachBarSelection(items, onPick) {
       });
     brush.appendChild(h1); brush.appendChild(h2); brush.appendChild(bar);
     host.appendChild(brush);
-    document.addEventListener("keydown", keys);
+    document.addEventListener("keydown", keys); window.addEventListener("resize", onResize); window.addEventListener("scroll", onScroll, { passive: true });
   }
   // Che cosa si prende premendo in un punto: una maniglia, il riquadro (per spostarlo) o un nuovo pennello
   // (su un elemento o nello spazio tra gli elementi). null = niente (fuori, o sui pulsanti ✓ ✕ ◐).
@@ -279,7 +315,8 @@ function attachBarSelection(items, onPick) {
     if (!drag) return;
     var dr = drag; drag = null;
     if (dr.what === "new" && !dr.moved) { if (dr.item >= 0) onPick([dr.item], "toggle"); return; }
-    if (brush && !inside(a, b).length) remove();
+    if (brush && !inside(a, b).length) { remove(); return; }
+    if (brush && snap) { a = snap[0]; b = snap[1]; draw(); }   // i bordi restano sulle colonne o righe intere
   }
 
   // mouse, penna, trackpad: eventi pointer (il dito si gestisce sotto, con gli eventi touch)
