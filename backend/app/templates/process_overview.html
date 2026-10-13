@@ -120,7 +120,7 @@
     scopeRelated: {{ _("Dal primo all'ultimo evento di ogni {t} e degli oggetti collegati (esclusi i tipi trasversali): è finito quando è finito l'ultimo oggetto collegato.")|tojson }},
     error: {{ _("Non è stato possibile calcolare l'overview.")|tojson }},
     noneFiltered: {{ _("Nessun oggetto di tipo {t} nei casi filtrati: togli o cambia un filtro.")|tojson }},
-    selectHint: {{ _("Tocca una barra per filtrare i casi, trascina per scegliere un intervallo: il filtro vale in tutte le analisi del dataset.")|tojson }},
+    selectHint: {{ _("Tocca una barra per filtrare i casi; trascina per disegnare un riquadro, regolalo dalle maniglie e conferma con ✓ (◐ inverte). Il filtro vale in tutte le analisi del dataset.")|tojson }},
     days: {{ _("{n} g")|tojson }}, hours: {{ _("{n} h")|tojson }}, minutes: {{ _("{n} min")|tojson }}, seconds: {{ _("{n} s")|tojson }}
   };
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
@@ -286,7 +286,14 @@
       isOn: function (b) { return ranges.some(function (r) { return inside(b, r); }); },
       pick: function (list, mode) {
         var out;
-        if (mode === "range") out = [[list[0].from, list[list.length - 1].overflow ? null : list[list.length - 1].to]];
+        if (mode === "range") {   // classi scelte col pennello (anche non consecutive): intervalli uniti
+          out = [];
+          list.forEach(function (b) {
+            var last = out[out.length - 1];
+            if (last && last[1] !== null && Math.abs(last[1] - b.from) < E) last[1] = b.overflow ? null : b.to;
+            else out.push(rangeOf(b));
+          });
+        }
         else {
           var b = list[0];
           out = ranges.some(function (r) { return inside(b, r); }) ? ranges.filter(function (r) { return !overlaps(b, r); }) : ranges.concat([rangeOf(b)]);

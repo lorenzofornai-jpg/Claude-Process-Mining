@@ -119,7 +119,7 @@
     tolerance: {{ _("Giallo se manca l'obiettivo di non più di {t}")|tojson }},
     low: {{ _("basso")|tojson }}, high: {{ _("alto")|tojson }},
     chipActivity: {{ _("attività")|tojson }},
-    selectHint: {{ _("Tocca barre, colonne, fette, punti, bolle o paesi per filtrare i casi (trascina sulle colonne per un intervallo): il filtro vale in tutte le analisi del dataset.")|tojson }},
+    selectHint: {{ _("Tocca barre, colonne, fette, punti, bolle o paesi per filtrare i casi. Su colonne, barre, righe e andamenti trascina per disegnare un riquadro, regolalo dalle maniglie e conferma con ✓ (◐ inverte). Il filtro vale in tutte le analisi del dataset.")|tojson }},
     // definizioni
     edTitle: {{ _("Definizioni dei KPI")|tojson }},
     edIntro: {{ _("Le domande di business e i KPI con cui si misurano, con come si calcolano. Qui puoi correggere i testi, togliere domande e KPI e scegliere quali KPI vanno nella sintesi. Per cambiare come si calcola un KPI o aggiungere domande e KPI chiedilo all'LLM.")|tojson }},
@@ -687,7 +687,7 @@
     var svg = svgEl("svg", { width: W, height: H, role: "img", "aria-label": tx(c.title) || tx(k.name), "class": "ct-svg" });
     function x(i) { return L + (pts.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (pts.length - 1)); }
     function y(v) { return TOP + (hi - v) * (H - TOP - B) / (hi - lo); }
-    var ms = monthSel(c);
+    var ms = monthSel(c), dots = [];
     if (ms.active) pts.forEach(function (p, i) {   // fascia dei mesi del periodo scelto
       if (!ms.isOn(p.month)) return;
       var half = pts.length > 1 ? (W - L - R) / (pts.length - 1) / 2 : 20;
@@ -728,10 +728,11 @@
       var bad = target !== null && target !== undefined && k.target && ((k.target.op === ">=" && p.value < target) || (k.target.op === "<=" && p.value > target));
       var dot = svgEl("circle", { cx: x(i), cy: y(p.value), r: 4.5, "class": "ct-dot" + (bad ? " ct-dot-bad" : ""), tabindex: 0 });
       dot.appendChild(svgEl("title", {}, fmt(T.trendTip, { m: monthLabel(p.month), v: value(k, p.value, cur), s: subline(k, p, cur) })));
-      pickable(dot, ms.active, ms.isOn(p.month), function () { ms.pick([p.month], "toggle"); });
+      pickable(dot, ms.active, ms.isOn(p.month)); dot.dataset.month = p.month; dots.push(dot);
       svg.appendChild(dot);
     });
     var sc = el("div", "ov-scroll"); sc.appendChild(svg); area.appendChild(sc);
+    attachBarSelection(dots, function (idx, mode) { ms.pick(idx.map(function (i) { return dots[i].dataset.month; }), mode); });
   }
 
   function groupLabel(x) { return x.label === "" ? T.empty : tx(x.label); }
@@ -768,10 +769,10 @@
     if (k.amount && k.measure !== "sum") cols.push(T.colAmount);
     cols.forEach(function (h, i) { hr.appendChild(el("th", i ? "num" : "", h)); });
     var th = el("thead"); th.appendChild(hr); t.appendChild(th);
-    var tb = el("tbody"), gs = groupSel(k, c);
+    var tb = el("tbody"), gs = groupSel(k, c), trs = [];
     items.forEach(function (x) {
       var tr = el("tr");
-      if (gs) pickable(tr, gs.active, gs.isOn(x.label), function () { gs.pick([x.label], "toggle"); });
+      if (gs) { pickable(tr, gs.active, gs.isOn(x.label)); trs.push(tr); }
       tr.appendChild(el("td", "", groupLabel(x)));
       tr.appendChild(el("td", "num", num(x.den)));
       tr.appendChild(el("td", "num", num(x.num)));
@@ -781,6 +782,7 @@
     });
     t.appendChild(tb);
     var sc = el("div", "ov-scroll"); sc.appendChild(t); area.appendChild(sc);
+    if (gs) attachBarSelection(trs, function (idx, mode) { gs.pick(idx.map(function (i) { return items[i].label; }), mode); });
     if (c.others) area.appendChild(el("p", "tiny muted", fmt(T.others, { n: num(c.others) })));
   }
   function donut(area, c, k, cur) {

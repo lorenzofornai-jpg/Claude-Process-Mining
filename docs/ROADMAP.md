@@ -230,6 +230,10 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   (attributo di un tipo di oggetto o degli eventi, ricerca tra i valori, più valori) e «Viste»: i filtri attivi
   salvati con un nome per il dataset (tabella `analysis_view`), visibili a tutti i Data Analyst del processo, tolte
   solo da chi le ha create.
+- ✅ Pennello di selezione (come in Celonis): trascinando su colonne, barre, righe di tabella, istogrammi e
+  andamenti compare un riquadro con maniglie ai lati (si allarga, si stringe, si sposta) e tre pulsanti: ✓ applica,
+  ✕ annulla, ◐ inverti (tutti tranne quelli nel riquadro). Tocco singolo = aggiunge o toglie un valore; Invio / Esc
+  da tastiera. Funziona anche con il dito su iPad (scorrimento della pagina nell'altra direzione). Non sulle torte.
 
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o

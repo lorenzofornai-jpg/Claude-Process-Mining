@@ -1608,4 +1608,9 @@ EN: dict[str, str] = {
     '{a} ({n} valori)': '{a} ({n} values)',
     '— di {u}, {n} filtri': '— by {u}, {n} filters',
     '— di {u}, 1 filtro': '— by {u}, 1 filter',
+    'Annulla la selezione': 'Cancel the selection',
+    'Applica il filtro ai valori nel riquadro': 'Apply the filter to the values in the box',
+    'Inverti: tutti i valori tranne quelli nel riquadro': 'Invert: all values except those in the box',
+    'Tocca barre, colonne, fette, punti, bolle o paesi per filtrare i casi. Su colonne, barre, righe e andamenti trascina per disegnare un riquadro, regolalo dalle maniglie e conferma con ✓ (◐ inverte). Il filtro vale in tutte le analisi del dataset.': 'Tap bars, columns, slices, points, bubbles or countries to filter the cases. On columns, bars, rows and trends drag to draw a box, adjust it with the handles and confirm with ✓ (◐ inverts). The filter applies to all analyses of the dataset.',
+    'Tocca una barra per filtrare i casi; trascina per disegnare un riquadro, regolalo dalle maniglie e conferma con ✓ (◐ inverte). Il filtro vale in tutte le analisi del dataset.': 'Tap a bar to filter the cases; drag to draw a box, adjust it with the handles and confirm with ✓ (◐ inverts). The filter applies to all analyses of the dataset.',
 }

@@ -222,34 +222,129 @@ function initCaseFilters(opts) {
   return api;
 }
 
-/* Selezione su una serie di barre o colonne: tocco = aggiunge o toglie un valore, trascinamento = intervallo.
- * items: elementi DOM nell'ordine delle barre; isOn(i): selezionata?; onPick(indices, mode): mode = "toggle" | "range". */
+/* Selezione su una serie di barre, colonne, punti o righe (in ordine).
+ *  - tocco su un elemento: aggiunge o toglie quel valore, subito (onPick([i], "toggle"));
+ *  - trascinamento: compare un pennello (rettangolo con due maniglie) come negli strumenti di process mining;
+ *    si allarga o si stringe dalle maniglie, si sposta trascinandolo, e si conferma con ✓ (i valori dentro),
+ *    ✕ (annulla) o ◐ (inverti: tutti i valori tranne quelli dentro) -> onPick(indici, "range").
+ * Orientamento automatico: colonne affiancate (pennello orizzontale) o righe una sotto l'altra (verticale). */
 function attachBarSelection(items, onPick) {
-  var start = null, last = null, moved = false;
-  function idxOf(target) { for (var i = 0; i < items.length; i++) if (items[i] === target || items[i].contains(target)) return i; return -1; }
-  function mark(a, b) { items.forEach(function (it, i) { it.classList.toggle("pm-brush", a !== null && i >= Math.min(a, b) && i <= Math.max(a, b)); }); }
-  items.forEach(function (it, i) {
-    it.style.touchAction = "pan-y";
-    it.addEventListener("pointerdown", function (e) { if (e.button) return; start = last = i; moved = false; mark(i, i); });
-    it.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick([i], "toggle"); } });
-  });
-  var host = items.length ? items[0].parentNode : null;
+  items = (items || []).filter(Boolean);
+  if (!items.length) return;
+  // spesso il grafico viene inserito nella pagina subito dopo: si aspetta che ci sia (servono le misure)
+  if (!items[0].isConnected) {
+    if (!(arguments[2] > 5)) { var n = (arguments[2] || 0) + 1; requestAnimationFrame(function () { attachBarSelection(items, onPick, n); }); }
+    return;
+  }
+  var T = window.CASE_FILTER_T || {};
+  var host = items[0].ownerSVGElement ? items[0].ownerSVGElement.parentNode : items[0].parentNode;
+  if (items[0].tagName === "TR") { var tb = items[0].closest("table"); host = tb && tb.parentNode; }   // non dentro la tabella
   if (!host) return;
+  host.classList.add("pm-brush-host");   // position: relative (gli elementi possono non essere ancora nella pagina)
+  function rect(e) { return e.getBoundingClientRect(); }
+  var r0 = rect(items[0]), r1 = rect(items[items.length - 1]);
+  var horizontal = items.length < 2 || Math.abs((r1.left + r1.right) - (r0.left + r0.right)) >= Math.abs((r1.top + r1.bottom) - (r0.top + r0.bottom));
+  host.style.touchAction = horizontal ? "pan-y" : "pan-x";
+  items.forEach(function (it) { it.classList.add("pm-pick"); });
+
+  // coordinate nel contenuto del contenitore (che puo' scorrere)
+  function pos(clientX, clientY) {
+    var h = rect(host);
+    return horizontal ? clientX - h.left + host.scrollLeft : clientY - h.top + host.scrollTop;
+  }
+  function span(it) {
+    var h = rect(host), r = rect(it);
+    return horizontal ? [r.left - h.left + host.scrollLeft, r.right - h.left + host.scrollLeft]
+                      : [r.top - h.top + host.scrollTop, r.bottom - h.top + host.scrollTop];
+  }
+  function inside(a, b) {
+    var lo = Math.min(a, b), hi = Math.max(a, b), out = [];
+    items.forEach(function (it, i) { var s = span(it), c = (s[0] + s[1]) / 2; if (c >= lo && c <= hi) out.push(i); });
+    return out;
+  }
+  function mark(list) { items.forEach(function (it, i) { it.classList.toggle("pm-brush", !!list && list.indexOf(i) >= 0); }); }
+
+  var brush = null, tools = null, a = 0, b = 0, drag = null;
+  var INVERT = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>';
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  function cross() { var h = rect(host); return horizontal ? [0, Math.max(host.scrollHeight, h.height)] : [0, Math.max(host.scrollWidth, h.width)]; }
+  function draw() {
+    var lo = Math.min(a, b), hi = Math.max(a, b), c = cross();
+    if (horizontal) { brush.style.left = lo + "px"; brush.style.width = (hi - lo) + "px"; brush.style.top = c[0] + "px"; brush.style.height = c[1] + "px"; }
+    else {
+      brush.style.top = lo + "px"; brush.style.height = (hi - lo) + "px"; brush.style.left = c[0] + "px"; brush.style.width = c[1] + "px";
+      // tabelle larghe che scorrono: maniglie e pulsanti nella parte visibile
+      var mid = host.scrollLeft + Math.min(host.clientWidth || c[1], c[1]) / 2;
+      brush.querySelectorAll(".pm-brush-handle").forEach(function (hd) { hd.style.left = mid + "px"; });
+      tools.style.left = Math.max(4, host.scrollLeft + Math.min(host.clientWidth || c[1], c[1]) - tools.offsetWidth - 10) + "px";
+    }
+    mark(inside(a, b));
+  }
+  host.addEventListener("scroll", function () { if (brush && !horizontal) draw(); });
+  function remove() { if (brush) brush.remove(); brush = null; mark(null); document.removeEventListener("keydown", keys); }
+  function finish(invert) {
+    var list = inside(a, b);
+    if (invert) list = items.map(function (_, i) { return i; }).filter(function (i) { return list.indexOf(i) < 0; });
+    remove();
+    if (list.length) onPick(list, "range");
+  }
+  function keys(e) { if (e.key === "Escape") remove(); else if (e.key === "Enter") { e.preventDefault(); finish(false); } }
+  function make() {
+    brush = el("div", "pm-brush-box" + (horizontal ? " pm-brush-h" : " pm-brush-v"));
+    var h1 = el("span", "pm-brush-handle pm-brush-start"), h2 = el("span", "pm-brush-handle pm-brush-end");
+    var bar = tools = el("span", "pm-brush-tools");
+    [["✓", T.brushApply, function () { finish(false); }], ["✕", T.brushCancel, remove], ["◐", T.brushInvert, function () { finish(true); }]]
+      .forEach(function (x, i) {
+        var btn = el("button", "pm-brush-btn pm-brush-btn-" + i, i === 2 ? "" : x[0]); btn.type = "button";
+        if (i === 2) btn.innerHTML = INVERT; btn.title = x[1] || ""; btn.setAttribute("aria-label", x[1] || x[0]);
+        btn.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+        btn.addEventListener("click", function (e) { e.stopPropagation(); x[2](); });
+        bar.appendChild(btn);
+      });
+    brush.appendChild(h1); brush.appendChild(h2); brush.appendChild(bar);
+    h1.addEventListener("pointerdown", function (e) { e.stopPropagation(); start(e, Math.min(a, b) === a ? "a" : "b"); });
+    h2.addEventListener("pointerdown", function (e) { e.stopPropagation(); start(e, Math.max(a, b) === b ? "b" : "a"); });
+    brush.addEventListener("pointerdown", function (e) { if (e.target === brush) { e.stopPropagation(); start(e, "move"); } });
+    host.appendChild(brush);
+    document.addEventListener("keydown", keys);
+  }
+  function start(e, what) {
+    if (e.button) return;
+    drag = { what: what, p: pos(e.clientX, e.clientY), a: a, b: b, moved: false, item: null };
+    try { host.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  host.addEventListener("pointerdown", function (e) {
+    if (e.button || (brush && brush.contains(e.target))) return;
+    var i = -1; items.forEach(function (it, k) { if (it === e.target || it.contains(e.target)) i = k; });
+    if (i < 0 && !brush) {                // si puo' partire anche dallo spazio vuoto tra gli elementi (es. sopra i punti)
+      var p0 = pos(e.clientX, e.clientY), s0 = span(items[0]), s1 = span(items[items.length - 1]);
+      if (p0 < Math.min(s0[0], s1[0]) || p0 > Math.max(s0[1], s1[1])) return;
+    }
+    if (brush) remove();
+    start(e, "new"); drag.item = i;
+  });
   host.addEventListener("pointermove", function (e) {
-    if (start === null) return;
-    var t = document.elementFromPoint(e.clientX, e.clientY), i = idxOf(t);
-    if (i >= 0 && i !== last) { last = i; moved = moved || i !== start; mark(start, i); }
+    if (!drag) return;
+    var p = pos(e.clientX, e.clientY), d = p - drag.p;
+    if (!drag.moved && Math.abs(d) < 6) return;
+    drag.moved = true;
+    if (drag.what === "new") { if (!brush) { make(); a = drag.p; } b = p; }
+    else if (drag.what === "a") a = drag.a + d;
+    else if (drag.what === "b") b = drag.b + d;
+    else { a = drag.a + d; b = drag.b + d; }
+    draw();
   });
   function end() {
-    if (start === null) return;
-    var a = Math.min(start, last), b = Math.max(start, last), list = [];
-    for (var i = a; i <= b; i++) list.push(i);
-    var mode = moved ? "range" : "toggle";
-    start = last = null; mark(null, null);
-    onPick(list, mode);
+    if (!drag) return;
+    var dr = drag; drag = null;
+    if (dr.what === "new" && !dr.moved) { if (dr.item >= 0) onPick([dr.item], "toggle"); return; }
+    if (brush && !inside(a, b).length) remove();
   }
   host.addEventListener("pointerup", end);
-  host.addEventListener("pointerleave", function () { if (start !== null) end(); });
+  host.addEventListener("pointercancel", function () { drag = null; });
+  items.forEach(function (it, i) {
+    it.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick([i], "toggle"); } });
+  });
 }
 
 /* JSON con le chiavi in ordine (stesso testo di json.dumps(sort_keys=True, separators=(",", ":")) in Python):

@@ -1177,7 +1177,6 @@ ul.tight { margin: 6px 0 0; padding-left: 18px; }
 .pm-selectable .ov-bar-col:hover .ov-bar { filter: brightness(1.12); }
 .pm-has-sel .ov-bar-col:not(.pm-on) .ov-bar { opacity: .28; }
 .pm-has-sel .ov-bar-col.pm-on .ov-bar-label { color: var(--text); font-weight: 650; }
-.ov-bar-col.pm-brush .ov-bar { opacity: 1 !important; outline: 2px solid var(--brand); outline-offset: 1px; }
 .pm-hint { margin-top: -4px; }
 /* selezioni sui grafici della Control Tower */
 .pm-pick { cursor: pointer; }
@@ -1209,3 +1208,31 @@ svg .pm-brush { opacity: 1 !important; stroke: var(--text); stroke-width: 2; }
 .pm-view-open { font-weight: 600; }
 .pm-view-del { background: var(--card-bg-soft); color: var(--muted); }
 @media (max-width: 760px) { .pm-filters-tools { margin-left: 0; } }
+/* pennello di selezione (trascinamento su colonne, barre, righe, andamenti) */
+.pm-brush-host { position: relative; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.pm-brush-box { position: absolute; z-index: 5; background: color-mix(in srgb, var(--brand) 12%, transparent);
+  border: 1.5px solid var(--brand); border-radius: 4px; cursor: grab; touch-action: none; box-sizing: border-box; }
+.pm-brush-box:active { cursor: grabbing; }
+.pm-brush-handle { position: absolute; background: var(--brand); border-radius: 3px; touch-action: none; box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0,0,0,.25); }
+.pm-brush-h .pm-brush-handle { top: 50%; width: 10px; height: 34px; margin-top: -17px; cursor: ew-resize; }
+.pm-brush-h .pm-brush-start { left: -1px; }
+.pm-brush-h .pm-brush-end { right: -1px; }
+.pm-brush-v .pm-brush-handle { height: 10px; width: 34px; margin-left: -17px; cursor: ns-resize; }
+.pm-brush-v .pm-brush-start { top: -1px; }
+.pm-brush-v .pm-brush-end { bottom: -1px; }
+.pm-brush-tools { position: absolute; display: flex; gap: 3px; }
+/* pulsanti dentro il riquadro (fuori verrebbero tagliati dai bordi del grafico) */
+.pm-brush-h .pm-brush-tools { flex-direction: column; top: 4px; left: 14px; }
+.pm-brush-v .pm-brush-tools { top: 50%; transform: translateY(-50%); }   /* left: calcolato sulla parte visibile */
+.pm-brush-btn { width: 30px; height: 30px; min-height: 0; padding: 0; margin: 0; border: 0; border-radius: 6px; color: #fff;
+  font-size: 15px; line-height: 30px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  display: inline-flex; align-items: center; justify-content: center; }
+.pm-brush-btn svg { width: 16px; height: 16px; display: block; }
+.pm-brush-btn-0 { background: #2fa36b; }
+.pm-brush-btn-1 { background: #c2455a; }
+.pm-brush-btn-2 { background: #68707e; }
+.pm-brush-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+/* elementi dentro il pennello: pieni, gli altri come sono */
+.pm-brush { opacity: 1 !important; }
+.ov-bar-col.pm-brush .ov-bar { outline: none; background: var(--brand-dark, #2c4fc4); }
+tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 10%, transparent); }
