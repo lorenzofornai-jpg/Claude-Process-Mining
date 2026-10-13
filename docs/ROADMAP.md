@@ -226,14 +226,18 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   periodo (confronto con i mesi precedenti se consecutivi). Il grafico da cui parte una selezione (e quelli con la
   stessa dimensione) mostra tutti i valori; gli andamenti mostrano tutti i mesi con il periodo in evidenza.
 - ✅ Fase 3: gli assistenti (Overview, Explorer, Control Tower) ricevono i filtri attivi e rispondono sui casi
-  filtrati (numeri della pagina e tabelle da interrogare), dicendolo. Barra dei filtri sempre visibile con «+ Filtro»
-  (attributo di un tipo di oggetto o degli eventi, ricerca tra i valori, più valori) e «Viste»: i filtri attivi
+  filtrati (numeri della pagina e tabelle da interrogare), dicendolo. Barra dei filtri sempre visibile con «Viste»: i filtri attivi
   salvati con un nome per il dataset (tabella `analysis_view`), visibili a tutti i Data Analyst del processo, tolte
   solo da chi le ha create.
 - ✅ Pennello di selezione (come in Celonis): trascinando su colonne, barre, righe di tabella, istogrammi e
   andamenti compare un riquadro con maniglie ai lati (si allarga, si stringe, si sposta) e tre pulsanti: ✓ applica,
   ✕ annulla, ◐ inverti (tutti tranne quelli nel riquadro). Tocco singolo = aggiunge o toglie un valore; Invio / Esc
-  da tastiera. Funziona anche con il dito su iPad (scorrimento della pagina nell'altra direzione). Non sulle torte.
+  da tastiera. Non sulle torte.
+- ✅ Al tocco (iPad) eventi touch nativi: sulle colonne il dito in orizzontale disegna il pennello, in verticale la
+  pagina scorre; sulle righe delle tabelle e sulle barre orizzontali si tiene premuto un attimo e poi si trascina.
+  Tolto «+ Filtro» (filtri scelti a mano da un elenco di attributi): troppo complesso, i filtri si mettono dai grafici.
+  La versione degli script nella pagina si ricalcola a ogni pagina, così dopo un git pull il browser non tiene
+  quelli vecchi anche senza riavviare il server.
 
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o

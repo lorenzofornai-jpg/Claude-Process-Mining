@@ -77,5 +77,17 @@ CONTROL_TOWER_MODEL = os.environ.get("CONTROL_TOWER_MODEL", ANTHROPIC_MODEL)
 # aggiornato). L'mtime del file cambia ad ogni modifica (e tipicamente anche
 # ad ogni checkout git), quindi basta come versione senza dover incrementare
 # un numero a mano.
-_STYLE_CSS_PATH = BASE_DIR / "app" / "static" / "style.css"
-STATIC_VERSION = str(int(_STYLE_CSS_PATH.stat().st_mtime)) if _STYLE_CSS_PATH.exists() else "0"
+# Si ricalcola a ogni pagina (non solo all'avvio) su tutti i .css e .js: i template si ricaricano da soli dopo un
+# git pull, gli script devono seguirli anche se il server non e' stato riavviato.
+_STATIC_DIR = BASE_DIR / "app" / "static"
+
+
+class _StaticVersion:
+    def __str__(self) -> str:
+        try:
+            return str(int(max(p.stat().st_mtime for p in _STATIC_DIR.glob("*.*") if p.suffix in (".css", ".js"))))
+        except (OSError, ValueError):
+            return "0"
+
+
+STATIC_VERSION = _StaticVersion()

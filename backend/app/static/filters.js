@@ -67,19 +67,17 @@ function initCaseFilters(opts) {
       tools.appendChild(all);
     }
     if (opts.ws) {
-      var add = el("button", "secondary pm-tool", "+ " + T.add); add.type = "button";
-      add.addEventListener("click", function () { togglePanel("add"); });
       var views = el("button", "secondary pm-tool", T.views + " ▾"); views.type = "button";
       views.addEventListener("click", function () { togglePanel("views"); });
-      tools.appendChild(add); tools.appendChild(views);
+      tools.appendChild(views);
     }
     bar.appendChild(tools);
     if (filters.length) bar.appendChild(el("span", "tiny muted pm-filters-note", T.note));
     if (panel) bar.appendChild(panel);
   }
 
-  // ---------- pannelli «+ Filtro» e «Viste» ----------
-  var panel = null, panelKind = null, catalog = null;
+  // ---------- pannello «Viste» ----------
+  var panel = null, panelKind = null;
   function call(url, body) {
     var o = body ? { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { credentials: "same-origin" };
     return fetch(url, o).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
@@ -91,66 +89,7 @@ function initCaseFilters(opts) {
     panelKind = kind; panel = el("div", "pm-panel");
     panel.appendChild(el("p", "tiny muted", T.loading));
     render();
-    if (kind === "add") (catalog ? Promise.resolve(catalog) : call("/analysis/filters/catalog?" + q()).then(function (j) { catalog = j; return j; }))
-      .then(addPanel).catch(function (e) { panel.textContent = e.message; });
-    else call("/analysis/views?" + q()).then(viewsPanel).catch(function (e) { panel.textContent = e.message; });
-  }
-  function addPanel(cat) {
-    if (panelKind !== "add") return;
-    panel.textContent = "";
-    var hubs = {}; (cat.types || []).forEach(function (t) { hubs[t.name] = t.hub; });
-    var owners = [];
-    (cat.attributes || []).forEach(function (a) { var k = a.kind === "event" ? "" : a.type; if (owners.indexOf(k) < 0) owners.push(k); });
-    var row = el("div", "pm-panel-row");
-    var who = el("select"); who.setAttribute("aria-label", T.what);
-    owners.forEach(function (o) { var op = el("option", "", o ? plural(o) : T.events); op.value = o; who.appendChild(op); });
-    var attr = el("select"); attr.setAttribute("aria-label", T.attribute);
-    var search = el("input"); search.type = "search"; search.placeholder = T.search;
-    row.appendChild(field(T.what, who)); row.appendChild(field(T.attribute, attr)); row.appendChild(field(T.searchLabel, search));
-    panel.appendChild(row);
-    var help = el("p", "tiny muted"); panel.appendChild(help);
-    var list = el("div", "pm-values"); panel.appendChild(list);
-    var chosen = [];
-    function current() { var o = who.value; return (cat.attributes || []).filter(function (a) { return (a.kind === "event" ? "" : a.type) === o && a.attribute === attr.value; })[0]; }
-    function fillAttrs() {
-      attr.textContent = "";
-      (cat.attributes || []).filter(function (a) { return (a.kind === "event" ? "" : a.type) === who.value; }).forEach(function (a) {
-        var op = el("option", "", fmt(T.attrOption, { a: a.attribute, n: a.distinct.toLocaleString(LANG) })); op.value = a.attribute; attr.appendChild(op);
-      });
-      fillValues(true);
-    }
-    function fillValues(reset) {
-      var a = current(); list.textContent = "";
-      if (!a) return;
-      if (reset) {
-        var f = filters.filter(function (x) { return x.kind === a.kind && (x.type || "") === (a.type || "") && x.attribute === a.attribute; })[0];
-        chosen = f ? f.values.slice() : [];
-      }
-      help.textContent = a.kind === "event" ? T.eventHelp : (hubs[a.type] ? fmt(T.hubHelp, { tp: plural(a.type) }) : fmt(T.objectHelp, { tp: plural(a.type) }));
-      var term = search.value.trim().toLowerCase(), shown = 0;
-      a.values.forEach(function (v) {
-        if (term && String(v.value).toLowerCase().indexOf(term) < 0) return;
-        if (shown >= 200) return; shown++;
-        var lab = el("label", "pm-value"); var cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.indexOf(v.value) >= 0;
-        cb.addEventListener("change", function () { chosen = cb.checked ? chosen.concat([v.value]) : chosen.filter(function (x) { return x !== v.value; }); });
-        lab.appendChild(cb); lab.appendChild(el("span", "", v.value)); lab.appendChild(el("span", "tiny muted", " " + v.count.toLocaleString(LANG)));
-        list.appendChild(lab);
-      });
-      if (!shown) list.appendChild(el("p", "tiny muted", T.noValues));
-    }
-    who.addEventListener("change", fillAttrs); attr.addEventListener("change", function () { fillValues(true); });
-    search.addEventListener("input", function () { fillValues(false); });
-    var acts = el("div", "pm-panel-actions");
-    var ok = el("button", "primary", T.apply); ok.type = "button";
-    ok.addEventListener("click", function () {
-      var a = current(); if (!a) return;
-      var f = { kind: a.kind, attribute: a.attribute, values: chosen.slice() };
-      if (a.kind !== "event") f.type = a.type;
-      panel = null; panelKind = null; api_put(f);
-    });
-    var no = el("button", "secondary", T.cancel); no.type = "button"; no.addEventListener("click", closePanel);
-    acts.appendChild(no); acts.appendChild(ok); panel.appendChild(acts);
-    fillAttrs();
+    call("/analysis/views?" + q()).then(viewsPanel).catch(function (e) { panel.textContent = e.message; });
   }
   function viewsPanel(j) {
     if (panelKind !== "views") return;
@@ -190,11 +129,9 @@ function initCaseFilters(opts) {
     panel.appendChild(row);
   }
   function field(text, control) { var l = el("label", "pm-field"); l.appendChild(el("span", "tiny muted", text)); l.appendChild(control); return l; }
-  function api_put(f) { api_obj.put(f); }
 
   function changed() { write(filters); render(); listeners.forEach(function (fn) { fn(filters.slice()); }); }
 
-  var api_obj = null;
   var api = {
     get: function () { return filters.slice(); },
     param: function () { return filters.length ? JSON.stringify(filters) : ""; },
@@ -216,7 +153,6 @@ function initCaseFilters(opts) {
     onChange: function (fn) { listeners.push(fn); },
     label: label
   };
-  api_obj = api;
   render();
   window.CASE_FILTERS = api;   // per l'assistente (static/assistant.js)
   return api;
@@ -244,7 +180,7 @@ function attachBarSelection(items, onPick) {
   function rect(e) { return e.getBoundingClientRect(); }
   var r0 = rect(items[0]), r1 = rect(items[items.length - 1]);
   var horizontal = items.length < 2 || Math.abs((r1.left + r1.right) - (r0.left + r0.right)) >= Math.abs((r1.top + r1.bottom) - (r0.top + r0.bottom));
-  host.style.touchAction = horizontal ? "pan-y" : "pan-x";
+  host.style.touchAction = horizontal ? "pan-y" : "auto";   // colonne: il dito in orizzontale disegna il pennello
   items.forEach(function (it) { it.classList.add("pm-pick"); });
 
   // coordinate nel contenuto del contenitore (che puo' scorrere)
@@ -302,46 +238,101 @@ function attachBarSelection(items, onPick) {
         bar.appendChild(btn);
       });
     brush.appendChild(h1); brush.appendChild(h2); brush.appendChild(bar);
-    h1.addEventListener("pointerdown", function (e) { e.stopPropagation(); start(e, Math.min(a, b) === a ? "a" : "b"); });
-    h2.addEventListener("pointerdown", function (e) { e.stopPropagation(); start(e, Math.max(a, b) === b ? "b" : "a"); });
-    brush.addEventListener("pointerdown", function (e) { if (e.target === brush) { e.stopPropagation(); start(e, "move"); } });
     host.appendChild(brush);
     document.addEventListener("keydown", keys);
   }
-  function start(e, what) {
-    if (e.button) return;
-    drag = { what: what, p: pos(e.clientX, e.clientY), a: a, b: b, moved: false, item: null };
-    try { host.setPointerCapture(e.pointerId); } catch (err) {}
-  }
-  host.addEventListener("pointerdown", function (e) {
-    if (e.button || (brush && brush.contains(e.target))) return;
-    var i = -1; items.forEach(function (it, k) { if (it === e.target || it.contains(e.target)) i = k; });
-    if (i < 0 && !brush) {                // si puo' partire anche dallo spazio vuoto tra gli elementi (es. sopra i punti)
-      var p0 = pos(e.clientX, e.clientY), s0 = span(items[0]), s1 = span(items[items.length - 1]);
-      if (p0 < Math.min(s0[0], s1[0]) || p0 > Math.max(s0[1], s1[1])) return;
+  // Che cosa si prende premendo in un punto: una maniglia, il riquadro (per spostarlo) o un nuovo pennello
+  // (su un elemento o nello spazio tra gli elementi). null = niente (fuori, o sui pulsanti ✓ ✕ ◐).
+  function grab(target, x, y) {
+    if (brush && brush.contains(target)) {
+      if (target.closest(".pm-brush-tools")) return null;
+      if (target.classList.contains("pm-brush-start")) return { what: Math.min(a, b) === a ? "a" : "b" };
+      if (target.classList.contains("pm-brush-end")) return { what: Math.max(a, b) === b ? "b" : "a" };
+      return { what: "move" };
     }
-    if (brush) remove();
-    start(e, "new"); drag.item = i;
-  });
-  host.addEventListener("pointermove", function (e) {
-    if (!drag) return;
-    var p = pos(e.clientX, e.clientY), d = p - drag.p;
+    var i = -1; items.forEach(function (it, k) { if (it === target || it.contains(target)) i = k; });
+    if (i < 0) {                          // si puo' partire anche dallo spazio vuoto tra gli elementi (es. sopra i punti)
+      var p0 = pos(x, y), s0 = span(items[0]), s1 = span(items[items.length - 1]);
+      if (p0 < Math.min(s0[0], s1[0]) || p0 > Math.max(s0[1], s1[1])) return brush ? { what: "out" } : null;
+    }
+    return { what: "new", item: i };
+  }
+  function begin(g, x, y) {
+    if (g.what === "out") { remove(); return; }
+    if (g.what === "new" && brush) remove();
+    drag = { what: g.what, item: g.item, p: pos(x, y), a: a, b: b, moved: false };
+  }
+  function moveTo(x, y) {
+    var p = pos(x, y), d = p - drag.p;
     if (!drag.moved && Math.abs(d) < 6) return;
     drag.moved = true;
     if (drag.what === "new") { if (!brush) { make(); a = drag.p; } b = p; }
+    else if (drag.what === "row") {           // dalla riga tenuta premuta, verso l'alto o verso il basso
+      if (p >= drag.s0[0]) { a = drag.s0[0]; b = Math.max(p, drag.s0[1]); } else { a = drag.s0[1]; b = p; }
+    }
     else if (drag.what === "a") a = drag.a + d;
     else if (drag.what === "b") b = drag.b + d;
     else { a = drag.a + d; b = drag.b + d; }
     draw();
-  });
+  }
   function end() {
     if (!drag) return;
     var dr = drag; drag = null;
     if (dr.what === "new" && !dr.moved) { if (dr.item >= 0) onPick([dr.item], "toggle"); return; }
     if (brush && !inside(a, b).length) remove();
   }
-  host.addEventListener("pointerup", end);
-  host.addEventListener("pointercancel", function () { drag = null; });
+
+  // mouse, penna, trackpad: eventi pointer (il dito si gestisce sotto, con gli eventi touch)
+  host.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "touch" || e.button) return;
+    var g = grab(e.target, e.clientX, e.clientY); if (!g) return;
+    e.preventDefault(); begin(g, e.clientX, e.clientY);
+    try { host.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  host.addEventListener("pointermove", function (e) { if (e.pointerType !== "touch" && drag) moveTo(e.clientX, e.clientY); });
+  host.addEventListener("pointerup", function (e) { if (e.pointerType !== "touch") end(); });
+  host.addEventListener("pointercancel", function (e) { if (e.pointerType !== "touch") drag = null; });
+
+  // dito (iPad, telefono): sul riquadro e sulle maniglie si trascina subito; altrove si decide dal primo movimento:
+  // lungo i valori = pennello, di traverso = la pagina scorre. Righe di tabella: tieni premuto un attimo, poi trascina
+  // (cosi' la pagina continua a scorrere con il dito sulla tabella).
+  var touch = null;
+  host.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) { touch = null; drag = null; return; }
+    var t = e.touches[0], g = grab(e.target, t.clientX, t.clientY);
+    if (!g) { touch = null; return; }
+    if (g.what === "out") { remove(); touch = null; return; }
+    touch = { g: g, x: t.clientX, y: t.clientY, live: g.what !== "new", timer: null };
+    if (touch.live) { e.preventDefault(); begin(g, t.clientX, t.clientY); return; }
+    if (!horizontal) {
+      touch.timer = setTimeout(function () {
+        if (!touch) return;
+        touch.live = true; begin(touch.g, touch.x, touch.y);
+        var s0 = span(items[Math.max(0, touch.g.item)]); make(); a = s0[0]; b = s0[1];
+        drag.what = "row"; drag.s0 = s0; drag.moved = true; draw();
+        if (navigator.vibrate) try { navigator.vibrate(10); } catch (err) {}
+      }, 380);
+    }
+  }, { passive: false });
+  host.addEventListener("touchmove", function (e) {
+    if (!touch || e.touches.length !== 1) return;
+    var t = e.touches[0];
+    if (!touch.live) {
+      var dm = horizontal ? t.clientX - touch.x : t.clientY - touch.y, dc = horizontal ? t.clientY - touch.y : t.clientX - touch.x;
+      if (Math.abs(dm) < 8 && Math.abs(dc) < 8) return;
+      if (!horizontal || Math.abs(dc) >= Math.abs(dm)) { clearTimeout(touch.timer); touch = null; return; }   // scorre la pagina
+      touch.live = true; begin(touch.g, touch.x, touch.y);
+    }
+    if (e.cancelable) e.preventDefault();
+    if (drag) moveTo(t.clientX, t.clientY);
+  }, { passive: false });
+  host.addEventListener("touchend", function (e) {
+    if (!touch) return;
+    var tc = touch; touch = null; clearTimeout(tc.timer);
+    if (tc.live) { if (e.cancelable) e.preventDefault(); end(); return; }
+    if (tc.g.what === "new" && tc.g.item >= 0) { if (e.cancelable) e.preventDefault(); onPick([tc.g.item], "toggle"); }   // tocco
+  }, { passive: false });
+  host.addEventListener("touchcancel", function () { if (touch) clearTimeout(touch.timer); touch = null; drag = null; });
   items.forEach(function (it, i) {
     it.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick([i], "toggle"); } });
   });

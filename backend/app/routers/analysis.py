@@ -297,21 +297,6 @@ def _without(filters: list[dict], kind: str, type_: str) -> list[dict]:
     return [f for f in filters if not (f["kind"] == kind and f.get("type") == type_)]
 
 
-@router.get("/analysis/filters/catalog")
-def filters_catalog(request: Request, workspace_id: str, config_id: str):
-    """Attributi su cui si puo' filtrare (per tipo di oggetto e degli eventi) con i valori: per «+ Filtro»."""
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
-    config, run, _ = _explorer_dataset(workspace_id, config_id)
-    if config is None or run is None or not Path(run.ocel_file_path).exists():
-        return JSONResponse({"error": t(get_lang(request), "Dataset non disponibile per l'analisi.")}, status_code=404)
-    full = explorer.load_model(run.ocel_file_path)
-    hubs = {t for t in full.types if full.is_hub(t)}
-    return JSONResponse({"attributes": ocel_filter.catalog(ocel_filter.load_raw(run.ocel_file_path)),
-                         "types": [{"name": t, "hub": t in hubs} for t in full.types]})
-
-
 def _view_json(v: AnalysisView, user) -> dict:
     return {"id": v.id, "name": v.name, "filters": v.filters or [], "created_by": v.created_by,
             "created_at": utc_iso(v.created_at), "mine": v.created_by_id == user.id}
