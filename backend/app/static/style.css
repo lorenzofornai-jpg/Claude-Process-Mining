@@ -1270,6 +1270,7 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .bpa-menu .danger { color: var(--error); }
 .bpa-status { margin: 0; padding: 4px 16px; min-height: 22px; font-size: 13px; color: var(--muted); }
 .bpa-status.warn { color: var(--warn); } .bpa-status.ok { color: var(--ok); } .bpa-status.bad { color: var(--error); }
+.bpa-work { flex: 1; display: flex; min-height: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .bpa-canvas { touch-action: none; overscroll-behavior: contain; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   flex: 1; min-height: 360px; position: relative; background: #fff; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .bpa-help { margin: 0; padding: 6px 16px 10px; }
@@ -1282,3 +1283,45 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 /* menu dell'editor BPMN: le voci lunghe vanno a capo invece di essere tagliate con «…» */
 .bpa-canvas .djs-popup-label, .bpa-canvas .djs-popup-title, .bpa-canvas .djs-popup-entry-description {
   white-space: normal; overflow: visible; text-overflow: clip; }
+/* Amministrazione > attributi dei simboli BPMN */
+.bpa-types { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.bpa-type { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; text-decoration: none; color: var(--text); background: var(--card-bg); }
+.bpa-type.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.bpa-type.active .muted { color: rgba(255,255,255,.8); }
+.bpa-system td { background: var(--card-bg-soft); }
+.bpa-move { white-space: nowrap; }
+.bpa-move form, .bpa-row-actions form { display: inline; }
+.bpa-row-actions { white-space: nowrap; }
+.bpa-tag { border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* BPA: pannello delle proprieta' del simbolo (a destra, accanto al diagramma: il logo bpmn.io resta visibile) */
+.bpa-work .bpa-canvas { border: 0; min-width: 0; }
+.bpa-panel { width: 340px; max-width: 45vw; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border);
+  background: var(--card-bg); min-height: 0; }
+.bpa-panel[hidden] { display: none; }
+.bpa-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px 14px 6px; }
+.bpa-panel-head > div { display: flex; flex-direction: column; min-width: 0; }
+.bpa-panel-head strong { overflow-wrap: anywhere; }
+.bpa-ptabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; }
+.bpa-ptabs button { flex: 1; margin: 0; min-height: 0; padding: 8px 4px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; box-shadow: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.bpa-ptabs button.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+.bpa-pcount { font-size: 11px; color: var(--muted); }
+.bpa-panel-body { overflow: auto; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.bpa-field { display: flex; flex-direction: column; gap: 4px; }
+.bpa-field-label { font-size: 13px; font-weight: 600; }
+.bpa-field input[type=text], .bpa-field input[type=number], .bpa-field input[type=date], .bpa-field input[type=datetime-local],
+.bpa-field input[type=url], .bpa-field input[type=email], .bpa-field select, .bpa-field textarea {
+  width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--card-bg); color: var(--text); font: inherit; font-size: 14px; }
+.bpa-field input[type=checkbox] { align-self: flex-start; width: 18px; height: 18px; }
+.bpa-multi { display: flex; flex-direction: column; gap: 4px; }
+.bpa-field-status:empty { display: none; }
+.bpa-field-status.ok { color: var(--ok); } .bpa-field-status.bad { color: var(--error); }
+.bpa-note { background: var(--card-bg-soft); border-radius: var(--radius-sm); padding: 8px 10px; margin: 0; }
+.bpa-plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bpa-plist li { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 9px; }
+.bpa-plist li.current { border-color: var(--brand); }
+.bpa-pmain { display: flex; flex-direction: column; gap: 2px; }
+.bpa-rel-h { margin: 6px 0 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+@media (max-width: 760px) { .bpa-panel { width: 60vw; max-width: none; } }   /* sempre accanto, mai sopra il logo bpmn.io */

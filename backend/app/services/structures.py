@@ -27,6 +27,8 @@ from app.models import (
     AnalysisObjective,
     AnalysisView,
     BpaModel,
+    BpaOccurrence,
+    BpaRelation,
     ControlTower,
 )
 
@@ -45,6 +47,11 @@ def delete_structures(db: Session, config_ids: list[str]) -> list[Path]:
     db.query(DataQualityCheckResult).filter(DataQualityCheckResult.extraction_run_id.in_(run_ids)).delete(
         synchronize_session=False
     )
+    # modelli BPMN della BPA: via le loro occorrenze e relazioni (i simboli dell'archivio restano)
+    bpa_ids = [m for (m,) in db.query(BpaModel.id).filter(BpaModel.ingestion_config_id.in_(config_ids))]
+    if bpa_ids:
+        db.query(BpaOccurrence).filter(BpaOccurrence.model_id.in_(bpa_ids)).delete(synchronize_session=False)
+        db.query(BpaRelation).filter(BpaRelation.model_id.in_(bpa_ids)).delete(synchronize_session=False)
     # anche i nomi personali dati nell'analisi (valgono solo per quel dataset)
     for model in (ExtractionRun, ProcessIngestionLink, FieldMapping, ObjectTypeDef, EventTypeDef, IngestionConfigVersion,
                   AnalysisAlias, AnalysisObjective, ControlTower, AnalysisView, BpaModel):

@@ -155,17 +155,25 @@ function initBpaEditor(o) {
   };
   var modeler = new BpmnJS({ container: "#bpa-canvas", additionalModules: [translate] });
   var api = function (path) { return "/analysis/bpa/" + encodeURIComponent(o.id) + path; };
+  var loadedAt = null, focusId = o.focus || null;
+  // archivio dei simboli: nomi gia' usati, pannello delle proprieta', copia/incolla (bpa_repo.js)
+  var repo = initBpaRepo({
+    modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id,
+    lang: function () { return lang; }, isLoading: function () { return loading; }, say: function (t, c) { say(t, c); },
+    changed: function () { dirty = true; storeDraftSoon(); if (!busy) say(T.unsaved, "warn"); }
+  });
 
   function load(l) {
     busy = true; loading = true; say(T.loading);
     return fetch(api("/xml?workspace_id=" + encodeURIComponent(o.ws) + "&lang=" + l), { credentials: "same-origin" })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); loadedAt = r.headers.get("X-Loaded-At"); return r.text(); })
       .then(function (xml) { return modeler.importXML(xml); })
       .then(function (res) {
         lang = l; dirty = false; busy = false; loading = false;
         modeler.get("canvas").zoom("fit-viewport", "auto");
         document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
         say((res && res.warnings && res.warnings.length) ? fmt(T.warnings, { n: res.warnings.length }) : "");
+        return repo.reload().then(function () { if (focusId) { repo.focus(focusId); focusId = null; } });
       })
       .catch(function (e) { busy = false; loading = false; say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
   }
@@ -178,7 +186,7 @@ function initBpaEditor(o) {
     clearTimeout(draftTimer);
     if (!dirty) return;
     modeler.saveXML({ format: false }).then(function (r) {
-      try { localStorage.setItem(DRAFT, JSON.stringify({ lang: lang, xml: r.xml, at: new Date().toISOString() })); } catch (e) {}
+      try { localStorage.setItem(DRAFT, JSON.stringify({ lang: lang, xml: r.xml, links: repo.links(), at: new Date().toISOString() })); } catch (e) {}
     });
   }
   function storeDraftSoon() { clearTimeout(draftTimer); draftTimer = setTimeout(storeDraft, 600); }
@@ -197,15 +205,28 @@ function initBpaEditor(o) {
     busy = true; dirty = false; say(T.saving);
     return modeler.saveXML({ format: true }).then(function (r) {
       return fetch(api("/save"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: o.ws, lang: lang, xml: r.xml }) });
-    }).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); })
+        body: JSON.stringify({ workspace_id: o.ws, lang: lang, xml: r.xml, links: repo.links(), loaded_at: loadedAt }) });
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (r.status === 409 && j.conflicts) return { conflicts: j.conflicts };
+        if (!r.ok || j.error) throw new Error(j.error || r.status);
+        return j;
+      });
+    })
       .then(function (j) {
         busy = false;
+        if (j.conflicts) {   // nomi gia' usati da altri simboli: si decide (riutilizza / rinomina), poi si salva di nuovo
+          dirty = true; say(T.repo.conflicts, "warn");
+          return repo.resolveConflicts(j.conflicts).then(function (all) { return all ? save() : false; });
+        }
         if (dirty) { say(T.unsaved, "warn"); storeDraftSoon(); return true; }   // cambiato ancora mentre si salvava
         clearDraft();
+        repo.afterSave();
+        if (j.refreshed) { load(lang).then(function () { say(T.repo.refreshed, "warn"); }); return true; }
         var other = lang === "it" ? "EN" : "IT";
         if (j.untranslated) say(fmt(T.savedUntranslated, { n: j.untranslated, l: other }), "warn");
-        else say(j.translated ? fmt(T.savedTranslated, { n: j.translated, l: other }) : T.saved, "ok");
+        else say((j.translated ? fmt(T.savedTranslated, { n: j.translated, l: other }) : T.saved)
+                 + (j.renamed_elsewhere ? " " + fmt(T.repo.renamedElsewhere, { n: j.renamed_elsewhere }) : ""), "ok");
         return true;
       })
       .catch(function (e) { busy = false; dirty = true; say(T.saveError + " " + (e.message || e), "bad"); return false; });
@@ -273,6 +294,7 @@ function initBpaEditor(o) {
       busy = true; loading = true;
       modeler.importXML(d.xml).then(function () {
         lang = d.lang === "en" ? "en" : "it"; loading = false; busy = false; dirty = true;
+        repo.setLinks(d.links);
         document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
         save();
       }).catch(function (e) { loading = false; busy = false; clearDraft(); say(T.loadError + " (" + (e.message || e) + ")", "bad"); });

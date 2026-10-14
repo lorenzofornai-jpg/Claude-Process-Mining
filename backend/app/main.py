@@ -64,3 +64,8 @@ async def _no_store_dynamic_pages(request, call_next):
 def _startup() -> None:
     init_db()
     seed_default_admin()
+    from app.services import bpa_repo
+    try:
+        bpa_repo.refresh_views()   # viste SQL dell'archivio dei simboli (una per tipo)
+    except Exception as exc:   # le viste servono solo a consultare: l'app parte comunque
+        print(f"BPA: viste dell'archivio non aggiornate ({exc!r}).")

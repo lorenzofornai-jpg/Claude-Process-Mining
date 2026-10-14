@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Attributi dei simboli BPMN") }}{% endblock %}
+{% block content %}
+{% set lang = current_lang() %}
+{% set f = form or {} %}
+<div class="card wide">
+  <p class="eyebrow">{{ _("Amministrazione") }} · BPA</p>
+  <h1>{{ _("Attributi dei simboli BPMN") }}</h1>
+  <p class="muted">
+    {{ _("L'archivio dei simboli dei BPMN è unico per l'azienda: ogni pool, lane, attività, evento, gateway... ha un identificativo univoco e un nome unico per tipo, e compare in uno o più BPMN. Qui definisci gli attributi di ogni tipo di simbolo: gli utenti li compilano nel pannello delle proprietà dell'editor.") }}
+  </p>
+  {% if saved %}<div class="banner ok">{{ _("Modifiche salvate.") }}</div>{% endif %}
+  {% if errors %}
+  <div class="banner error"><strong>{{ _("Non salvato:") }}</strong>
+    <ul class="tight">{% for e in errors %}<li>{{ e|tr }}</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  <nav class="bpa-types" aria-label="{{ _("Tipo di simbolo") }}">
+    {% for k, v in types.items() %}
+    <a href="/admin/bpa?type={{ k }}" class="bpa-type {{ 'active' if k == symbol_type }}">{{ v[lang] }} <span class="muted tiny">{{ counts.get(k, 0) }}</span></a>
+    {% endfor %}
+  </nav>
+
+  <h2>{{ _("Attributi di «{t}»", t=types[symbol_type][lang]) }}</h2>
+  <div class="table-scroll">
+  <table class="admin-table bpa-attrs">
+    <thead><tr><th></th><th>{{ _("Nome") }}</th><th>{{ _("Tipo di dato") }}</th><th>{{ _("Obbligatorio") }}</th><th>{{ _("Identificativo") }}</th><th></th></tr></thead>
+    <tbody>
+      <tr class="bpa-system">
+        <td>🔒</td><td><strong>{{ _("Nome") }}</strong> <span class="tiny muted">{{ _("(italiano e inglese)") }}</span></td>
+        <td>{{ data_types.short_text[lang] }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">name</td>
+        <td class="tiny muted">{{ _("Di sistema: unico per tipo, si cambia nel diagramma.") }}</td>
+      </tr>
+      <tr class="bpa-system">
+        <td>🔒</td><td><strong>{{ _("Identificativo") }}</strong></td>
+        <td>{{ _("Automatico") }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">id</td>
+        <td class="tiny muted">{{ _("Di sistema: univoco e nascosto agli utenti.") }}</td>
+      </tr>
+      {% for d in defs %}
+      <tr>
+        <td class="bpa-move">
+          <form method="post" action="/admin/bpa/attr/{{ d.key }}/move"><input type="hidden" name="dir" value="up"><button class="link-btn" {{ 'disabled' if loop.first }} title="{{ _("Sposta su") }}" aria-label="{{ _("Sposta su") }}">↑</button></form>
+          <form method="post" action="/admin/bpa/attr/{{ d.key }}/move"><input type="hidden" name="dir" value="down"><button class="link-btn" {{ 'disabled' if loop.last }} title="{{ _("Sposta giù") }}" aria-label="{{ _("Sposta giù") }}">↓</button></form>
+        </td>
+        <td><strong>{{ d.name.get(lang) or d.name.get('it') }}</strong>
+          <span class="tiny muted">· {{ d.name.get('en' if lang == 'it' else 'it') }}</span>
+          {% if d.translatable %}<span class="tiny bpa-tag">IT/EN</span>{% endif %}
+          {% if d.options %}<div class="tiny muted">{{ d.options|map(attribute=lang)|join(", ") }}</div>{% endif %}</td>
+        <td>{{ data_types[d.data_type][lang] }}</td>
+        <td>{{ _("Sì") if d.required else _("No") }}</td>
+        <td class="tiny muted mono">{{ d.key }}</td>
+        <td class="bpa-row-actions">
+          <a class="link-btn" href="/admin/bpa?type={{ symbol_type }}&edit={{ d.key }}#attr-form">{{ _("Modifica") }}</a>
+          <form method="post" action="/admin/bpa/attr/{{ d.key }}/delete" data-confirm="{{ _("Togliere l'attributo «{a}»? I valori inseriti per tutti i simboli si perdono.", a=d.name.get(lang) or d.key) }}" data-confirm-ok="{{ _("Togli") }}">
+            <button class="link-btn ct-danger">{{ _("Togli") }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not defs %}<p class="tiny muted">{{ _("Nessun attributo ancora per questo tipo: oltre a Nome e Identificativo aggiungi quelli che servono (es. responsabile, sistema, durata, descrizione).") }}</p>{% endif %}
+
+  {% set e = edit %}
+  <h2 id="attr-form">{% if e %}{{ _("Modifica l'attributo") }}{% else %}{{ _("Nuovo attributo") }}{% endif %}</h2>
+  <form method="post" action="/admin/bpa/attr" class="llm-form">
+    <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
+    <input type="hidden" name="key" value="{{ e.key if e else f.get('key', '') }}">
+    <div class="llm-grid">
+      <label>{{ _("Nome (italiano)") }}<input type="text" name="name_it" required maxlength="200" value="{{ f.get('name_it') or (e.name.get('it') if e else '') }}"></label>
+      <label>{{ _("Nome (inglese)") }}<input type="text" name="name_en" required maxlength="200" value="{{ f.get('name_en') or (e.name.get('en') if e else '') }}"></label>
+      <label>{{ _("Tipo di dato") }}
+        {% set cur = e.data_type if e else f.get('data_type', 'short_text') %}
+        <select name="data_type" id="bpa-dtype" {{ 'disabled' if e }}>
+          {% for k, v in data_types.items() %}<option value="{{ k }}" {{ 'selected' if k == cur }}>{{ v[lang] }}</option>{% endfor %}
+        </select>
+        {% if e %}<span class="tiny muted">{{ _("Il tipo di dato non si cambia dopo la creazione (i valori già inseriti non sarebbero più validi).") }}</span>{% endif %}
+      </label>
+      <label class="checkbox"><input type="checkbox" name="required" value="1" {{ 'checked' if (f.get('required') == '1' if form else (e and e.required)) }}> {{ _("Obbligatorio") }}</label>
+      <label class="checkbox bpa-only-text"><input type="checkbox" name="translatable" value="1" {{ 'checked' if (f.get('translatable') == '1' if form else (e and e.translatable)) }}> {{ _("Un valore per lingua (italiano e inglese)") }}</label>
+      <label class="llm-wide bpa-only-list">{{ _("Voci dell'elenco, una per riga: «Etichetta italiana | English label»") }}
+        <textarea name="options" rows="5">{% if form %}{{ f.get('options', '') }}{% elif e and e.options %}{% for o in e.options %}{{ o.it }}{% if o.en and o.en != o.it %} | {{ o.en }}{% endif %}
+{% endfor %}{% endif %}</textarea>
+      </label>
+      <label>{{ _("Aiuto (italiano, facoltativo)") }}<input type="text" name="help_it" maxlength="500" value="{{ f.get('help_it') or ((e.help or {}).get('it', '') if e else '') }}"></label>
+      <label>{{ _("Aiuto (inglese, facoltativo)") }}<input type="text" name="help_en" maxlength="500" value="{{ f.get('help_en') or ((e.help or {}).get('en', '') if e else '') }}"></label>
+    </div>
+    <div class="actions">
+      {% if e %}<a class="secondary button-link" href="/admin/bpa?type={{ symbol_type }}">{{ _("Annulla") }}</a>{% endif %}
+      <button type="submit" class="primary">{{ _("Salva l'attributo") if e else _("Aggiungi l'attributo") }}</button>
+    </div>
+  </form>
+
+  <h2 id="unused">{{ _("Simboli senza occorrenze") }}</h2>
+  <p class="tiny muted">{{ _("Simboli che non compaiono più in nessun BPMN: restano nell'archivio con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
+  {% if unused %}
+  <form method="post" action="/admin/bpa/unused/delete" data-confirm="{{ _("Eliminare i simboli scelti con i loro attributi?") }}" data-confirm-ok="{{ _("Elimina") }}">
+    <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
+    <div class="table-scroll">
+    <table class="admin-table">
+      <thead><tr><th></th><th>{{ _("Tipo") }}</th><th>{{ _("Nome") }}</th><th>{{ _("Creato da") }}</th></tr></thead>
+      <tbody>
+        {% for s in unused %}
+        <tr><td><input type="checkbox" name="symbol" value="{{ s.id }}" aria-label="{{ s.name_it }}"></td>
+          <td>{{ types[s.symbol_type][lang] }}</td>
+          <td>{{ s.name_it if lang == 'it' else (s.name_en or s.name_it) }} <span class="tiny muted">· {{ s.name_en if lang == 'it' else s.name_it }}</span></td>
+          <td class="tiny muted">{{ s.created_by or "—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button type="submit" class="secondary">{{ _("Elimina i simboli scelti") }}</button></div>
+  </form>
+  {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
+
+  <p class="tiny muted" style="margin-top:16px">
+    {{ _("Per consultare l'archivio come tabelle: nel database ci sono le viste bpa_view_activity, bpa_view_lane, bpa_view_event… (una per tipo, una colonna per attributo) e bpa_view_relations.") }}
+  </p>
+  <div class="actions"><a class="secondary button-link" href="/admin">← {{ _("Amministrazione") }}</a></div>
+</div>
+<script>
+  (function () {
+    var sel = document.getElementById("bpa-dtype");
+    function show() {
+      var t = sel.value;
+      document.querySelectorAll(".bpa-only-list").forEach(function (x) { x.hidden = !(t === "choice" || t === "multi_choice"); });
+      document.querySelectorAll(".bpa-only-text").forEach(function (x) { x.hidden = !(t === "short_text" || t === "long_text"); });
+    }
+    sel.addEventListener("change", show); show();
+  })();
+</script>
+{% endblock %}

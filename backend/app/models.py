@@ -460,9 +460,74 @@ class BpaModel(Base):
     xml_it: Mapped[str] = mapped_column(Text)
     xml_en: Mapped[str] = mapped_column(Text)
     edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    registered: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # simboli gia' nell'archivio (bpa_repo)
+    workspace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # processo da cui e' stata inviata
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------- Archivio dei simboli dei BPMN (unico per l'azienda): services/bpa_repo.py ----------
+
+class BpaAttributeDef(Base):
+    """Attributo di un tipo di simbolo, definito dall'Amministratore (Nome e Identificativo sono di sistema)."""
+
+    __tablename__ = "bpa_attribute_def"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    symbol_type: Mapped[str] = mapped_column(String(40))
+    key: Mapped[str] = mapped_column(String(40), unique=True)       # identificativo univoco nascosto (es. a_3f9c21)
+    name: Mapped[dict] = mapped_column(JSON, default=dict)          # {"it", "en"}
+    help: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    data_type: Mapped[str] = mapped_column(String(30))
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True)   # elenchi: [{"value", "it", "en"}]
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    translatable: Mapped[bool] = mapped_column(Boolean, default=False)  # testo con un valore per lingua
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class BpaSymbol(Base):
+    """Un simbolo dell'archivio (definizione): stesso simbolo in piu' BPMN = piu' occorrenze."""
+
+    __tablename__ = "bpa_symbol"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)   # identificativo univoco nascosto
+    symbol_type: Mapped[str] = mapped_column(String(40), index=True)
+    name_it: Mapped[str] = mapped_column(String(500), default="")
+    name_en: Mapped[str] = mapped_column(String(500), default="")
+    key_it: Mapped[str] = mapped_column(String(500), default="", index=True)    # nome normalizzato (unicita' per tipo)
+    key_en: Mapped[str] = mapped_column(String(500), default="", index=True)
+    attrs: Mapped[dict] = mapped_column(JSON, default=dict)          # {chiave attributo: valore | {"it", "en"}}
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    renamed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class BpaOccurrence(Base):
+    """Dove compare un simbolo: elemento di un modello BPMN."""
+
+    __tablename__ = "bpa_occurrence"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    symbol_id: Mapped[str] = mapped_column(ForeignKey("bpa_symbol.id"), index=True)
+    model_id: Mapped[str] = mapped_column(ForeignKey("bpa_model.id"), index=True)
+    element_id: Mapped[str] = mapped_column(String(200))
+    bpmn_type: Mapped[str] = mapped_column(String(60))
+
+
+class BpaRelation(Base):
+    """Relazione tra due simboli in un modello (contiene, precede, attiva, crea, input, output, ...)."""
+
+    __tablename__ = "bpa_relation"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    model_id: Mapped[str] = mapped_column(ForeignKey("bpa_model.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    source_id: Mapped[str] = mapped_column(ForeignKey("bpa_symbol.id"), index=True)
+    target_id: Mapped[str] = mapped_column(ForeignKey("bpa_symbol.id"), index=True)

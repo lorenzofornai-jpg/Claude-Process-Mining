@@ -360,3 +360,181 @@ async def llm_settings_save(request: Request):
              timeout_s=timeout_s, max_retries=max_retries, uses=uses, prices=prices, mapping_budget_usd=budget)
     tests = llm.test_connection() if form.get("action") == "test" else None
     return _llm_page(request, user, tests=tests, saved=True)
+
+
+# ---------- BPA: attributi dei simboli dei BPMN e simboli senza occorrenze ----------
+
+def _bpa_options(raw: str) -> list[dict]:
+    """Voci di un elenco, una per riga: «Etichetta italiana | English label» (la seconda parte e' facoltativa)."""
+    out, seen = [], set()
+    for line in (raw or "").splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if not parts or not parts[0]:
+            continue
+        value = parts[0][:200]
+        if value.casefold() in seen:
+            continue
+        seen.add(value.casefold())
+        out.append({"value": value, "it": parts[0][:200], "en": (parts[1] if len(parts) > 1 and parts[1] else parts[0])[:200]})
+    return out[:200]
+
+
+def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=None, form=None):
+    from app.models import BpaAttributeDef, BpaOccurrence, BpaSymbol
+    from app.services import bpa_repo
+    defs = (db.query(BpaAttributeDef).filter_by(symbol_type=symbol_type).order_by(BpaAttributeDef.position).all())
+    used = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).distinct()}
+    counts = {}
+    unused = []
+    for s in db.query(BpaSymbol).order_by(BpaSymbol.symbol_type, BpaSymbol.name_it).all():
+        counts[s.symbol_type] = counts.get(s.symbol_type, 0) + 1
+        if s.id not in used:
+            unused.append(s)
+    return {"request": request, "types": bpa_repo.SYMBOL_TYPES, "symbol_type": symbol_type, "defs": defs,
+            "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
+            "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
+            "errors": errors or [], "form": form}
+
+
+@router.get("/bpa", response_class=HTMLResponse)
+def admin_bpa(request: Request, type: str = "activity", edit: str = "", saved: int = 0):
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    symbol_type = type if type in bpa_repo.SYMBOL_TYPES else "activity"
+    db = SessionLocal()
+    try:
+        ctx = _bpa_context(db, request, symbol_type, edit or None)
+    finally:
+        db.close()
+    return templates.TemplateResponse("admin_bpa.html", {**ctx, "user": user, "saved": saved})
+
+
+@router.post("/bpa/attr")
+async def admin_bpa_attr_save(request: Request):
+    from app.models import BpaAttributeDef
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    form = await request.form()
+    symbol_type = form.get("symbol_type") if form.get("symbol_type") in bpa_repo.SYMBOL_TYPES else "activity"
+    key = str(form.get("key") or "")
+    name_it, name_en = str(form.get("name_it") or "").strip()[:200], str(form.get("name_en") or "").strip()[:200]
+    data_type = str(form.get("data_type") or "")
+    errors = []
+    if not name_it or not name_en:
+        errors.append(msg("Dai il nome dell'attributo in italiano e in inglese."))
+    if name_it.casefold() in ("nome", "identificativo", "name", "id") or name_en.casefold() in ("name", "id", "identifier"):
+        errors.append(msg("«Nome» e «Identificativo» sono attributi di sistema: scegli un altro nome."))
+    db = SessionLocal()
+    try:
+        d = db.query(BpaAttributeDef).filter_by(key=key).first() if key else None
+        if d is None and data_type not in bpa_repo.DATA_TYPES:
+            errors.append(msg("Scegli il tipo di dato."))
+        dtype = d.data_type if d is not None else data_type
+        options = _bpa_options(str(form.get("options") or "")) if dtype in ("choice", "multi_choice") else None
+        if dtype in ("choice", "multi_choice") and not options:
+            errors.append(msg("Un elenco deve avere almeno una voce."))
+        same = [x for x in db.query(BpaAttributeDef).filter_by(symbol_type=symbol_type).all()
+                if x.key != key and ((x.name or {}).get("it", "").casefold() == name_it.casefold()
+                                     or (x.name or {}).get("en", "").casefold() == name_en.casefold())]
+        if same:
+            errors.append(msg("Esiste già un attributo con questo nome per questo tipo di simbolo."))
+        if errors:
+            ctx = _bpa_context(db, request, symbol_type, key or None, errors, dict(form))
+            return templates.TemplateResponse("admin_bpa.html", {**ctx, "user": user, "saved": 0}, status_code=400)
+        if d is None:
+            last = db.query(BpaAttributeDef).filter_by(symbol_type=symbol_type).count()
+            d = BpaAttributeDef(symbol_type=symbol_type, key=bpa_repo.new_attr_key(), data_type=dtype, position=last)
+        d.name = {"it": name_it, "en": name_en}
+        hi, he = str(form.get("help_it") or "").strip()[:500], str(form.get("help_en") or "").strip()[:500]
+        d.help = {"it": hi, "en": he or hi} if hi or he else None
+        d.options = options
+        d.required = form.get("required") == "1"
+        d.translatable = form.get("translatable") == "1" and dtype in bpa_repo.TEXT_TYPES
+        db.add(d)
+        db.commit()
+    finally:
+        db.close()
+    bpa_repo.refresh_views()
+    return RedirectResponse(f"/admin/bpa?type={symbol_type}&saved=1", status_code=303)
+
+
+@router.post("/bpa/attr/{key}/move")
+def admin_bpa_attr_move(request: Request, key: str, dir: str = Form("up")):
+    from app.models import BpaAttributeDef
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        d = db.query(BpaAttributeDef).filter_by(key=key).first()
+        if d is None:
+            return RedirectResponse("/admin/bpa", status_code=303)
+        defs = db.query(BpaAttributeDef).filter_by(symbol_type=d.symbol_type).order_by(BpaAttributeDef.position).all()
+        i = defs.index(d)
+        j = i - 1 if dir == "up" else i + 1
+        if 0 <= j < len(defs):
+            defs[i], defs[j] = defs[j], defs[i]
+        for n, x in enumerate(defs):
+            x.position = n
+            db.add(x)
+        db.commit()
+        symbol_type = d.symbol_type
+    finally:
+        db.close()
+    bpa_repo.refresh_views()
+    return RedirectResponse(f"/admin/bpa?type={symbol_type}", status_code=303)
+
+
+@router.post("/bpa/attr/{key}/delete")
+def admin_bpa_attr_delete(request: Request, key: str):
+    """Toglie l'attributo e i suoi valori da tutti i simboli."""
+    from app.models import BpaAttributeDef, BpaSymbol
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        d = db.query(BpaAttributeDef).filter_by(key=key).first()
+        if d is None:
+            return RedirectResponse("/admin/bpa", status_code=303)
+        symbol_type = d.symbol_type
+        for s in db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all():
+            if key in (s.attrs or {}):
+                s.attrs = {k: v for k, v in s.attrs.items() if k != key}
+                db.add(s)
+        db.delete(d)
+        db.commit()
+    finally:
+        db.close()
+    bpa_repo.refresh_views()
+    return RedirectResponse(f"/admin/bpa?type={symbol_type}&saved=1", status_code=303)
+
+
+@router.post("/bpa/unused/delete")
+async def admin_bpa_unused_delete(request: Request):
+    """Elimina i simboli scelti che non compaiono in nessun BPMN."""
+    from app.models import BpaOccurrence, BpaRelation, BpaSymbol
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    form = await request.form()
+    ids = [str(x) for x in form.getlist("symbol")]
+    db = SessionLocal()
+    try:
+        for sid in ids:
+            if db.query(BpaOccurrence).filter_by(symbol_id=sid).first() is not None:
+                continue   # nel frattempo e' stato usato in un BPMN: resta
+            db.query(BpaRelation).filter((BpaRelation.source_id == sid) | (BpaRelation.target_id == sid)).delete(synchronize_session=False)
+            s = db.get(BpaSymbol, sid)
+            if s is not None:
+                db.delete(s)
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(f"/admin/bpa?type={form.get('symbol_type') or 'activity'}&saved=1#unused", status_code=303)

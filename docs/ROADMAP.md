@@ -259,6 +259,32 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - Da fare: gateway e rami alternativi da più varianti insieme (modello unico), pannello delle proprietà
   (documentazione, tipi di task), lane suggerite dall'LLM quando il dataset non ha ruoli.
 
+## BPA — Archivio dei simboli BPMN (14 ottobre 2026)
+- Decisioni: archivio **unico per l'azienda**; rinominare un simbolo usato in più BPMN lo cambia **ovunque** (prima si
+  vede dove); all'**incolla** si sceglie ogni volta tra stessi simboli e simboli nuovi; i simboli senza occorrenze
+  **restano** (l'Amministratore può eliminarli).
+- ✅ Tabelle (`services/bpa_repo.py`): `bpa_symbol` (identificativo univoco nascosto, nome IT/EN unico per tipo,
+  attributi), `bpa_attribute_def` (attributi per tipo definiti dall'Amministratore), `bpa_occurrence` (in quali BPMN e
+  con quale elemento), `bpa_relation` (contiene, precede, attiva, crea, input, output, attaccato a, messaggio). Viste
+  SQL per consultarle come tabelle: `bpa_view_<tipo>` (una colonna per attributo) e `bpa_view_relations`.
+- ✅ Tipi di simbolo: pool, lane, attività (tutti i tipi di task), sottoprocesso, evento, gateway, oggetto dati,
+  archivio dati. Elementi senza nome o con un nome generico dell'app (Inizio, Fine, Ruolo da definire) non entrano
+  finché non hanno un nome loro; «precede» li attraversa.
+- ✅ Aggiornamento a ogni salvataggio (e alla creazione da una variante: stesso nome = stesso simbolo, es. la stessa
+  attività in due varianti). Conflitti di nome non decisi: il server risponde 409 e l'editor chiede.
+- ✅ Editor: nome già usato per quel tipo → «Riutilizza» (stesso simbolo) o «Rinomina»; rinomina di un simbolo usato
+  altrove → elenco dei BPMN dove cambierà; nomi rinominati in un altro BPMN dopo l'apertura → al salvataggio vale il
+  nome nuovo e il modello si ricarica.
+- ✅ Pannello delle proprietà a destra (accanto al diagramma, il logo bpmn.io resta visibile): Attributi (nome e
+  attributi modificabili, salvati subito), Occorrenze (link ai BPMN, si aprono in una nuova scheda sull'elemento),
+  Relazioni.
+- ✅ Copia/incolla di attività, eventi, gateway, sottoprocessi, oggetti dati, annotazioni e frecce tra loro, anche tra
+  schede (clipboard nel browser); pulsanti Copia/Incolla per iPad e Ctrl/Cmd+C/V.
+- ✅ Amministrazione > «Attributi dei simboli BPMN»: per tipo, Nome e Identificativo di sistema; testo breve, testo
+  lungo, numero intero/decimale, data, data e ora, sì/no, elenco a scelta singola o multipla, link, email; obbligatorio,
+  un valore per lingua, aiuto, ordine; elenco ed eliminazione dei simboli senza occorrenze.
+- Da fare: pool e lane nel copia/incolla, relazioni aggiunte a mano (non dal disegno), ricerca nell'archivio.
+
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o
   proxy), chiave API, timeout, tentativi; per ogni uso (mapping, controllo di pertinenza, Control Tower,

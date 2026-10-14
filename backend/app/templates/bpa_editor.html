@@ -23,6 +23,8 @@
       <button type="button" class="secondary bpa-icon" id="bpa-zoom-out" title="{{ _("Riduci") }}" aria-label="{{ _("Riduci") }}">−</button>
       <button type="button" class="secondary bpa-icon" id="bpa-zoom-in" title="{{ _("Ingrandisci") }}" aria-label="{{ _("Ingrandisci") }}">+</button>
       <button type="button" class="secondary" id="bpa-fit">{{ _("Adatta") }}</button>
+      <button type="button" class="secondary" id="bpa-copy" title="{{ _("Copia gli elementi selezionati (Ctrl/Cmd+C): si possono incollare anche in un altro BPMN aperto") }}">{{ _("Copia") }}</button>
+      <button type="button" class="secondary" id="bpa-paste" title="{{ _("Incolla (Ctrl/Cmd+V)") }}">{{ _("Incolla") }}</button>
       <details class="bpa-more">
         <summary class="secondary button-link">{{ _("Altro") }} ▾</summary>
         <div class="bpa-menu">
@@ -35,15 +37,30 @@
     </div>
   </div>
   <p id="bpa-status" class="bpa-status" aria-live="polite"></p>
-  <div id="bpa-canvas" class="bpa-canvas"></div>
+  <div class="bpa-work">
+    <div id="bpa-canvas" class="bpa-canvas"></div>
+    <aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà del simbolo") }}">
+      <div class="bpa-panel-head">
+        <div><span id="bpa-panel-type" class="tiny muted"></span><strong id="bpa-panel-name"></strong></div>
+        <button type="button" class="link-btn" id="bpa-panel-close" aria-label="{{ _("Chiudi") }}" title="{{ _("Chiudi") }}">✕</button>
+      </div>
+      <div class="bpa-ptabs" role="tablist">
+        <button type="button" role="tab" data-ptab="attrs" class="active">{{ _("Attributi") }}</button>
+        <button type="button" role="tab" data-ptab="occ">{{ _("Occorrenze") }} <span class="bpa-pcount" data-pcount="occ"></span></button>
+        <button type="button" role="tab" data-ptab="rel">{{ _("Relazioni") }} <span class="bpa-pcount" data-pcount="rel"></span></button>
+      </div>
+      <div id="bpa-panel-body" class="bpa-panel-body"></div>
+    </aside>
+  </div>
   <p class="tiny muted bpa-help">{{ _("Trascina gli elementi dalla tavolozza a sinistra; clic su un elemento per i comandi (aggiungi, collega, cambia tipo, elimina); doppio clic per rinominare. Le lane si aggiungono dal menu della pool o di una lane. Salvando, l'altra lingua prende le stesse modifiche con i nomi tradotti.") }}</p>
 </div>
 <script src="/static/vendor/bpmn-js/bpmn-modeler.production.min.js?v={{ static_version }}"></script>
+<script src="/static/bpa_repo.js?v={{ static_version }}"></script>
 <script src="/static/bpa_editor.js?v={{ static_version }}"></script>
 <script>
   window.BPA_MODELER = initBpaEditor({
     id: {{ model.id|tojson }}, ws: {{ workspace_id|tojson }}, uiLang: {{ current_lang()|tojson }}, lang: {{ current_lang()|tojson }},
-    fileName: {{ ("variante-" ~ (model.stats.rank or "x"))|tojson }},
+    fileName: {{ ("variante-" ~ (model.stats.rank or "x"))|tojson }}, focus: {{ focus|tojson }},
     T: {
       loading: {{ _("Caricamento del modello…")|tojson }},
       loadError: {{ _("Il modello non si è aperto.")|tojson }},
@@ -59,7 +76,38 @@
       draftAsk: {{ _("Quando hai chiuso questo modello ({d}) c'erano modifiche non salvate. Vuoi salvarle?")|tojson }},
       save: {{ _("Salva")|tojson }}, discard: {{ _("Scarta")|tojson }},
       resetTitle: {{ _("Rifai dalla variante")|tojson }}, resetOk: {{ _("Rifai")|tojson }},
-      resetting: {{ _("Rifaccio il modello dalla variante…")|tojson }}
+      resetting: {{ _("Rifaccio il modello dalla variante…")|tojson }},
+      repo: {
+        dupTitle: {{ _("Nome già usato")|tojson }},
+        dupAsk: {{ _("Nell'archivio c'è già un simbolo di tipo {t} con il nome «{n}» (compare in: {w}). Vuoi riutilizzare quel simbolo (stessi attributi, in tutti i BPMN) o dare a questo un nome diverso?")|tojson }},
+        reuse: {{ _("Riutilizza")|tojson }}, rename: {{ _("Rinomina")|tojson }},
+        renameTitle: {{ _("Cambia il nome ovunque")|tojson }},
+        renameAsk: {{ _("Questo simbolo compare anche in altri BPMN: il nome «{n}» cambierà anche lì quando salvi ({w}).")|tojson }},
+        renameAll: {{ _("Cambia ovunque")|tojson }}, cancel: {{ _("Annulla")|tojson }},
+        hiddenModels: {{ _("{n} BPMN di processi a cui non hai accesso")|tojson }},
+        noModels: {{ _("nessun BPMN")|tojson }},
+        conflicts: {{ _("Alcuni nomi sono già usati da altri simboli: scegli se riutilizzarli o rinominare.")|tojson }},
+        refreshed: {{ _("Salvato. Alcuni simboli erano stati rinominati in un altro BPMN dopo l'apertura: il modello è stato ricaricato con i nomi aggiornati.")|tojson }},
+        renamedElsewhere: {{ _("Nomi aggiornati anche in {n} altri BPMN.")|tojson }},
+        name: {{ _("Nome")|tojson }}, noName: {{ _("(senza nome)")|tojson }},
+        otherName: {{ _("In {l}: {n}")|tojson }},
+        needName: {{ _("Dai un nome all'elemento per registrarlo nell'archivio dei simboli.")|tojson }},
+        genericName: {{ _("Nome generico: dai un nome specifico per registrare l'elemento nell'archivio dei simboli.")|tojson }},
+        notYetSaved: {{ _("Simbolo nuovo: salva il modello per registrarlo nell'archivio, poi potrai compilarne gli attributi.")|tojson }},
+        noAttrs: {{ _("Nessun altro attributo definito per questo tipo di simbolo (li definisce l'Amministratore).")|tojson }},
+        attrSaving: {{ _("Salvataggio…")|tojson }}, attrSaved: {{ _("salvato")|tojson }},
+        lastChange: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
+        thisModel: {{ _("Questo BPMN")|tojson }}, timesIn: {{ _("{n} volte")|tojson }},
+        noRelations: {{ _("Nessuna relazione: collega il simbolo ad altri nel diagramma e salva.")|tojson }},
+        copyNone: {{ _("Seleziona gli elementi da copiare (pool e lane non si copiano: per riusare una lane dalle lo stesso nome).")|tojson }},
+        copied: {{ _("{n} elementi copiati: incollali qui o in un altro BPMN aperto.")|tojson }},
+        pasteNone: {{ _("Niente da incollare: copia prima degli elementi.")|tojson }},
+        pasteFailed: {{ _("Non è stato possibile incollare qui gli elementi copiati.")|tojson }},
+        pasteTitle: {{ _("Incolla")|tojson }},
+        pasteAsk: {{ _("{n} elementi incollati sono simboli dell'archivio. Vuoi usare gli stessi simboli (nuove occorrenze, stessi attributi) o crearne di nuovi (copie con un nome diverso)?")|tojson }},
+        pasteSame: {{ _("Stessi simboli")|tojson }}, pasteNew: {{ _("Simboli nuovi")|tojson }},
+        pasted: {{ _("{n} elementi incollati.")|tojson }}
+      }
     }
   });
 </script>
