@@ -1630,6 +1630,7 @@ EN: dict[str, str] = {
     'Per inviare varianti alla BPA (modelli BPMN) scegli «Con gli oggetti collegati».': 'To send variants to the BPA (BPMN models) choose “With related objects”.',
     'Rifaccio il modello dalla variante…': 'Rebuilding the model from the variant…',
     'Rifai dalla variante': 'Rebuild from the variant',
+    'Rifai': 'Rebuild',
     'Rifare il modello dalla variante? Le modifiche fatte (in tutte e due le lingue) si perdono.': 'Rebuild the model from the variant? The changes made (in both languages) will be lost.',
     'Ripeti': 'Redo',
     "Salvataggio e traduzione nell'altra lingua…": 'Saving and translating into the other language…',

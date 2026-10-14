@@ -108,9 +108,11 @@ function initCaseFilters(opts) {
       if (v.mine) {
         var del = el("button", "pm-chip-x pm-view-del", "✕"); del.type = "button"; del.title = T.deleteView;
         del.addEventListener("click", function () {
-          if (!window.confirm(fmt(T.confirmDelete, { v: v.name }))) return;
-          call("/analysis/views/" + encodeURIComponent(v.id) + "/delete", { workspace_id: opts.ws }).then(function () { panelKind = null; togglePanel("views"); })
-            .catch(function (e) { alert(e.message); });
+          window.pmConfirm(fmt(T.confirmDelete, { v: v.name })).then(function (yes) {
+            if (!yes) return;
+            call("/analysis/views/" + encodeURIComponent(v.id) + "/delete", { workspace_id: opts.ws }).then(function () { panelKind = null; togglePanel("views"); })
+              .catch(function (e) { alert(e.message); });
+          });
         });
         li.appendChild(del);
       }

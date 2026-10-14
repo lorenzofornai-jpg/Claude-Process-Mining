@@ -206,11 +206,13 @@
       open.title = T.bpaOpenModel;
       var undo = el("button", "link-btn", T.bpaRevoke); undo.type = "button";
       undo.addEventListener("click", function () {
-        if (!confirm(m.edited ? T.bpaRevokeEdited : T.bpaRevokeAsk)) return;
-        undo.disabled = true;
-        bpaPost("/analysis/bpa/" + encodeURIComponent(m.id) + "/revoke", { workspace_id: WS })
-          .then(function () { delete bpaSent[bpaKey(v)]; redraw(); })
-          .catch(function (e) { undo.disabled = false; alert(e.message); });
+        pmConfirm(m.edited ? T.bpaRevokeEdited : T.bpaRevokeAsk, { ok: T.bpaRevoke }).then(function (yes) {
+          if (!yes) return;
+          undo.disabled = true;
+          bpaPost("/analysis/bpa/" + encodeURIComponent(m.id) + "/revoke", { workspace_id: WS })
+            .then(function () { delete bpaSent[bpaKey(v)]; redraw(); })
+            .catch(function (e) { undo.disabled = false; alert(e.message); });
+        });
       });
       box.appendChild(open); box.appendChild(undo);
     }

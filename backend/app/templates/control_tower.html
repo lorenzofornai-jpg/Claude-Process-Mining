@@ -409,7 +409,10 @@
     var out = el("div", "tiny ct-claude-out");
     var go = button(CLAUDE ? label : label, "secondary", function () {
       if (!CLAUDE) { out.textContent = T.noClaude; return; }
-      if (data.spec && !confirm(T.confirmRegen)) return;
+      if (data.spec && !go.dataset.ok) {   // conferma con lo stile dell'app, poi si riparte da qui
+        pmConfirm(T.confirmRegen).then(function (yes) { if (yes) { go.dataset.ok = "1"; go.click(); delete go.dataset.ok; } });
+        return;
+      }
       out.textContent = "…";
       api("/analysis/control-tower/propose", { workspace_id: WS, config_id: CONFIG, estimate: true }).then(function (e) {
         if (e.available === false) { out.textContent = e.error || T.noClaude; return; }
@@ -1451,12 +1454,14 @@
       head.appendChild(el("span", "ct-section-n", String(si + 1)));
       head.appendChild(field(T.section, input(tx(s.question), function (v) { setTx(s, "question", v); }), "ct-grow"));
       head.appendChild(button(T.delSection, "link-btn ct-danger", function () {
-        if (!confirm(T.confirmDelSection)) return;
-        spec.sections.splice(si, 1);
-        var used = {}; spec.sections.forEach(function (x) { x.kpis.forEach(function (id) { used[id] = 1; }); });
-        spec.kpis = spec.kpis.filter(function (k) { return used[k.id]; });
-        spec.headline = (spec.headline || []).filter(function (id) { return used[id]; });
-        changed(); redraw();
+        pmConfirm(T.confirmDelSection).then(function (yes) {
+          if (!yes) return;
+          spec.sections.splice(si, 1);
+          var used = {}; spec.sections.forEach(function (x) { x.kpis.forEach(function (id) { used[id] = 1; }); });
+          spec.kpis = spec.kpis.filter(function (k) { return used[k.id]; });
+          spec.headline = (spec.headline || []).filter(function (id) { return used[id]; });
+          changed(); redraw();
+        });
       }));
       sec.appendChild(head);
       sec.appendChild(field(T.why, textarea(tx(s.why), function (v) { setTx(s, "why", v); }, 2)));
@@ -1471,11 +1476,13 @@
           spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; }); if (on) spec.headline.push(k.id);
         }));
         row.appendChild(button(T.delKpi, "link-btn ct-danger", function () {
-          if (!confirm(T.confirmDelete)) return;
-          spec.kpis = spec.kpis.filter(function (x) { return x.id !== k.id; });
-          spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; });
-          spec.sections.forEach(function (x) { x.kpis = x.kpis.filter(function (i) { return i !== k.id; }); x.charts = (x.charts || []).filter(function (c) { return c.kpi !== k.id; }); });
-          changed(); redraw();
+          pmConfirm(T.confirmDelete).then(function (yes) {
+            if (!yes) return;
+            spec.kpis = spec.kpis.filter(function (x) { return x.id !== k.id; });
+            spec.headline = (spec.headline || []).filter(function (x) { return x !== k.id; });
+            spec.sections.forEach(function (x) { x.kpis = x.kpis.filter(function (i) { return i !== k.id; }); x.charts = (x.charts || []).filter(function (c) { return c.kpi !== k.id; }); });
+            changed(); redraw();
+          });
         }));
         box.appendChild(row);
         // come si calcola: scritto da Claude insieme alla definizione; si cambia chiedendolo a Claude

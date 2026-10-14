@@ -217,12 +217,15 @@ function initBpaEditor(o) {
     modeler.saveSVG().then(function (r) { download(o.fileName + "-" + lang + ".svg", r.svg, "image/svg+xml"); });
   });
   document.getElementById("bpa-reset").addEventListener("click", function () {
-    if (!confirm(T.resetConfirm)) return;
-    busy = true; say(T.resetting);
-    fetch(api("/reset"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace_id: o.ws }) })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); busy = false; return load(lang); })
-      .catch(function (e) { busy = false; say(T.saveError + " " + (e.message || e), "bad"); });
+    var menu = document.querySelector(".bpa-more"); if (menu) menu.open = false;
+    pmConfirm(T.resetConfirm, { title: T.resetTitle, ok: T.resetOk }).then(function (yes) {
+      if (!yes) return;
+      busy = true; say(T.resetting);
+      fetch(api("/reset"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: o.ws }) })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); busy = false; dirty = false; return load(lang); })
+        .catch(function (e) { busy = false; say(T.saveError + " " + (e.message || e), "bad"); });
+    });
   });
 
   // Ctrl/Cmd+S salva; uscendo con modifiche non salvate il browser chiede conferma

@@ -65,7 +65,10 @@
   <script>
     (function () {
       var dlg = document.getElementById("confirm-dialog");
-      if (!dlg || !dlg.showModal) return;  // browser senza <dialog>: il form si invia senza conferma personalizzata
+      if (!dlg || !dlg.showModal) {  // browser senza <dialog>: conferma del browser
+        window.pmConfirm = function (text) { return Promise.resolve(window.confirm(text)); };
+        return;
+      }
       var pending = null;
       document.addEventListener("submit", function (e) {
         var form = e.target;
@@ -79,10 +82,25 @@
         dlg.showModal();
         document.getElementById("confirm-ok").blur();
       });
+      var resolve = null;
       dlg.addEventListener("close", function () {
         if (dlg.returnValue === "ok" && pending) pending.submit();  // submit() non rilancia l'evento
-        pending = null;
+        if (resolve) resolve(dlg.returnValue === "ok");
+        pending = null; resolve = null;
       });
+      // dagli script: pmConfirm(testo, {title, ok}).then(function (si) { ... })
+      window.pmConfirm = function (text, o) {
+        o = o || {};
+        if (resolve) resolve(false);
+        pending = null;
+        document.getElementById("confirm-title").textContent = o.title || {{ _("Confermi?")|tojson }};
+        document.getElementById("confirm-text").textContent = text;
+        document.getElementById("confirm-ok").textContent = o.ok || {{ _("Conferma")|tojson }};
+        dlg.returnValue = "";
+        dlg.showModal();
+        document.getElementById("confirm-ok").blur();
+        return new Promise(function (r) { resolve = r; });
+      };
       dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close("cancel"); });
     })();
   </script>
