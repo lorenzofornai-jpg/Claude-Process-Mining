@@ -55,6 +55,7 @@
   <p class="tiny muted bpa-help">{{ _("Trascina gli elementi dalla tavolozza a sinistra; clic su un elemento per i comandi (aggiungi, collega, cambia tipo, elimina); doppio clic per rinominare. Le lane si aggiungono dal menu della pool o di una lane. Salvando, l'altra lingua prende le stesse modifiche con i nomi tradotti.") }}</p>
 </div>
 <script src="/static/vendor/bpmn-js/bpmn-modeler.production.min.js?v={{ static_version }}"></script>
+<script src="/static/bpa_panel.js?v={{ static_version }}"></script>
 <script src="/static/bpa_repo.js?v={{ static_version }}"></script>
 <script src="/static/bpa_editor.js?v={{ static_version }}"></script>
 <script>
@@ -93,6 +94,8 @@
         otherName: {{ _("In {l}: {n}")|tojson }},
         needName: {{ _("Dai un nome all'elemento per registrarlo nell'archivio dei simboli.")|tojson }},
         genericName: {{ _("Nome generico: dai un nome specifico per registrare l'elemento nell'archivio dei simboli.")|tojson }},
+        anonymous: {{ _("Senza un nome proprio: è un simbolo di questa sola occorrenza (non condiviso). Dagli un nome per riutilizzarlo in altri BPMN.")|tojson }},
+        noOccurrences: {{ _("Nessuna occorrenza.")|tojson }},
         notYetSaved: {{ _("Simbolo nuovo: salva il modello per registrarlo nell'archivio, poi potrai compilarne gli attributi.")|tojson }},
         noAttrs: {{ _("Nessun altro attributo definito per questo tipo di simbolo (li definisce l'Amministratore).")|tojson }},
         attrSaving: {{ _("Salvataggio…")|tojson }}, attrSaved: {{ _("salvato")|tojson }},

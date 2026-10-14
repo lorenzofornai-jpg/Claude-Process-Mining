@@ -507,6 +507,9 @@ class BpaSymbol(Base):
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     renamed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # senza nome proprio (evento, gateway, ... senza nome o con un nome generico): simbolo della sola occorrenza,
+    # non condiviso e senza controllo dei nomi doppi
+    anonymous: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class BpaOccurrence(Base):
@@ -519,6 +522,7 @@ class BpaOccurrence(Base):
     model_id: Mapped[str] = mapped_column(ForeignKey("bpa_model.id"), index=True)
     element_id: Mapped[str] = mapped_column(String(200))
     bpmn_type: Mapped[str] = mapped_column(String(60))
+    bpmn_detail: Mapped[str | None] = mapped_column(String(60), nullable=True)   # trigger: messaggio, timer, ...
 
 
 class BpaRelation(Base):

@@ -390,10 +390,40 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
         counts[s.symbol_type] = counts.get(s.symbol_type, 0) + 1
         if s.id not in used:
             unused.append(s)
+    # tabella dei simboli del tipo scelto, con i valori degli attributi
+    lang = get_lang(request)
+    occ_count = {}
+    for (sid,) in db.query(BpaOccurrence.symbol_id).all():
+        occ_count[sid] = occ_count.get(sid, 0) + 1
+    rows = []
+    for s in db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all():
+        rows.append({"id": s.id, "name": bpa_repo.display_name(db, s, lang), "anonymous": bool(s.anonymous),
+                     "other": "" if s.anonymous else bpa_repo.name_of(s, "en" if lang == "it" else "it"),
+                     "subtypes": ", ".join(bpa_repo.subtypes(db, s, lang)), "occ": occ_count.get(s.id, 0),
+                     "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
+    rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
     return {"request": request, "types": bpa_repo.SYMBOL_TYPES, "symbol_type": symbol_type, "defs": defs,
             "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
             "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
-            "errors": errors or [], "form": form}
+            "errors": errors or [], "form": form, "rows": rows}
+
+
+def _bpa_value_text(d, v, lang: str) -> str:
+    """Valore di un attributo come testo per la tabella dei simboli."""
+    if v is None or v == "" or v == []:
+        return ""
+    if d.data_type == "boolean":
+        return t(lang, "Sì") if v else t(lang, "No")
+    labels = {o.get("value"): o.get(lang) or o.get("it") or o.get("value") for o in d.options or []}
+    if d.data_type == "choice":
+        return labels.get(v, str(v))
+    if d.data_type == "multi_choice":
+        return ", ".join(labels.get(x, str(x)) for x in (v if isinstance(v, list) else [v]))
+    if isinstance(v, dict):
+        return v.get(lang) or v.get("it") or v.get("en") or ""
+    if d.data_type == "datetime":
+        return str(v).replace("T", " ")
+    return str(v)
 
 
 @router.get("/bpa", response_class=HTMLResponse)
@@ -538,3 +568,39 @@ async def admin_bpa_unused_delete(request: Request):
     finally:
         db.close()
     return RedirectResponse(f"/admin/bpa?type={form.get('symbol_type') or 'activity'}&saved=1#unused", status_code=303)
+
+
+@router.get("/bpa/symbols/{symbol_id}")
+def admin_bpa_symbol(request: Request, symbol_id: str):
+    """Pannello delle proprieta' di un simbolo (come nell'editor BPMN)."""
+    from fastapi.responses import JSONResponse
+    from app.routers.bpa import symbol_detail
+    user, denied = _require_admin(request)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    lang = get_lang(request)
+    db = SessionLocal()
+    try:
+        d = symbol_detail(db, symbol_id, lang, lang, user)
+        return JSONResponse(d or {"error": t(lang, "Simbolo non trovato.")}, status_code=200 if d else 404)
+    finally:
+        db.close()
+
+
+@router.post("/bpa/symbols/{symbol_id}/attrs")
+async def admin_bpa_symbol_attrs(request: Request, symbol_id: str):
+    from fastapi.responses import JSONResponse
+    from app.routers.bpa import save_symbol_attrs
+    user, denied = _require_admin(request)
+    if denied:
+        return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    body = await request.json()
+    ui = get_lang(request)
+    lang = body.get("lang") if body.get("lang") in ("it", "en") else ui
+    values = body.get("values") if isinstance(body.get("values"), dict) else {}
+    db = SessionLocal()
+    try:
+        out = save_symbol_attrs(db, symbol_id, values, lang, ui, user.name)
+        return JSONResponse(out or {"error": t(ui, "Simbolo non trovato.")}, status_code=200 if out else 404)
+    finally:
+        db.close()

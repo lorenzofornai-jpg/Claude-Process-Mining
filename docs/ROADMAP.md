@@ -283,7 +283,13 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - ✅ Amministrazione > «Attributi dei simboli BPMN»: per tipo, Nome e Identificativo di sistema; testo breve, testo
   lungo, numero intero/decimale, data, data e ora, sì/no, elenco a scelta singola o multipla, link, email; obbligatorio,
   un valore per lingua, aiuto, ordine; elenco ed eliminazione dei simboli senza occorrenze.
-- Da fare: pool e lane nel copia/incolla, relazioni aggiunte a mano (non dal disegno), ricerca nell'archivio.
+- ✅ Eventi e gateway (operatori AND/OR/XOR, eventi di inizio/fine/intermedi/di confine) sempre nell'archivio, con
+  sottotipo e trigger (messaggio, timer, segnale...). Senza un nome proprio (o con «Inizio», «Fine», «Ruolo da
+  definire») sono simboli della sola occorrenza: non condivisi, senza controllo dei nomi doppi, eliminati con
+  l'elemento; dando loro un nome diventano simboli condivisibili. I modelli già registrati si completano all'avvio.
+- ✅ Amministrazione: tabella dei simboli del tipo scelto con i valori degli attributi e ricerca; una riga apre lo
+  stesso pannello delle proprietà dell'editor (`static/bpa_panel.js`, condiviso), con gli attributi modificabili.
+- Da fare: pool e lane nel copia/incolla, relazioni aggiunte a mano (non dal disegno).
 
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o

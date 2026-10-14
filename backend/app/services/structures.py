@@ -52,6 +52,9 @@ def delete_structures(db: Session, config_ids: list[str]) -> list[Path]:
     if bpa_ids:
         db.query(BpaOccurrence).filter(BpaOccurrence.model_id.in_(bpa_ids)).delete(synchronize_session=False)
         db.query(BpaRelation).filter(BpaRelation.model_id.in_(bpa_ids)).delete(synchronize_session=False)
+        db.flush()
+        from app.services.bpa_repo import drop_orphan_anonymous
+        drop_orphan_anonymous(db)
     # anche i nomi personali dati nell'analisi (valgono solo per quel dataset)
     for model in (ExtractionRun, ProcessIngestionLink, FieldMapping, ObjectTypeDef, EventTypeDef, IngestionConfigVersion,
                   AnalysisAlias, AnalysisObjective, ControlTower, AnalysisView, BpaModel):

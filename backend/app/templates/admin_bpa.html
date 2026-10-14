@@ -114,11 +114,123 @@
   </form>
   {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
 
+  <h2 id="symbols">{{ _("Simboli di tipo «{t}»", t=types[symbol_type][lang]) }} <span class="muted tiny">{{ rows|length }}</span></h2>
+  {% if rows %}
+  <div class="bpa-sym-tools">
+    <input type="search" id="bpa-sym-search" placeholder="{{ _("Cerca un simbolo") }}" aria-label="{{ _("Cerca un simbolo") }}">
+    <span class="tiny muted">{{ _("Tocca una riga per aprire il pannello delle proprietà.") }}</span>
+  </div>
+  <div class="table-scroll">
+  <table class="admin-table bpa-symbols">
+    <thead><tr>
+      <th>{{ _("Nome") }}</th><th>{{ _("Nome") }} ({{ 'EN' if lang == 'it' else 'IT' }})</th>
+      {% if symbol_type in ('event', 'gateway', 'activity', 'subprocess') %}<th>{{ _("Sottotipo") }}</th>{% endif %}
+      <th class="num">{{ _("Occorrenze") }}</th>
+      {% for d in defs %}<th>{{ d.name.get(lang) or d.name.get('it') }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="bpa-sym-row" data-id="{{ r.id }}" tabindex="0" role="button">
+        <td><strong>{{ r.name }}</strong>{% if r.anonymous %} <span class="tiny bpa-tag">{{ _("senza nome") }}</span>{% endif %}</td>
+        <td class="muted">{{ r.other }}</td>
+        {% if symbol_type in ('event', 'gateway', 'activity', 'subprocess') %}<td class="tiny">{{ r.subtypes }}</td>{% endif %}
+        <td class="num">{{ r.occ }}</td>
+        {% for v in r["values"] %}<td class="bpa-sym-val" data-key="{{ defs[loop.index0].key }}">{{ v }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="tiny muted">{{ _("Nessun simbolo di questo tipo nell'archivio.") }}</p>{% endif %}
+
   <p class="tiny muted" style="margin-top:16px">
     {{ _("Per consultare l'archivio come tabelle: nel database ci sono le viste bpa_view_activity, bpa_view_lane, bpa_view_event… (una per tipo, una colonna per attributo) e bpa_view_relations.") }}
   </p>
   <div class="actions"><a class="secondary button-link" href="/admin">← {{ _("Amministrazione") }}</a></div>
 </div>
+<aside id="bpa-panel" class="bpa-panel bpa-panel-drawer" hidden aria-label="{{ _("Proprietà del simbolo") }}">
+  <div class="bpa-panel-head">
+    <div><span id="bpa-panel-type" class="tiny muted"></span><strong id="bpa-panel-name"></strong></div>
+    <button type="button" class="link-btn" id="bpa-panel-close" aria-label="{{ _("Chiudi") }}" title="{{ _("Chiudi") }}">✕</button>
+  </div>
+  <div class="bpa-ptabs" role="tablist">
+    <button type="button" role="tab" data-ptab="attrs" class="active">{{ _("Attributi") }}</button>
+    <button type="button" role="tab" data-ptab="occ">{{ _("Occorrenze") }} <span class="bpa-pcount" data-pcount="occ"></span></button>
+    <button type="button" role="tab" data-ptab="rel">{{ _("Relazioni") }} <span class="bpa-pcount" data-pcount="rel"></span></button>
+  </div>
+  <div id="bpa-panel-body" class="bpa-panel-body"></div>
+</aside>
+<script src="/static/bpa_panel.js?v={{ static_version }}"></script>
+<script>
+  // tabella dei simboli: una riga apre il pannello delle proprieta' (come nell'editor BPMN); gli attributi si modificano
+  (function () {
+    var T = {
+      attrSaving: {{ _("Salvataggio…")|tojson }}, attrSaved: {{ _("salvato")|tojson }},
+      thisModel: {{ _("Questo BPMN")|tojson }}, timesIn: {{ _("{n} volte")|tojson }},
+      hiddenModels: {{ _("{n} BPMN di processi a cui non hai accesso")|tojson }},
+      noRelations: {{ _("Nessuna relazione.")|tojson }}, noOccurrences: {{ _("Nessuna occorrenza.")|tojson }},
+      noAttrs: {{ _("Nessun altro attributo definito per questo tipo di simbolo.")|tojson }},
+      nameNote: {{ _("Il nome si cambia nel BPMN (con il controllo dei nomi già usati).")|tojson }},
+      lastChange: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
+      yes: {{ _("Sì")|tojson }}, no: {{ _("No")|tojson }}
+    };
+    var LANG = {{ lang|tojson }}, panel = document.getElementById("bpa-panel"), detail = null, tab = "attrs", currentRow = null;
+    var el = BpaPanel.el, fmt = BpaPanel.fmt;
+    function draw() {
+      if (!detail) return;
+      panel.querySelectorAll("[data-ptab]").forEach(function (b) { b.classList.toggle("active", b.dataset.ptab === tab); });
+      panel.querySelector("[data-pcount=occ]").textContent = detail.occurrences.reduce(function (a, o) { return a + o.elements.length; }, 0);
+      panel.querySelector("[data-pcount=rel]").textContent = detail.relations.length;
+      var s = detail.symbol;
+      document.getElementById("bpa-panel-type").textContent = s.type_label + (s.subtypes.length ? " · " + s.subtypes.join(", ") : "");
+      document.getElementById("bpa-panel-name").textContent = s.display;
+      var body = document.getElementById("bpa-panel-body"); body.textContent = "";
+      if (tab === "attrs") {
+        if (!s.anonymous && s.name_other) body.appendChild(el("p", "tiny muted", (LANG === "it" ? "EN" : "IT") + ": " + s.name_other));
+        body.appendChild(el("p", "tiny bpa-note", T.nameNote));
+        if (!detail.attributes.length) body.appendChild(el("p", "tiny muted", T.noAttrs));
+        BpaPanel.attrs(body, detail.attributes, { lang: LANG, T: T, postUrl: "/admin/bpa/symbols/" + encodeURIComponent(s.id) + "/attrs",
+          onSaved: function (key, vals) {   // la cella della tabella si aggiorna subito
+            var d = detail.attributes.filter(function (a) { return a.key === key; })[0];
+            var cell = currentRow && currentRow.querySelector('[data-key="' + key + '"]');
+            if (d && cell) cell.textContent = valueText(d, vals[key]);
+          } });
+        if (detail.updated_by) body.appendChild(el("p", "tiny muted", fmt(T.lastChange, { u: detail.updated_by, d: window.pmLocalTime(detail.updated_at) })));
+      } else if (tab === "occ") BpaPanel.occurrences(body, detail, { T: T, links: false });
+      else BpaPanel.relations(body, detail, { T: T });
+    }
+    function valueText(d, v) {
+      if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return "";
+      if (d.type === "boolean") return v ? T.yes : T.no;
+      var lab = {}; (d.options || []).forEach(function (o) { lab[o.value] = o.label; });
+      if (d.type === "choice") return lab[v] || v;
+      if (d.type === "multi_choice") return (Array.isArray(v) ? v : [v]).map(function (x) { return lab[x] || x; }).join(", ");
+      if (typeof v === "object") return v[LANG] || v.it || v.en || "";
+      return String(v).replace("T", " ");
+    }
+    function open(row) {
+      if (currentRow) currentRow.classList.remove("selected");
+      currentRow = row; row.classList.add("selected");
+      fetch("/admin/bpa/symbols/" + encodeURIComponent(row.dataset.id), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d.error) throw new Error(d.error); detail = d; panel.hidden = false; draw(); })
+        .catch(function (e) { alert(e.message); });
+    }
+    document.querySelectorAll(".bpa-sym-row").forEach(function (row) {
+      row.addEventListener("click", function () { open(row); });
+      row.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(row); } });
+    });
+    panel.querySelectorAll("[data-ptab]").forEach(function (b) { b.addEventListener("click", function () { tab = b.dataset.ptab; draw(); }); });
+    document.getElementById("bpa-panel-close").addEventListener("click", function () {
+      panel.hidden = true; if (currentRow) currentRow.classList.remove("selected"); currentRow = null;
+    });
+    var q = document.getElementById("bpa-sym-search");
+    if (q) q.addEventListener("input", function () {
+      var v = q.value.trim().toLowerCase();
+      document.querySelectorAll(".bpa-sym-row").forEach(function (r) { r.hidden = v && r.textContent.toLowerCase().indexOf(v) < 0; });
+    });
+  })();
+</script>
 <script>
   (function () {
     var sel = document.getElementById("bpa-dtype");

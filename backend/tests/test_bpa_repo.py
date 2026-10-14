@@ -56,8 +56,11 @@ def test_same_name_is_the_same_symbol_across_models(db):
     assert {o.model_id for o in db.query(BpaOccurrence).filter_by(symbol_id=cpo.id)} == {a.id, b.id}
     buyer = _sym(db, "Buyer", "lane")
     assert db.query(BpaOccurrence).filter_by(symbol_id=buyer.id).count() == 2
-    # nomi generici dei modelli generati (Inizio, Fine) non entrano nell'archivio
-    assert db.query(BpaSymbol).filter_by(symbol_type="event").count() == 0
+    # eventi di inizio e fine (nomi generici «Inizio», «Fine»): un simbolo per occorrenza, non condiviso, col sottotipo
+    events = db.query(BpaSymbol).filter_by(symbol_type="event").all()
+    assert len(events) == 4 and all(e.anonymous for e in events)
+    labels = {bpa_repo.display_name(db, e, "it") for e in events}
+    assert labels == {"Evento di inizio «Inizio»", "Evento di fine «Fine»"}
     # relazioni: pool contiene lane, lane contiene attivita', attivita' in sequenza (attraverso gli eventi senza nome)
     rel = {(r.kind, db.get(BpaSymbol, r.source_id).name_it, db.get(BpaSymbol, r.target_id).name_it)
            for r in db.query(BpaRelation).filter_by(model_id=a.id)}
@@ -127,3 +130,23 @@ def test_views_per_symbol_type(db):
         row = c.execute(text("SELECT nome_it, occorrenze, responsabile FROM bpa_view_activity WHERE nome_it = 'Approve Order'")).one()
         assert tuple(row) == ("Approve Order", 1, "Mario")
         assert c.execute(text("SELECT COUNT(*) FROM bpa_view_relations")).scalar() > 0
+
+
+def test_unnamed_gateways_are_symbols_and_naming_them_shares_them(db):
+    a = _model(db, STEPS_A)
+    gw = '<bpmn:exclusiveGateway id="Gw_1" /><bpmn:startEvent id="Ev_m" name="Ordine ricevuto"><bpmn:messageEventDefinition id="Md_1" /></bpmn:startEvent>'
+    xml = a.xml_it.replace("</bpmn:process>", gw + "</bpmn:process>")
+    plan = bpa_repo.resolve(db, a, "it", xml, {})
+    bpa_repo.apply(db, a, "it", xml, xml, plan, "tester")
+    db.commit()
+    occ = {o.element_id: o for o in db.query(BpaOccurrence).filter_by(model_id=a.id)}
+    g = db.get(BpaSymbol, occ["Gw_1"].symbol_id)
+    assert g.anonymous and bpa_repo.display_name(db, g, "it") == "Gateway esclusivo (XOR)"
+    ev = db.get(BpaSymbol, occ["Ev_m"].symbol_id)
+    assert not ev.anonymous and bpa_repo.subtypes(db, ev, "en") == ["Start event · message"]
+    # il gateway riceve un nome: diventa un simbolo con nome (stesso id); toglierlo dal modello lo elimina se anonimo
+    xml2 = xml.replace('<bpmn:exclusiveGateway id="Gw_1" />', '<bpmn:exclusiveGateway id="Gw_1" name="Fattura corretta?" />')
+    plan2 = bpa_repo.resolve(db, a, "it", xml2, {})
+    bpa_repo.apply(db, a, "it", xml2, xml2, plan2, "tester")
+    db.commit()
+    assert not db.get(BpaSymbol, g.id).anonymous and db.get(BpaSymbol, g.id).name_it == "Fattura corretta?"

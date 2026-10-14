@@ -58,7 +58,52 @@ RELATION_KINDS = {
     "message": {"it": ("invia un messaggio a", "riceve un messaggio da"), "en": ("sends a message to", "receives a message from")},
 }
 
-# nomi generici messi dall'app nei modelli generati: non sono simboli dell'archivio
+# sottotipi BPMN (eventi: inizio/fine/...; gateway: XOR/AND/OR...) e trigger degli eventi, nelle due lingue
+SUBTYPES = {
+    "startEvent": {"it": "Evento di inizio", "en": "Start event"},
+    "endEvent": {"it": "Evento di fine", "en": "End event"},
+    "intermediateCatchEvent": {"it": "Evento intermedio (ricezione)", "en": "Intermediate catch event"},
+    "intermediateThrowEvent": {"it": "Evento intermedio (lancio)", "en": "Intermediate throw event"},
+    "boundaryEvent": {"it": "Evento di confine", "en": "Boundary event"},
+    "exclusiveGateway": {"it": "Gateway esclusivo (XOR)", "en": "Exclusive gateway (XOR)"},
+    "parallelGateway": {"it": "Gateway parallelo (AND)", "en": "Parallel gateway (AND)"},
+    "inclusiveGateway": {"it": "Gateway inclusivo (OR)", "en": "Inclusive gateway (OR)"},
+    "complexGateway": {"it": "Gateway complesso", "en": "Complex gateway"},
+    "eventBasedGateway": {"it": "Gateway basato su eventi", "en": "Event-based gateway"},
+    "task": {"it": "Task", "en": "Task"}, "userTask": {"it": "Task utente", "en": "User task"},
+    "serviceTask": {"it": "Task di servizio", "en": "Service task"}, "manualTask": {"it": "Task manuale", "en": "Manual task"},
+    "scriptTask": {"it": "Task di script", "en": "Script task"},
+    "businessRuleTask": {"it": "Task di regola di business", "en": "Business rule task"},
+    "sendTask": {"it": "Task di invio", "en": "Send task"}, "receiveTask": {"it": "Task di ricezione", "en": "Receive task"},
+    "callActivity": {"it": "Attività di chiamata", "en": "Call activity"},
+    "subProcess": {"it": "Sottoprocesso", "en": "Sub-process"}, "transaction": {"it": "Transazione", "en": "Transaction"},
+    "adHocSubProcess": {"it": "Sottoprocesso ad hoc", "en": "Ad-hoc sub-process"},
+    "participant": {"it": "Pool", "en": "Pool"}, "lane": {"it": "Lane", "en": "Lane"},
+    "dataObjectReference": {"it": "Oggetto dati", "en": "Data object"},
+    "dataStoreReference": {"it": "Archivio dati", "en": "Data store"},
+}
+TRIGGERS = {
+    "messageEventDefinition": {"it": "messaggio", "en": "message"},
+    "timerEventDefinition": {"it": "timer", "en": "timer"},
+    "signalEventDefinition": {"it": "segnale", "en": "signal"},
+    "conditionalEventDefinition": {"it": "condizione", "en": "conditional"},
+    "errorEventDefinition": {"it": "errore", "en": "error"},
+    "escalationEventDefinition": {"it": "escalation", "en": "escalation"},
+    "compensateEventDefinition": {"it": "compensazione", "en": "compensation"},
+    "cancelEventDefinition": {"it": "annullamento", "en": "cancel"},
+    "linkEventDefinition": {"it": "collegamento", "en": "link"},
+    "terminateEventDefinition": {"it": "termina", "en": "terminate"},
+}
+
+
+def subtype_label(tag: str | None, detail: str | None, lang: str) -> str:
+    """Es. «Evento di inizio · messaggio», «Gateway esclusivo (XOR)»."""
+    base = (SUBTYPES.get(tag or "") or {}).get(lang) or (tag or "")
+    trig = (TRIGGERS.get(detail or "") or {}).get(lang)
+    return f"{base} · {trig}" if trig else base
+
+
+# nomi generici messi dall'app nei modelli generati: non sono nomi propri (simboli senza nome, non condivisi)
 GENERIC_NAMES = {"ruolo da definire", "role to be defined", "inizio", "fine", "start", "end"}
 
 DATA_TYPES = {
@@ -107,7 +152,9 @@ def extract(xml: str) -> dict:
         tag = _local(el.tag)
         eid = el.get("id")
         if eid and tag in TAG_TYPE:
-            elements[eid] = {"id": eid, "tag": tag, "type": TAG_TYPE[tag], "name": (el.get("name") or "").strip()}
+            detail = next((_local(c.tag) for c in el if _local(c.tag).endswith("EventDefinition")), None)
+            elements[eid] = {"id": eid, "tag": tag, "type": TAG_TYPE[tag], "name": (el.get("name") or "").strip(),
+                             "detail": detail}
 
     proc_of_participant = {}
     for part in root.iter(B + "participant"):
@@ -265,8 +312,18 @@ def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | N
 
     assign, new, renames, conflicts, refresh = {}, {}, {}, [], {}
     taken = {}   # (tipo, nome normalizzato) -> elemento nuovo gia' visto in questo salvataggio
+    anon_names = {}
     for eid, e in ext["elements"].items():
         if not is_symbol(e):
+            # senza nome proprio: simbolo della sola occorrenza (resta lo stesso finche' l'elemento esiste)
+            s = sym(occ.get(eid))
+            if s is not None and s.symbol_type == e["type"] and s.anonymous:
+                assign[eid] = s.id
+                if (name_of(s, lang) or "") != e["name"]:
+                    anon_names[s.id] = e["name"]
+            else:
+                assign[eid] = "new:" + eid
+                new[eid] = {"type": e["type"], "name": e["name"], "anonymous": True}
             continue
         link = links.get(eid) or {}
         s = sym(link.get("symbol")) if link.get("symbol") else None
@@ -276,7 +333,19 @@ def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | N
             s = sym(occ.get(eid))
             if s is not None and s.symbol_type != e["type"]:
                 s = None   # l'elemento ha cambiato tipo (es. attivita' -> evento): e' un altro simbolo
+        if s is not None and s.anonymous and link.get("symbol") == s.id:
+            s = None   # un simbolo senza nome non si condivide
         same = find_by_name(db, e["type"], e["name"], lang, exclude=s.id if s else None)
+        if s is not None and s.anonymous:   # elemento che prima non aveva un nome proprio e ora ce l'ha
+            if same is not None:
+                if policy == "reuse":
+                    assign[eid] = same.id
+                else:
+                    conflicts.append({"element_id": eid, "name": e["name"], "type": e["type"], "existing": same.id})
+                continue
+            assign[eid] = s.id
+            renames[s.id] = e["name"]
+            continue
         if s is not None:
             assign[eid] = s.id
             if norm(name_of(s, lang)) != norm(e["name"]):
@@ -307,7 +376,7 @@ def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | N
         for eid, nm in refresh.items():
             ext["elements"][eid]["name"] = nm
     return {"assign": assign, "new": new, "renames": renames, "conflicts": conflicts, "xml": xml,
-            "refreshed": bool(refresh), "ext": ext}
+            "refreshed": bool(refresh), "ext": ext, "anon_names": anon_names}
 
 
 def other_names(db, plan: dict, lang: str) -> dict[str, str]:
@@ -336,9 +405,11 @@ def apply(db, model, lang: str, xml: str, other_xml: str, plan: dict, user_name:
     ext_other = {e["id"]: e["name"] for e in extract(other_xml)["elements"].values()}
     real: dict[str, str] = {}
     for eid, info in plan["new"].items():
-        s = BpaSymbol(symbol_type=info["type"], created_by=user_name, created_at=now)
+        s = BpaSymbol(symbol_type=info["type"], created_by=user_name, created_at=now, anonymous=bool(info.get("anonymous")))
         set_name(s, lang, info["name"])
         set_name(s, ol, ext_other.get(eid) or info["name"])
+        if s.anonymous:
+            s.key_it = s.key_en = ""   # non si trova per nome: non e' condiviso
         if info.get("copy_of"):
             src = db.get(BpaSymbol, info["copy_of"])
             if src is not None and src.symbol_type == info["type"]:
@@ -355,6 +426,7 @@ def apply(db, model, lang: str, xml: str, other_xml: str, plan: dict, user_name:
         if s is None:
             continue
         eids = [e for e, x in assign.items() if x == sid]
+        s.anonymous = False
         set_name(s, lang, name)
         if eids and ext_other.get(eids[0]):
             set_name(s, ol, ext_other[eids[0]])
@@ -389,14 +461,77 @@ def apply(db, model, lang: str, xml: str, other_xml: str, plan: dict, user_name:
         db.add(m2)
         others.append(mid)
 
+    for sid, name in (plan.get("anon_names") or {}).items():   # simboli senza nome proprio: il nome dell'elemento
+        s = db.get(BpaSymbol, sid)
+        if s is not None:
+            eid = next((e for e, x in assign.items() if x == sid), None)
+            if lang == "it":
+                s.name_it, s.name_en = name, ext_other.get(eid, s.name_en) or name
+            else:
+                s.name_en, s.name_it = name, ext_other.get(eid, s.name_it) or name
     db.query(BpaOccurrence).filter_by(model_id=model.id).delete(synchronize_session=False)
     for eid, sid in assign.items():
-        db.add(BpaOccurrence(symbol_id=sid, model_id=model.id, element_id=eid, bpmn_type=ext["elements"][eid]["tag"]))
+        e = ext["elements"][eid]
+        db.add(BpaOccurrence(symbol_id=sid, model_id=model.id, element_id=eid, bpmn_type=e["tag"], bpmn_detail=e.get("detail")))
     db.query(BpaRelation).filter_by(model_id=model.id).delete(synchronize_session=False)
     for kind, a, b in relations_between_symbols(ext, assign):
         db.add(BpaRelation(model_id=model.id, kind=kind, source_id=a, target_id=b))
+    db.flush()
+    drop_orphan_anonymous(db)
     model.registered = True
     return {"others": others, "xml": xml, "other_xml": other_xml, "self_changed": self_changed}
+
+
+def drop_orphan_anonymous(db) -> None:
+    """I simboli senza nome proprio esistono solo con la loro occorrenza: senza, si eliminano."""
+    from app.models import BpaOccurrence, BpaRelation, BpaSymbol
+    used = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).distinct()}
+    for s in db.query(BpaSymbol).filter(BpaSymbol.anonymous.is_(True)).all():
+        if s.id not in used:
+            db.query(BpaRelation).filter((BpaRelation.source_id == s.id) | (BpaRelation.target_id == s.id)).delete(synchronize_session=False)
+            db.delete(s)
+
+
+def display_name(db, s, lang: str) -> str:
+    """Il nome del simbolo, o per uno senza nome il suo sottotipo (es. «Gateway esclusivo (XOR)»)."""
+    from app.models import BpaOccurrence
+    n = name_of(s, lang)
+    if n and not (s.anonymous and norm(n) in GENERIC_NAMES):
+        return n
+    o = db.query(BpaOccurrence).filter_by(symbol_id=s.id).first()
+    lab = subtype_label(o.bpmn_type, o.bpmn_detail, lang) if o else SYMBOL_TYPES[s.symbol_type][lang]
+    return f"{lab} «{n}»" if n else lab
+
+
+def subtypes(db, s, lang: str) -> list[str]:
+    from app.models import BpaOccurrence
+    seen = []
+    for o in db.query(BpaOccurrence).filter_by(symbol_id=s.id).all():
+        lab = subtype_label(o.bpmn_type, o.bpmn_detail, lang)
+        if lab not in seen:
+            seen.append(lab)
+    return seen
+
+
+def backfill(db) -> int:
+    """Modelli gia' registrati prima dei simboli senza nome (eventi, gateway...): si completano. Ritorna quanti."""
+    from app.models import BpaModel, BpaOccurrence
+    n = 0
+    for m in db.query(BpaModel).filter(BpaModel.registered.is_(True)).all():
+        have = {o.element_id for o in db.query(BpaOccurrence).filter_by(model_id=m.id).all()}
+        try:
+            ext = extract(m.xml_it)
+        except Exception:
+            continue
+        if all(eid in have for eid in ext["elements"]):
+            continue
+        plan = resolve(db, m, "it", m.xml_it, {}, policy="reuse")
+        if plan["conflicts"]:
+            continue
+        out = apply(db, m, "it", plan["xml"], m.xml_en, plan, None)
+        m.xml_it, m.xml_en = out["xml"], out["other_xml"]
+        n += 1
+    return n
 
 
 def register_generated(db, model, user_name: str | None = None) -> None:

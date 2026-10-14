@@ -1325,3 +1325,10 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .bpa-pmain { display: flex; flex-direction: column; gap: 2px; }
 .bpa-rel-h { margin: 6px 0 0; font-size: 13px; color: var(--muted); font-weight: 600; }
 @media (max-width: 760px) { .bpa-panel { width: 60vw; max-width: none; } }   /* sempre accanto, mai sopra il logo bpmn.io */
+/* Amministrazione: tabella dei simboli e pannello delle proprieta' a lato */
+.bpa-sym-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.bpa-sym-tools input { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 240px; font: inherit; }
+.bpa-sym-row { cursor: pointer; }
+.bpa-sym-row:hover td, .bpa-sym-row.selected td { background: color-mix(in srgb, var(--brand) 8%, transparent); }
+.bpa-sym-val { max-width: 260px; overflow-wrap: anywhere; }
+.bpa-panel-drawer { position: fixed; right: 0; top: 64px; bottom: 0; z-index: 40; box-shadow: -8px 0 24px rgba(0,0,0,.12); }

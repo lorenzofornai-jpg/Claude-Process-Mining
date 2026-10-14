@@ -167,8 +167,9 @@ function initBpaRepo(c) {
     panel.querySelectorAll("[data-ptab]").forEach(function (b) {
       b.classList.toggle("active", b.dataset.ptab === tab); b.setAttribute("aria-selected", b.dataset.ptab === tab ? "true" : "false");
     });
-    document.getElementById("bpa-panel-type").textContent = meta.types[type] || "";
-    document.getElementById("bpa-panel-name").textContent = name || T.noName;
+    var subs = detail && detail.symbol.subtypes || [];
+    document.getElementById("bpa-panel-type").textContent = (meta.types[type] || "") + (subs.length ? " · " + subs.join(", ") : "");
+    document.getElementById("bpa-panel-name").textContent = generic(name) && detail ? detail.symbol.display : (name || T.noName);
     var body = document.getElementById("bpa-panel-body"); body.textContent = "";
     var counts = document.querySelectorAll("[data-pcount]");
     counts.forEach(function (x) {
@@ -181,103 +182,33 @@ function initBpaRepo(c) {
     else drawRel(body, sid);
   }
 
-  function field(label, control, help, req) {
-    var l = el("label", "bpa-field");
-    var t = el("span", "bpa-field-label", label + (req ? " *" : "")); l.appendChild(t);
-    l.appendChild(control);
-    if (help) l.appendChild(el("span", "tiny muted", help));
-    var st = el("span", "tiny bpa-field-status"); l.appendChild(st);
-    return l;
-  }
   function drawAttrs(body, e, type, name, sid) {
     // nome: cambia l'etichetta nel diagramma (passa dal controllo dei nomi gia' usati)
     var ni = el("input"); ni.type = "text"; ni.value = name; ni.maxLength = 500;
     ni.addEventListener("change", function () { modeler.get("modeling").updateLabel(e, ni.value.trim()); });
-    body.appendChild(field(T.name + " (" + c.lang().toUpperCase() + ")", ni, detail && detail.symbol.name_other ? fmt(T.otherName, { l: c.lang() === "it" ? "EN" : "IT", n: detail.symbol.name_other }) : "", true));
-    if (generic(name)) { body.appendChild(el("p", "tiny bpa-note", name ? T.genericName : T.needName)); }
-    else if (!sid) { body.appendChild(el("p", "tiny bpa-note", T.notYetSaved)); }
+    var other = detail && !detail.symbol.anonymous && detail.symbol.name_other;
+    body.appendChild(BpaPanel.field(T.name + " (" + c.lang().toUpperCase() + ")", ni,
+      other ? fmt(T.otherName, { l: c.lang() === "it" ? "EN" : "IT", n: other }) : "", !generic(name)));
+    if (generic(name)) body.appendChild(el("p", "tiny bpa-note", sid ? T.anonymous : (name ? T.genericName : T.needName)));
+    else if (!sid) body.appendChild(el("p", "tiny bpa-note", T.notYetSaved));
     var defs = meta.attributes[type] || [];
     if (!defs.length) { body.appendChild(el("p", "tiny muted", T.noAttrs)); return; }
     var values = {};
     (detail && detail.attributes || []).forEach(function (a) { values[a.key] = a.value; });
-    defs.forEach(function (d) {
-      var v = values[d.key];
-      if (d.translatable && v && typeof v === "object") v = v[c.lang()];
-      var ctl, read;
-      switch (d.type) {
-        case "long_text": ctl = el("textarea"); ctl.rows = 4; ctl.value = v || ""; read = function () { return ctl.value; }; break;
-        case "integer": case "number":
-          ctl = el("input"); ctl.type = "number"; ctl.step = d.type === "integer" ? "1" : "any"; ctl.value = v === null || v === undefined ? "" : v;
-          read = function () { return ctl.value; }; break;
-        case "date": ctl = el("input"); ctl.type = "date"; ctl.value = v || ""; read = function () { return ctl.value; }; break;
-        case "datetime": ctl = el("input"); ctl.type = "datetime-local"; ctl.value = v || ""; read = function () { return ctl.value; }; break;
-        case "boolean": ctl = el("input"); ctl.type = "checkbox"; ctl.checked = !!v; read = function () { return ctl.checked; }; break;
-        case "choice":
-          ctl = el("select"); ctl.appendChild(el("option", "", "—")).value = "";
-          d.options.forEach(function (o) { var op = el("option", "", o.label); op.value = o.value; if (o.value === v) op.selected = true; ctl.appendChild(op); });
-          read = function () { return ctl.value; }; break;
-        case "multi_choice":
-          ctl = el("div", "bpa-multi");
-          d.options.forEach(function (o) {
-            var lab = el("label", "checkbox"), cb = el("input"); cb.type = "checkbox"; cb.value = o.value;
-            cb.checked = Array.isArray(v) && v.indexOf(o.value) >= 0; lab.appendChild(cb); lab.appendChild(document.createTextNode(" " + o.label)); ctl.appendChild(lab);
-          });
-          read = function () { return Array.prototype.filter.call(ctl.querySelectorAll("input"), function (x) { return x.checked; }).map(function (x) { return x.value; }); };
-          break;
-        default:
-          ctl = el("input"); ctl.type = d.type === "url" ? "url" : d.type === "email" ? "email" : "text"; ctl.value = v || ""; read = function () { return ctl.value; };
-      }
-      var f = field(d.name + (d.translatable ? " (" + c.lang().toUpperCase() + ")" : ""), ctl, d.help, d.required);
-      if (!sid) Array.prototype.forEach.call(f.querySelectorAll("input,select,textarea"), function (x) { x.disabled = true; });
-      var st = f.querySelector(".bpa-field-status");
-      ctl.addEventListener("change", function () {
-        var vals = {}; vals[d.key] = read();
-        st.textContent = T.attrSaving; st.className = "tiny bpa-field-status";
-        postJSON("/analysis/bpa/symbols/" + encodeURIComponent(sid) + "/attrs", { workspace_id: ws, lang: c.lang(), values: vals })
-          .then(function (j) {
-            if (j.errors && j.errors[d.key]) { st.textContent = j.errors[d.key]; st.className = "tiny bpa-field-status bad"; return; }
-            st.textContent = "✓ " + T.attrSaved; st.className = "tiny bpa-field-status ok";
-            if (detail) detail.attributes.forEach(function (a) { if (a.key === d.key) a.value = j.values[d.key]; });
-          })
-          .catch(function (err) { st.textContent = err.message; st.className = "tiny bpa-field-status bad"; });
-      });
-      body.appendChild(f);
+    BpaPanel.attrs(body, defs.map(function (d) { return Object.assign({}, d, { value: values[d.key] }); }), {
+      lang: c.lang(), T: T, body: { workspace_id: ws },
+      postUrl: sid ? "/analysis/bpa/symbols/" + encodeURIComponent(sid) + "/attrs" : null,
+      onSaved: function (key, vals) { if (detail) detail.attributes.forEach(function (a) { if (a.key === key) a.value = vals[key]; }); }
     });
     if (sid && detail && detail.updated_by) body.appendChild(el("p", "tiny muted", fmt(T.lastChange, { u: detail.updated_by, d: window.pmLocalTime(detail.updated_at) })));
   }
   function drawOcc(body, sid) {
     if (!sid || !detail) { body.appendChild(el("p", "tiny muted", T.notYetSaved)); return; }
-    var ul = el("ul", "bpa-plist");
-    detail.occurrences.forEach(function (o) {
-      var li = el("li", o.current ? "current" : "");
-      var t = el("div", "bpa-pmain");
-      if (o.current) t.appendChild(el("strong", "", T.thisModel));
-      else { var a = el("a", "", o.label); a.href = o.url + "&focus=" + encodeURIComponent(o.elements[0]); a.target = "_blank"; a.rel = "noopener"; t.appendChild(a); }
-      t.appendChild(el("span", "tiny muted", o.process + (o.elements.length > 1 ? " · " + fmt(T.timesIn, { n: o.elements.length }) : "")));
-      li.appendChild(t);
-      ul.appendChild(li);
-    });
-    body.appendChild(ul);
-    if (detail.hidden_occurrences) body.appendChild(el("p", "tiny muted", fmt(T.hiddenModels, { n: detail.hidden_occurrences })));
+    BpaPanel.occurrences(body, detail, { T: T, links: true });
   }
   function drawRel(body, sid) {
     if (!sid || !detail) { body.appendChild(el("p", "tiny muted", T.notYetSaved)); return; }
-    if (!detail.relations.length) { body.appendChild(el("p", "tiny muted", T.noRelations)); return; }
-    var groups = {};
-    detail.relations.forEach(function (r) { (groups[r.label] = groups[r.label] || []).push(r); });
-    Object.keys(groups).forEach(function (label) {
-      body.appendChild(el("h4", "bpa-rel-h", label));
-      var ul = el("ul", "bpa-plist");
-      groups[label].forEach(function (r) {
-        var li = el("li", r.current ? "current" : "");
-        var t = el("div", "bpa-pmain");
-        t.appendChild(el("span", "", r.other.name));
-        t.appendChild(el("span", "tiny muted", r.other.type + " · " + (r.current ? T.thisModel : "")
-          + r.models.filter(function (m) { return m.id !== c.modelId; }).map(function (m) { return (r.current ? ", " : "") + m.process + " · " + m.label; }).join(", ")));
-        li.appendChild(t); ul.appendChild(li);
-      });
-      body.appendChild(ul);
-    });
+    BpaPanel.relations(body, detail, { T: T, modelId: c.modelId });
   }
 
   // ---------- copia / incolla (anche tra schede) ----------
@@ -292,7 +223,7 @@ function initBpaRepo(c) {
     var items = shapes.map(function (s) {
       var bo = s.businessObject, ed = bo.eventDefinitions && bo.eventDefinitions[0], lc = bo.loopCharacteristics;
       return { id: s.id, type: bo.$type, name: bo.name || "", x: s.x, y: s.y, w: s.width, h: s.height,
-               symbol: symbolOf(s), stype: typeOf(s), eventDef: ed ? ed.$type : null,
+               symbol: map[s.id] && map[s.id].anonymous ? null : symbolOf(s), stype: typeOf(s), eventDef: ed ? ed.$type : null,
                loop: lc ? lc.$type : null, sequential: !!(lc && lc.isSequential),
                expanded: /SubProcess|Transaction/.test(bo.$type) ? !!(s.di && s.di.isExpanded) : undefined,
                attachedTo: bo.attachedToRef && ids.indexOf(s.host && s.host.id) >= 0 ? s.host.id : null,

@@ -65,6 +65,8 @@ def _model(db, model_id: str, workspace_id: str) -> BpaModel | None:
 def _forget(db, model_id: str) -> None:
     db.query(BpaOccurrence).filter_by(model_id=model_id).delete(synchronize_session=False)
     db.query(BpaRelation).filter_by(model_id=model_id).delete(synchronize_session=False)
+    db.flush()
+    bpa_repo.drop_orphan_anonymous(db)
 
 
 def _known_labels(db, config_id: str) -> dict:
@@ -376,9 +378,10 @@ def _model_label(db, m: BpaModel, lang: str, user=None, cache: dict | None = Non
     ws = db.get(ProcessWorkspace, ws_id) if ws_id else None
     rank = (m.stats or {}).get("rank")
     variant = t(lang, "Variante {n}", n=rank) if rank else t(lang, "Variante")
-    ok = bool(user and ws_id and has_process_access(user, ws_id, required_role="data_analyst"))
+    admin = bool(user and user.is_admin)   # l'Amministratore vede tutti i BPMN (senza aprirli: non lavora sulle analisi)
+    ok = admin or bool(user and ws_id and has_process_access(user, ws_id, required_role="data_analyst"))
     out = {"id": m.id, "process": ws.process_name if ws else "—", "label": f"{variant} · {m.lead_type}",
-           "url": f"/analysis/bpa/{m.id}/edit?workspace_id={ws_id}" if ok else None, "visible": ok}
+           "url": f"/analysis/bpa/{m.id}/edit?workspace_id={ws_id}" if ok and not admin else None, "visible": ok}
     if cache is not None:
         cache[m.id] = out
     return out
@@ -403,7 +406,8 @@ def _symbol_brief(db, sid: str, lang: str, user, cache: dict | None = None) -> d
             hidden += 1
     return {"id": s.id, "type": s.symbol_type, "type_label": bpa_repo.SYMBOL_TYPES[s.symbol_type][lang],
             "name": bpa_repo.name_of(s, lang), "name_other": bpa_repo.name_of(s, bpa_repo.other_lang(lang)),
-            "models": models, "hidden_models": hidden}
+            "display": bpa_repo.display_name(db, s, lang), "anonymous": bool(s.anonymous),
+            "subtypes": bpa_repo.subtypes(db, s, lang), "models": models, "hidden_models": hidden}
 
 
 def _def_json(d: BpaAttributeDef, lang: str) -> dict:
@@ -452,7 +456,8 @@ def bpa_model_symbols(request: Request, model_id: str, workspace_id: str):
             s = db.get(BpaSymbol, o.symbol_id)
             others = {x.model_id for x in db.query(BpaOccurrence).filter(BpaOccurrence.symbol_id == o.symbol_id,
                                                                        BpaOccurrence.model_id != m.id).all()}
-            out[o.element_id] = {"symbol": o.symbol_id, "type": s.symbol_type if s else None, "elsewhere": len(others)}
+            out[o.element_id] = {"symbol": o.symbol_id, "type": s.symbol_type if s else None, "elsewhere": len(others),
+                                 "anonymous": bool(s and s.anonymous)}
         return JSONResponse({"elements": out})
     finally:
         db.close()
@@ -486,53 +491,61 @@ def bpa_symbol_detail(request: Request, symbol_id: str, workspace_id: str, lang:
         return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
     db = SessionLocal()
     try:
-        s = db.get(BpaSymbol, symbol_id)
-        if s is None:
+        d = symbol_detail(db, symbol_id, ui, lang, user, model_id)
+        if d is None:
             return JSONResponse({"error": t(ui, "Simbolo non trovato.")}, status_code=404)
-        cache = {}
-        brief = _symbol_brief(db, s.id, ui, user, cache)
-        brief["name"] = bpa_repo.name_of(s, lang)
-        brief["name_other"] = bpa_repo.name_of(s, bpa_repo.other_lang(lang))
-        defs = [d for d in db.query(BpaAttributeDef).order_by(BpaAttributeDef.position).all() if d.symbol_type == s.symbol_type]
-        attrs = [{**_def_json(d, ui), "value": (s.attrs or {}).get(d.key)} for d in defs]
-        occ = defaultdict(list)
-        for o in db.query(BpaOccurrence).filter_by(symbol_id=s.id).all():
-            occ[o.model_id].append(o.element_id)
-        occurrences, hidden = [], 0
-        for mid, eids in occ.items():
-            m = db.get(BpaModel, mid)
-            if m is None:
-                continue
-            lab = _model_label(db, m, ui, user, cache)
-            if not lab["visible"]:
-                hidden += 1
-                continue
-            occurrences.append({**lab, "elements": eids, "current": mid == model_id})
-        occurrences.sort(key=lambda x: (not x["current"], x["process"], x["label"]))
-        rels = {}
-        for r in db.query(BpaRelation).filter((BpaRelation.source_id == s.id) | (BpaRelation.target_id == s.id)).all():
-            out = r.source_id == s.id
-            oid = r.target_id if out else r.source_id
-            k = (r.kind, out, oid)
-            if k not in rels:
-                o2 = db.get(BpaSymbol, oid)
-                if o2 is None:
-                    continue
-                rels[k] = {"kind": r.kind, "label": bpa_repo.RELATION_KINDS[r.kind][ui][0 if out else 1],
-                           "other": {"id": o2.id, "type": bpa_repo.SYMBOL_TYPES[o2.symbol_type][ui],
-                                     "name": bpa_repo.name_of(o2, lang)}, "models": [], "current": False}
-            m = db.get(BpaModel, r.model_id)
-            if m is not None:
-                lab = _model_label(db, m, ui, user, cache)
-                if lab["visible"] and lab not in rels[k]["models"]:
-                    rels[k]["models"].append(lab)
-                rels[k]["current"] = rels[k]["current"] or r.model_id == model_id
-        relations = sorted(rels.values(), key=lambda x: (not x["current"], x["label"], x["other"]["name"].casefold()))
-        return JSONResponse({"symbol": brief, "attributes": attrs, "occurrences": occurrences, "hidden_occurrences": hidden,
-                             "relations": relations, "created_by": s.created_by, "created_at": utc_iso(s.created_at),
-                             "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at) if s.updated_at else None})
+        return JSONResponse(d)
     finally:
         db.close()
+
+
+def symbol_detail(db, symbol_id: str, ui: str, lang: str, user, model_id: str = "") -> dict | None:
+    """Attributi (con i valori), occorrenze e relazioni di un simbolo, per il pannello delle proprieta'."""
+    s = db.get(BpaSymbol, symbol_id)
+    if s is None:
+        return None
+    cache = {}
+    brief = _symbol_brief(db, s.id, ui, user, cache)
+    brief["name"] = bpa_repo.name_of(s, lang)
+    brief["name_other"] = bpa_repo.name_of(s, bpa_repo.other_lang(lang))
+    defs = [d for d in db.query(BpaAttributeDef).order_by(BpaAttributeDef.position).all() if d.symbol_type == s.symbol_type]
+    attrs = [{**_def_json(d, ui), "value": (s.attrs or {}).get(d.key)} for d in defs]
+    occ = defaultdict(list)
+    for o in db.query(BpaOccurrence).filter_by(symbol_id=s.id).all():
+        occ[o.model_id].append(o.element_id)
+    occurrences, hidden = [], 0
+    for mid, eids in occ.items():
+        m = db.get(BpaModel, mid)
+        if m is None:
+            continue
+        lab = _model_label(db, m, ui, user, cache)
+        if not lab["visible"]:
+            hidden += 1
+            continue
+        occurrences.append({**lab, "elements": eids, "current": mid == model_id})
+    occurrences.sort(key=lambda x: (not x["current"], x["process"], x["label"]))
+    rels = {}
+    for r in db.query(BpaRelation).filter((BpaRelation.source_id == s.id) | (BpaRelation.target_id == s.id)).all():
+        out = r.source_id == s.id
+        oid = r.target_id if out else r.source_id
+        k = (r.kind, out, oid)
+        if k not in rels:
+            o2 = db.get(BpaSymbol, oid)
+            if o2 is None:
+                continue
+            rels[k] = {"kind": r.kind, "label": bpa_repo.RELATION_KINDS[r.kind][ui][0 if out else 1],
+                       "other": {"id": o2.id, "type": bpa_repo.SYMBOL_TYPES[o2.symbol_type][ui],
+                                 "name": bpa_repo.display_name(db, o2, lang)}, "models": [], "current": False}
+        m = db.get(BpaModel, r.model_id)
+        if m is not None:
+            lab = _model_label(db, m, ui, user, cache)
+            if lab["visible"] and lab not in rels[k]["models"]:
+                rels[k]["models"].append(lab)
+            rels[k]["current"] = rels[k]["current"] or r.model_id == model_id
+    relations = sorted(rels.values(), key=lambda x: (not x["current"], x["label"], x["other"]["name"].casefold()))
+    return {"symbol": brief, "attributes": attrs, "occurrences": occurrences, "hidden_occurrences": hidden,
+            "relations": relations, "created_by": s.created_by, "created_at": utc_iso(s.created_at),
+            "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at) if s.updated_at else None}
 
 
 @router.post("/analysis/bpa/symbols/{symbol_id}/attrs")
@@ -549,28 +562,33 @@ async def bpa_symbol_attrs(request: Request, symbol_id: str):
     values = body.get("values") if isinstance(body.get("values"), dict) else {}
     db = SessionLocal()
     try:
-        s = db.get(BpaSymbol, symbol_id)
-        if s is None:
-            return JSONResponse({"error": t(ui, "Simbolo non trovato.")}, status_code=404)
-        defs = {d.key: d for d in db.query(BpaAttributeDef).filter_by(symbol_type=s.symbol_type).all()}
-        attrs, errors = dict(s.attrs or {}), {}
-        for k, v in values.items():
-            d = defs.get(k)
-            if d is None:
-                continue
-            val, err = bpa_repo.clean_value(d, v, lang, attrs.get(k))
-            if err:
-                errors[k] = t(ui, "Valore non valido.")
-                continue
-            if val is None:
-                attrs.pop(k, None)
-            else:
-                attrs[k] = val
-        s.attrs = attrs
-        s.updated_by, s.updated_at = user.name, _now()
-        db.add(s)
-        db.commit()
-        return JSONResponse({"saved": not errors, "errors": errors, "values": attrs,
-                             "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at)})
+        out = save_symbol_attrs(db, symbol_id, values, lang, ui, user.name)
+        return JSONResponse(out or {"error": t(ui, "Simbolo non trovato.")}, status_code=200 if out else 404)
     finally:
         db.close()
+
+
+def save_symbol_attrs(db, symbol_id: str, values: dict, lang: str, ui: str, user_name: str) -> dict | None:
+    s = db.get(BpaSymbol, symbol_id)
+    if s is None:
+        return None
+    defs = {d.key: d for d in db.query(BpaAttributeDef).filter_by(symbol_type=s.symbol_type).all()}
+    attrs, errors = dict(s.attrs or {}), {}
+    for k, v in values.items():
+        d = defs.get(k)
+        if d is None:
+            continue
+        val, err = bpa_repo.clean_value(d, v, lang, attrs.get(k))
+        if err:
+            errors[k] = t(ui, "Valore non valido.")
+            continue
+        if val is None:
+            attrs.pop(k, None)
+        else:
+            attrs[k] = val
+    s.attrs = attrs
+    s.updated_by, s.updated_at = user_name, _now()
+    db.add(s)
+    db.commit()
+    return {"saved": not errors, "errors": errors, "values": attrs,
+            "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at)}
