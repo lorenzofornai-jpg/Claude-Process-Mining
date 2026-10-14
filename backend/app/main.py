@@ -66,13 +66,14 @@ def _startup() -> None:
     seed_default_admin()
     from app.services import bpa_repo
     try:
-        bpa_repo.refresh_views()   # viste SQL dell'archivio dei simboli (una per tipo)
         from app.db import SessionLocal
         db = SessionLocal()
         try:
-            if bpa_repo.backfill(db):   # modelli registrati prima degli eventi/gateway senza nome
-                db.commit()
+            bpa_repo.backfill(db)   # modelli registrati prima degli eventi/gateway senza nome
+            bpa_repo.text_attrs_in_both_languages(db)   # attributi di testo: sempre italiano e inglese
+            db.commit()
         finally:
             db.close()
+        bpa_repo.refresh_views()   # viste SQL dell'archivio dei simboli (una per tipo)
     except Exception as exc:   # le viste servono solo a consultare: l'app parte comunque
         print(f"BPA: viste dell'archivio non aggiornate ({exc!r}).")

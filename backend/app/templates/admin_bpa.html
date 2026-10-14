@@ -75,10 +75,10 @@
         <select name="data_type" id="bpa-dtype" {{ 'disabled' if e }}>
           {% for k, v in data_types.items() %}<option value="{{ k }}" {{ 'selected' if k == cur }}>{{ v[lang] }}</option>{% endfor %}
         </select>
+        <span class="tiny muted bpa-only-text">{{ _("I testi hanno sempre un valore in italiano e uno in inglese.") }}</span>
         {% if e %}<span class="tiny muted">{{ _("Il tipo di dato non si cambia dopo la creazione (i valori già inseriti non sarebbero più validi).") }}</span>{% endif %}
       </label>
       <label class="checkbox"><input type="checkbox" name="required" value="1" {{ 'checked' if (f.get('required') == '1' if form else (e and e.required)) }}> {{ _("Obbligatorio") }}</label>
-      <label class="checkbox bpa-only-text"><input type="checkbox" name="translatable" value="1" {{ 'checked' if (f.get('translatable') == '1' if form else (e and e.translatable)) }}> {{ _("Un valore per lingua (italiano e inglese)") }}</label>
       <label class="llm-wide bpa-only-list">{{ _("Voci dell'elenco, una per riga: «Etichetta italiana | English label»") }}
         <textarea name="options" rows="5">{% if form %}{{ f.get('options', '') }}{% elif e and e.options %}{% for o in e.options %}{{ o.it }}{% if o.en and o.en != o.it %} | {{ o.en }}{% endif %}
 {% endfor %}{% endif %}</textarea>

@@ -483,7 +483,7 @@ async def admin_bpa_attr_save(request: Request):
         d.help = {"it": hi, "en": he or hi} if hi or he else None
         d.options = options
         d.required = form.get("required") == "1"
-        d.translatable = form.get("translatable") == "1" and dtype in bpa_repo.TEXT_TYPES
+        d.translatable = dtype in bpa_repo.TEXT_TYPES   # i testi hanno sempre un valore in italiano e uno in inglese
         db.add(d)
         db.commit()
     finally:

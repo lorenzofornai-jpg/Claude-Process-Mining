@@ -513,6 +513,31 @@ def subtypes(db, s, lang: str) -> list[str]:
     return seen
 
 
+def text_attrs_in_both_languages(db) -> int:
+    """Gli attributi di testo hanno sempre due valori (italiano e inglese): quelli creati prima con un valore solo
+    diventano {"it", "en"} con lo stesso testo. Ritorna quanti valori sono stati convertiti."""
+    from app.models import BpaAttributeDef, BpaSymbol
+    keys = set()
+    for d in db.query(BpaAttributeDef).filter(BpaAttributeDef.data_type.in_(sorted(TEXT_TYPES))).all():
+        if not d.translatable:
+            d.translatable = True
+            db.add(d)
+        keys.add(d.key)
+    n = 0
+    for s in db.query(BpaSymbol).all():
+        attrs = dict(s.attrs or {})
+        changed = False
+        for k in keys:
+            if isinstance(attrs.get(k), str):
+                attrs[k] = {"it": attrs[k], "en": attrs[k]}
+                changed = True
+                n += 1
+        if changed:
+            s.attrs = attrs
+            db.add(s)
+    return n
+
+
 def backfill(db) -> int:
     """Modelli gia' registrati prima dei simboli senza nome (eventi, gateway...): si completano. Ritorna quanti."""
     from app.models import BpaModel, BpaOccurrence

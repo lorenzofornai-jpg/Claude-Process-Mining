@@ -1722,7 +1722,6 @@ EN: dict[str, str] = {
     'Tipo di simbolo': 'Symbol type',
     "Togliere l'attributo «{a}»? I valori inseriti per tutti i simboli si perdono.": 'Remove the attribute “{a}”? The values entered for all symbols will be lost.',
     'Un elenco deve avere almeno una voce.': 'A list must have at least one item.',
-    'Un valore per lingua (italiano e inglese)': 'One value per language (Italian and English)',
     'Valore non valido.': 'Invalid value.',
     "Voci dell'elenco, una per riga: «Etichetta italiana | English label»": 'List items, one per line: “Italian label | English label”',
     'nessun BPMN': 'no BPMN',
@@ -1743,4 +1742,5 @@ EN: dict[str, str] = {
     'Sottotipo': 'Subtype',
     'Tocca una riga per aprire il pannello delle proprietà.': 'Tap a row to open the properties panel.',
     'senza nome': 'no name',
+    'I testi hanno sempre un valore in italiano e uno in inglese.': 'Texts always have one value in Italian and one in English.',
 }
