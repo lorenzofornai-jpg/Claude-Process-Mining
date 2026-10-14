@@ -123,10 +123,25 @@ function initOverlay(o) {
     var layer = canvas.getLayer("pm-overlay", 2);
     while (layer.firstChild) layer.removeChild(layer.firstChild);
     extraBox = {}; bandBottom = 0;
-    var parts = reg.filter(function (e) { return e.type === "bpmn:Participant"; });
-    var all = reg.filter(function (e) { return !e.waypoints && e.type !== "label" && e.parent; });
-    var minX = Math.min.apply(null, all.map(function (e) { return e.x; }).concat([0]));
-    var bottom = Math.max.apply(null, (parts.length ? parts : all).map(function (e) { return e.y + e.height; }).concat([0]));
+    // bordo inferiore: l'ultima lane (o pool) che contiene le attivita' e gli eventi del flusso, non pool vuote,
+    // annotazioni o altri elementi lontani
+    var nodes = reg.filter(function (e) {
+      return !e.waypoints && e.type !== "label" && /Task|SubProcess|CallActivity|Event|Gateway/.test(e.type);
+    });
+    var lanes = [];
+    nodes.forEach(function (n) {
+      var p = n.parent;
+      while (p && p.type !== "bpmn:Lane" && p.type !== "bpmn:Participant") p = p.parent;
+      if (p) {  // la lane piu' interna che contiene il nodo (le lane del modello non sono figlie nel registro)
+        var inner = reg.filter(function (l) {
+          return l.type === "bpmn:Lane" && n.x >= l.x && n.x <= l.x + l.width && n.y >= l.y && n.y <= l.y + l.height;
+        });
+        lanes.push(inner.length ? inner[inner.length - 1] : p);
+      }
+    });
+    var ref = lanes.length ? lanes : nodes;
+    var minX = Math.min.apply(null, ref.map(function (e) { return e.x; }).concat(ref.length ? [] : [0]));
+    var bottom = Math.max.apply(null, ref.map(function (e) { return e.y + e.height; }).concat(ref.length ? [] : [0]));
     // fascia sotto la pool: ogni passaggio rosso scende dall'attivita' a un suo livello, corre in orizzontale e
     // risale (o scende) nell'attivita' di arrivo; le attivita' rosse stanno ancora piu' in basso
     var edges = data.red_edges || [], STEP = 14, NLEV = Math.max(1, Math.min(edges.length, 10));
