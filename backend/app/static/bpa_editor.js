@@ -237,13 +237,12 @@ function initBpaEditor(o) {
   document.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { e.preventDefault(); save(); }
   });
-  // «← BPA»: con modifiche non salvate prima salva (su iPad il browser non chiede conferma uscendo)
-  var back = document.querySelector(".bpa-back");
-  if (back) back.addEventListener("click", function (e) {
+  // il modello e' in una scheda sua: quando si passa a un'altra scheda (o la si chiude) le modifiche si salvano da sole
+  // (su iPad il browser non chiede conferma chiudendo una scheda con modifiche non salvate)
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "hidden") return;
     commitText();
-    if (!dirty) return;
-    e.preventDefault();
-    save().then(function (ok) { if (ok) location.href = back.href; });
+    if (dirty && !busy) save();
   });
   window.addEventListener("beforeunload", function (e) { commitText(); if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 

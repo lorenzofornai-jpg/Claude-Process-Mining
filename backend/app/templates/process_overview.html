@@ -93,7 +93,7 @@
     bpaSendTip: {{ _("Crea il modello BPMN 2.0 di questa variante nella Business Process Analysis, da completare nell'editor")|tojson }},
     bpaSending: {{ _("Creo il modello BPMN…")|tojson }},
     bpaIn: {{ _("Nella BPA")|tojson }},
-    bpaOpenModel: {{ _("Apri il modello BPMN")|tojson }},
+    bpaOpenModel: {{ _("Apri il modello BPMN (in una nuova scheda)")|tojson }},
     bpaRevoke: {{ _("Togli dalla BPA")|tojson }},
     bpaRevokeAsk: {{ _("Togliere la variante dalla BPA? Il modello BPMN si perde.")|tojson }},
     bpaRevokeEdited: {{ _("Togliere la variante dalla BPA? Il modello BPMN e le modifiche fatte si perdono.")|tojson }},
@@ -203,7 +203,7 @@
     } else {
       var open = el("a", "secondary button-link ov-bpa sent", "✓ " + T.bpaIn);
       open.href = "/analysis/bpa/" + encodeURIComponent(m.id) + "/edit?workspace_id=" + encodeURIComponent(WS);
-      open.title = T.bpaOpenModel;
+      open.title = T.bpaOpenModel; open.target = "_blank"; open.rel = "noopener";
       var undo = el("button", "link-btn", T.bpaRevoke); undo.type = "button";
       undo.addEventListener("click", function () {
         pmConfirm(m.edited ? T.bpaRevokeEdited : T.bpaRevokeAsk, { ok: T.bpaRevoke }).then(function (yes) {

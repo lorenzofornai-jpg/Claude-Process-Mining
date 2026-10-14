@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}BPMN · {{ process_name }}{% endblock %}
+{# ogni modello si apre in una scheda sua: il titolo dice variante, oggetto guida e processo #}
+{% block title %}{{ _("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante") }} · {{ model.lead }} · {{ process_name }} (BPMN){% endblock %}
 {% block main_class %}bpa-full{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/vendor/bpmn-js/assets/diagram-js.css?v={{ static_version }}">
@@ -8,7 +9,6 @@
 {% set title = (_("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante")) ~ " · " ~ model.lead %}
 <div class="bpa-editor">
   <div class="bpa-bar">
-    <a class="bpa-back" href="/analysis/bpa?workspace_id={{ workspace_id }}&config_id={{ config_id }}">← BPA</a>
     <div class="bpa-title">
       <strong>{{ title }}</strong>
       <span class="tiny muted">{{ process_name }} · BPMN 2.0</span>

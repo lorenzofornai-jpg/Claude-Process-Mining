@@ -1607,7 +1607,8 @@ EN: dict[str, str] = {
     # BPA (Business Process Analysis)
     'Adatta': 'Fit',
     "Annulla l'ultima modifica": 'Undo the last change',
-    'Apri il modello BPMN': 'Open the BPMN model',
+    'Apri il modello BPMN (in una nuova scheda)': 'Open the BPMN model (in a new tab)',
+    'Si apre in una nuova scheda': 'Opens in a new tab',
     'Apri la BPA': 'Open the BPA',
     'Caricamento del modello…': 'Loading the model…',
     "Crea il modello BPMN 2.0 di questa variante nella Business Process Analysis, da completare nell'editor": 'Create the BPMN 2.0 model of this variant in the Business Process Analysis, to be completed in the editor',

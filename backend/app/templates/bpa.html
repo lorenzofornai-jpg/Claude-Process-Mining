@@ -14,7 +14,7 @@
   <ul class="bpa-list">
     {% for m in group %}
     <li class="bpa-item">
-      <a class="bpa-open" href="/analysis/bpa/{{ m.id }}/edit?workspace_id={{ workspace_id }}">
+      <a class="bpa-open" href="/analysis/bpa/{{ m.id }}/edit?workspace_id={{ workspace_id }}" target="_blank" rel="noopener" title="{{ _("Si apre in una nuova scheda") }}">
         <span class="bpa-badge">BPMN</span>
         <span class="bpa-main">
           <strong>{% if m.stats.rank %}{{ _("Variante {n}", n=m.stats.rank) }}{% else %}{{ _("Variante") }}{% endif %} · {{ lead }}</strong>
