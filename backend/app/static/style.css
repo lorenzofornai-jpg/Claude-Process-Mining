@@ -1379,6 +1379,7 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .ovl-canvas .pm-ov-extra-badge-text { font: bold 11px Arial, sans-serif; fill: #fff; text-anchor: middle; }
 .ovl-canvas .pm-ov-red { fill: none; stroke: #d23f5b; stroke-width: 1.5px; opacity: .85; }
 .ovl-canvas .pm-ov-red-text { font: bold 11px Arial, sans-serif; fill: #b0263f; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.ovl-canvas .pm-ov-red-text.start { text-anchor: start; }
 @media (max-width: 900px) { .ovl-work { flex-direction: column; } .ovl-side { width: auto; border-left: 0; border-top: 1px solid var(--border); max-height: 420px; } }
 .bpa-ref { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; white-space: nowrap; }
 .bpa-actions { align-items: center; flex-wrap: wrap; }

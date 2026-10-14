@@ -118,19 +118,23 @@ function initOverlay(o) {
   }
 
   // attivita' in rosso sotto la pool, passaggi in rosso come curve
-  var extraBox = {};
+  var extraBox = {}, bandBottom = 0;
   function drawExtras(canvas, reg, overlays) {
     var layer = canvas.getLayer("pm-overlay", 2);
     while (layer.firstChild) layer.removeChild(layer.firstChild);
-    extraBox = {};
+    extraBox = {}; bandBottom = 0;
     var parts = reg.filter(function (e) { return e.type === "bpmn:Participant"; });
     var all = reg.filter(function (e) { return !e.waypoints && e.type !== "label" && e.parent; });
     var minX = Math.min.apply(null, all.map(function (e) { return e.x; }).concat([0]));
     var bottom = Math.max.apply(null, (parts.length ? parts : all).map(function (e) { return e.y + e.height; }).concat([0]));
-    var W = 120, H = 70, GAP = 50, x0 = minX + 140, y0 = bottom + 110;
+    // fascia sotto la pool: ogni passaggio rosso scende dall'attivita' a un suo livello, corre in orizzontale e
+    // risale (o scende) nell'attivita' di arrivo; le attivita' rosse stanno ancora piu' in basso
+    var edges = data.red_edges || [], STEP = 14, NLEV = Math.max(1, Math.min(edges.length, 10));
+    var band0 = bottom + 36, bandEnd = band0 + (NLEV - 1) * STEP;
+    var W = 120, H = 70, GAP = 50, x0 = minX + 140, y0 = bandEnd + 70;
     (data.extra || []).forEach(function (x, i) {
       var bx = x0 + i * (W + GAP), by = y0;
-      extraBox[x.id] = { x: bx, y: by, width: W, height: H };
+      extraBox[x.id] = { x: bx, y: by, width: W, height: H, extra: true };
       layer.appendChild(sv("rect", { x: bx, y: by, width: W, height: H, rx: 8, class: "pm-ov-extra" }));
       var words = x.name.split(/\s+/), lines = [], cur = "";
       words.forEach(function (w) { if ((cur + " " + w).trim().length > 16 && cur) { lines.push(cur); cur = w; } else cur = (cur + " " + w).trim(); });
@@ -139,26 +143,41 @@ function initOverlay(o) {
       lines.forEach(function (ln, k) {
         layer.appendChild(sv("text", { x: bx + W / 2, y: by + H / 2 + (k - (lines.length - 1) / 2) * 13 + 4, class: "pm-ov-extra-text" }, ln));
       });
-      layer.appendChild(sv("rect", { x: bx, y: by - 20, width: 46, height: 16, rx: 2, class: "pm-ov-extra-badge" }));
-      layer.appendChild(sv("text", { x: bx + 23, y: by - 8, class: "pm-ov-extra-badge-text" }, num(x.count)));
+      // numero di casi sotto, a sinistra (in alto arrivano le frecce, in basso a destra quelle tra attivita' rosse)
+      layer.appendChild(sv("rect", { x: bx, y: by + H + 4, width: 46, height: 16, rx: 2, class: "pm-ov-extra-badge" }));
+      layer.appendChild(sv("text", { x: bx + 23, y: by + H + 16, class: "pm-ov-extra-badge-text" }, num(x.count)));
     });
     function box(id) { return extraBox[id] || reg.get(id); }
-    (data.red_edges || []).forEach(function (r, idx) {
+    // percorso ortogonale con angoli arrotondati: (ax,ay) -> (ax,lv) -> (bx,lv) -> (bx,by)
+    function route(ax, ay, bx, by, lv) {
+      var r = Math.min(8, Math.abs(bx - ax) / 2, Math.abs(lv - ay), Math.abs(lv - by));
+      var dx = bx > ax ? 1 : -1, d1 = lv > ay ? 1 : -1, d2 = by > lv ? 1 : -1;
+      if (Math.abs(bx - ax) < 1) return "M" + ax + " " + ay + " L" + ax + " " + lv + " L" + bx + " " + by;
+      return "M" + ax + " " + ay + " L" + ax + " " + (lv - d1 * r) + " Q" + ax + " " + lv + " " + (ax + dx * r) + " " + lv +
+             " L" + (bx - dx * r) + " " + lv + " Q" + bx + " " + lv + " " + bx + " " + (lv + d2 * r) + " L" + bx + " " + by;
+    }
+    var nOut = {}, nIn = {}, lev = 0, low = 0;
+    function slot(m, id, b, out) {   // punti di attacco diversi sullo stesso bordo
+      var k = m[id] = (m[id] || 0) + 1, f = out ? [0.4, 0.3, 0.2, 0.5] : [0.6, 0.7, 0.8, 0.5];
+      return b.x + b.width * f[(k - 1) % 4];
+    }
+    edges.forEach(function (r) {
       var a = box(r.source), b = box(r.target);
       if (!a || !b) return;
-      var ax = a.x + a.width / 2, ay = a.y + a.height / 2, bx = b.x + b.width / 2, by = b.y + b.height / 2;
-      // dal bordo dei riquadri (alto o basso secondo la posizione)
-      ay = by > ay ? a.y + a.height : (by < ay ? a.y : ay);
-      by = ay > by ? b.y + b.height : b.y;
-      var bend = Math.max(30, Math.abs(bx - ax) * 0.15);
-      var d = "M" + ax + " " + ay + " C" + ax + " " + (ay + (by > ay ? bend : -bend)) + " " + bx + " " + (by + (by > ay ? -bend : bend)) + " " + bx + " " + by;
-      layer.appendChild(sv("path", { d: d, class: "pm-ov-red", "marker-end": "url(#pm-ov-arrow)" }));
-      // etichetta lungo la curva (a 1/3, 1/2 o 2/3 alternati: le etichette vicine non si sovrappongono)
-      var tt = [0.5, 0.35, 0.65][idx % 3], u = 1 - tt;
-      var c1y = ay + (by > ay ? bend : -bend), c2y = by + (by > ay ? -bend : bend);
-      var lx = u * u * u * ax + 3 * u * u * tt * ax + 3 * u * tt * tt * bx + tt * tt * tt * bx;
-      var ly = u * u * u * ay + 3 * u * u * tt * c1y + 3 * u * tt * tt * c2y + tt * tt * tt * by;
-      layer.appendChild(sv("text", { x: lx, y: ly - 4, class: "pm-ov-red-text" }, num(r.count)));
+      var ax = slot(nOut, r.source, a, true), bx = slot(nIn, r.target, b, false), ay, by, lv;
+      if (a.extra && b.extra) {   // tra due attivita' rosse: sotto la loro fila, a destra del numero di casi
+        ax = a.x + a.width * 0.6; bx = b.x + b.width * 0.85; ay = a.y + a.height; by = b.y + b.height; lv = y0 + H + 34 + (low++ % 4) * 10;
+      } else {
+        ay = a.extra ? a.y : a.y + a.height;
+        by = b.extra ? b.y : b.y + b.height;
+        lv = band0 + (lev++ % NLEV) * STEP;
+      }
+      layer.appendChild(sv("path", { d: route(ax, ay, bx, by, lv), class: "pm-ov-red", "marker-end": "url(#pm-ov-arrow)" }));
+      if (Math.abs(bx - ax) < 30)   // quasi verticale: numero accanto alla linea
+        layer.appendChild(sv("text", { x: Math.max(ax, bx) + 6, y: (Math.min(ay, by) + lv) / 2, class: "pm-ov-red-text start" }, num(r.count)));
+      else layer.appendChild(sv("text", { x: (ax + bx) / 2, y: lv - 3, class: "pm-ov-red-text" }, num(r.count)));
+      if (!(a.extra && b.extra)) bandBottom = Math.max(bandBottom, lv);
+      if (a.extra && b.extra) extraBox[r.source].low = Math.max(extraBox[r.source].low || 0, lv);
     });
     // freccia rossa (una volta)
     var svg = canvas._svg;
@@ -175,7 +194,8 @@ function initOverlay(o) {
     canvas.zoom("fit-viewport", "auto");
     var vb = canvas.viewbox(), inner = vb.inner, outer = vb.outer;
     var xs = [inner.x, inner.x + inner.width], ys = [inner.y, inner.y + inner.height];
-    Object.keys(extraBox).forEach(function (k) { var b = extraBox[k]; xs.push(b.x, b.x + b.width); ys.push(b.y - 24, b.y + b.height); });
+    Object.keys(extraBox).forEach(function (k) { var b = extraBox[k]; xs.push(b.x, b.x + b.width); ys.push(b.y, b.y + b.height + 24); if (b.low) ys.push(b.low + 8); });
+    if (bandBottom) ys.push(bandBottom + 8);
     var x0 = Math.min.apply(null, xs) - 30, x1 = Math.max.apply(null, xs) + 30, y0 = Math.min.apply(null, ys) - 40, y1 = Math.max.apply(null, ys) + 30;
     var scale = Math.min(1.4, outer.width / (x1 - x0), outer.height / (y1 - y0));
     canvas.viewbox({ x: x0, y: y0, width: outer.width / scale, height: outer.height / scale });
