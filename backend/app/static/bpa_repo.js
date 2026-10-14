@@ -134,18 +134,28 @@ function initBpaRepo(c) {
     panel.hidden = !open;
     if (was !== open) setTimeout(function () { modeler.get("canvas").resized(); }, 0);
   }
+  var closedFor = null;   // pannello chiuso con ✕ per questo elemento: resta chiuso finche' non se ne seleziona un altro
+  var propsBtn = document.getElementById("bpa-props");
+  function syncPropsBtn() { if (propsBtn) propsBtn.disabled = !current || !panel.hidden; }
   modeler.on("selection.changed", function (ev) {
     var s = ev.newSelection || [];
     var e = s.length === 1 ? target(s[0]) : null;
-    if (!e || !typeOf(e)) { current = null; openPanel(false); return; }
+    if (!e || !typeOf(e)) { current = null; closedFor = null; openPanel(false); syncPropsBtn(); return; }
     if (current !== e) detail = null;
     current = e;
-    openPanel(true);
-    refreshPanel();
+    if (closedFor && closedFor !== e) closedFor = null;
+    if (!closedFor) { openPanel(true); refreshPanel(); }
+    syncPropsBtn();
   });
+  // ✕ chiude solo il pannello: l'elemento resta selezionato; «Proprietà» lo riapre
   document.getElementById("bpa-panel-close").addEventListener("click", function () {
-    modeler.get("selection").select(null);
+    closedFor = current; openPanel(false); syncPropsBtn();
   });
+  if (propsBtn) propsBtn.addEventListener("click", function () {
+    if (!current) return;
+    closedFor = null; openPanel(true); refreshPanel(); syncPropsBtn();
+  });
+  syncPropsBtn();
   panel.querySelectorAll("[data-ptab]").forEach(function (b) {
     b.addEventListener("click", function () { tab = b.dataset.ptab; draw(); });
   });

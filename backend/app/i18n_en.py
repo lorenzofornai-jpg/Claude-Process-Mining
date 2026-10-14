@@ -1742,4 +1742,6 @@ EN: dict[str, str] = {
     'Tocca una riga per aprire il pannello delle proprietà.': 'Tap a row to open the properties panel.',
     'senza nome': 'no name',
     'I testi hanno sempre un valore in italiano e uno in inglese.': 'Texts always have one value in Italian and one in English.',
+    "Mostra le proprietà dell'oggetto selezionato": 'Show the properties of the selected object',
+    'Proprietà': 'Properties',
 }
