@@ -237,13 +237,7 @@ function initBpaEditor(o) {
   document.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { e.preventDefault(); save(); }
   });
-  // il modello e' in una scheda sua: quando si passa a un'altra scheda (o la si chiude) le modifiche si salvano da sole
-  // (su iPad il browser non chiede conferma chiudendo una scheda con modifiche non salvate)
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState !== "hidden") return;
-    commitText();
-    if (dirty && !busy) save();
-  });
+  // chiudendo la scheda (o ricaricandola) con modifiche non salvate il browser chiede se uscire: nessun salvataggio automatico
   window.addEventListener("beforeunload", function (e) { commitText(); if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
   touchToMouse(document.getElementById("bpa-canvas"), modeler);
