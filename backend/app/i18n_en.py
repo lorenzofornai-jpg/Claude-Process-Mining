@@ -1768,4 +1768,10 @@ EN: dict[str, str] = {
     '{n} mesi': '{n} mo',
     '{n} sett': '{n} wk',
     '— scegli un BPMN —': '— choose a BPMN —',
+    'Process Overlay': 'Process Overlay',
+    "Chiedimi come leggere il confronto tra il BPMN e i dati: perché un'attività o un passaggio è in rosso o in grigio, cosa significa un numero, o la differenza tra due varianti.": 'Ask me how to read the comparison between the BPMN and the data: why an activity or a step is red or grey, what a number means, or the difference between two variants.',
+    'Come si legge questo confronto?': 'How do I read this comparison?',
+    'Qual è la differenza tra la variante 1 e la variante 2?': 'What is the difference between variant 1 and variant 2?',
+    'Perché ci sono attività e passaggi in rosso?': 'Why are there activities and steps in red?',
+    'Quanti casi seguono il modello e dove se ne discostano?': 'How many cases follow the model and where do they deviate from it?',
 }

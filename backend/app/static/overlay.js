@@ -235,4 +235,5 @@ function initOverlay(o) {
       .catch(function (e) { alert(e.message); });
   });
   load();
+  return { picked: function () { return picked; }, data: function () { return data; } };
 }

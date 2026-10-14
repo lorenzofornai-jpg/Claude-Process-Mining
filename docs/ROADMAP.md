@@ -265,10 +265,12 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   oggetti collegati (come la variante da cui è nato) e i filtri condivisi sui casi.
 - ✅ Sul BPMN (bpmn-js in sola lettura): in blu attività e collegamenti del modello trovati nei dati, con il numero di
   casi; in grigio quelli non trovati; in rosso, sotto la pool, le attività dei dati assenti dal modello e i passaggi
-  (curve) che il modello non prevede. Collegamenti attraverso gateway ed eventi: un collegamento è «nei dati» se un
+  che il modello non prevede (ognuno a un suo livello in una fascia sotto l'ultima lane con il flusso). Collegamenti attraverso gateway ed eventi: un collegamento è «nei dati» se un
   passaggio diretto tra le attività che unisce c'è nei casi. Task generati dalla variante legati per posizione (anche
   rinominati), gli altri per nome.
 - ✅ Varianti a destra come filtro (tutte, nessuna, la più frequente), con varianti scelte, quota di casi e tempo.
+- ✅ Assistente dell'analisi (page = overlay): conosce il BPMN di riferimento, colori e numeri di attività e frecce,
+  attività e passaggi in rosso e le varianti (con quelle spuntate), es. «differenza tra la variante 1 e la 2».
 - Da fare: conformità per caso (fitness), attività del modello con nomi diversi da quelli dei dati da collegare a mano.
 
 ## BPA — Archivio degli oggetti BPMN (14 ottobre 2026)

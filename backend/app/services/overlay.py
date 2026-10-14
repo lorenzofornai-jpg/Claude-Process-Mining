@@ -207,6 +207,7 @@ def compute(model, lead: str, xml: str, steps: list[dict], labels: dict, lang: s
     tr = lambda a: (labels.get(a) or {}).get(lang) or a
     return {
         "cases_total": len(cases), "cases_selected": len(sel), "variants_total": len(vs),
+        "picked": None if variant_ids is None else sorted(set(variant_ids)),
         "variants": [{k: v[k] for k in ("id", "steps", "count", "share", "median")} for v in vs[:MAX_VARIANTS]],
         "elements": elements, "flows": flows,
         "extra": [{"id": "x:" + a, "activity": a, "name": tr(a), "count": act_cases[a]} for a in shown],

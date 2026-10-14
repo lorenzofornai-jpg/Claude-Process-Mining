@@ -1,4 +1,5 @@
-"""Assistente dell'analisi: risponde alle domande del Data Analyst sul Process Explorer e sulla Process Overview.
+"""Assistente dell'analisi: risponde alle domande del Data Analyst sul Process Explorer, sulla Process Overview e
+sul Process Overlay.
 
 Esempi: «cos'è un Accounting Document?», «perché Customer è trasversale?», «quali passaggi sono piu'
 lenti?», «perche' il tempo di attraversamento e' 31 giorni?», «cosa sono le pratiche aperte?». Conosce il
@@ -49,6 +50,15 @@ documenti diversi; di base la linea passa solo dagli eventi propri, un interrutt
 Due linee si incrociano in una fermata solo se lo stesso evento è collegato a entrambi i tipi.
 Scheda «Varianti» (alternativa al filtro per attività): si sceglie un tipo di oggetto e le sue varianti (sequenze di
 attività); il grafo mostra solo gli oggetti di quel tipo che seguono le varianti scelte ("variant_filter" nella vista).
+
+Process Overlay (page = overlay): il BPMN «di riferimento» (uno dei modelli della BPA, nato da una variante della
+Process Overview, "reference_bpmn") sovrapposto ai casi del dataset: ogni caso è un oggetto del tipo guida del BPMN
+con gli eventi degli oggetti collegati (esclusi i trasversali). In blu le attività e le frecce del modello che i casi
+seguono (con il numero di casi), in grigio quelle del modello che nei dati non compaiono, in rosso (sotto la pool) le
+attività dei dati che il modello non ha e i passaggi diretti tra attività che il modello non prevede. A destra le
+varianti dei casi («Varianti», numerate dalla più frequente, con % casi e tempo mediano): spuntandole si sceglie
+quali casi sovrapporre ("selected"). Per confrontare due varianti usa i loro "steps": di' quali attività o passaggi
+cambiano, in che ordine, e cosa significa rispetto al modello (attività in rosso, frecce grigie).
 
 Dati: con query_rows e compare_columns leggi il dataset in sola lettura. Tabelle:
 una per tipo di oggetto (id, attributi, events, first, last, duration_days, activities = attività in ordine) e
@@ -136,7 +146,8 @@ UI_LABELS = {
     "business_objects_step": "Oggetti di business", "lead_object": "Oggetto guida",
     "throughput_time": "Tempo di attraversamento", "start_to_end": "Da inizio a fine", "object_only": "Solo l'oggetto",
     "with_related": "Con gli oggetti collegati", "open_cases": "Aperti", "measurable_objective": "Obiettivo misurabile",
-    "variants": "Varianti", "happy_path": "Happy path", "other_activities": "Altre attività frequenti",
+    "variants": "Varianti", "happy_path": "Happy path", "process_overlay": "Process Overlay",
+    "reference_bpmn": "BPMN di riferimento per il process overlay", "other_activities": "Altre attività frequenti",
 }
 
 
@@ -196,6 +207,43 @@ def overview_view(ov: dict | None, focus: str | None) -> dict:
                             "median_from_start_days": days(r["start_median"])} for r in ov.get("activity_stats") or []],
         "object_types": [{"name": t["name"], "objects": t["objects"], "cross_cutting": t["hub"],
                           "median_lifetime_days": days(t["median_lifetime"])} for t in ov["types"]],
+        "user_is_looking_at": focus or None,
+    }
+
+
+def overlay_view(out: dict | None, graph: dict | None, reference: dict | None, focus: str | None) -> dict:
+    """Cosa mostra il Process Overlay: BPMN di riferimento, colori su attivita' e frecce, attivita' e passaggi in rosso,
+    varianti (tutte, con quelle spuntate)."""
+    if not out or not graph:
+        return {"reference_bpmn": reference, "user_is_looking_at": focus or None}
+    nodes = graph["nodes"]
+    status = {"ok": "blue", "miss": "grey"}
+
+    def name(nid):
+        if nid.startswith("x:"):
+            return nid[2:]
+        n = nodes.get(nid) or {}
+        return n.get("name") or (out["elements"].get(nid) or {}).get("activity") or n.get("tag") or nid
+    picked = out.get("picked")
+    return {
+        "reference_bpmn": reference,
+        "cases": {"total": out["cases_total"], "in_selected_variants": out["cases_selected"]},
+        "model_elements": [{"element": name(nid), "kind": nodes[nid]["tag"], "data_activity": e.get("activity"),
+                            "color": status[e["status"]], "cases": e["count"]}
+                           for nid, e in out["elements"].items() if nid in nodes],
+        "model_flows": [{"from": name(s), "to": name(t), "color": status[out["flows"][fid]["status"]],
+                         "cases": out["flows"][fid]["count"]} for fid, s, t in graph["flows"] if fid in out["flows"]],
+        "red_activities_not_in_model": [{"activity": x["name"], "cases": x["count"]} for x in out["extra"]],
+        "red_activities_not_drawn": out["extra_hidden"],
+        "red_passages_not_in_model": [{"from": name(r["source"]), "to": name(r["target"]), "cases": r["count"]}
+                                      for r in out["red_edges"]],
+        "model_tasks_without_data_activity": [name(n) for n in out["unmatched_tasks"]],
+        "variants_total": out["variants_total"],
+        "variants": [{"number": v["id"], "selected": picked is None or v["id"] in picked,
+                      "steps": [x["activity"] + (" ×" if x["repeated"] else "") for x in v["steps"]],
+                      "cases": v["count"], "share": round(v["share"], 3),
+                      "median_days": round(v["median"], 1) if v["median"] is not None else None}
+                     for v in out["variants"][:40]],
         "user_is_looking_at": focus or None,
     }
 
