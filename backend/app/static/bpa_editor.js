@@ -88,6 +88,8 @@ var BPMN_IT = {
   "Event-based gateway": "Gateway basato su eventi",
   "Exclusive gateway": "Gateway esclusivo",
   "Expanded pool/participant": "Pool/partecipante espanso",
+  "Empty pool/participant": "Pool/partecipante vuoto",
+  "Empty pool/participant (removes content)": "Pool/partecipante vuoto",
   "Inclusive gateway": "Gateway inclusivo",
   "Intermediate throw event": "Evento intermedio (lancio)",
   "Link intermediate catch event": "Evento intermedio di collegamento (ricezione)",
@@ -133,6 +135,9 @@ var BPMN_IT = {
   "Search": "Cerca", "No matching entries found.": "Nessun risultato."
 };
 
+// testi in inglese accorciati (nei menu non devono comparire tagliati)
+var BPMN_EN = { "Empty pool/participant (removes content)": "Empty pool/participant" };
+
 function initBpaEditor(o) {
   var T = o.T, uiLang = o.uiLang;
   var lang = o.lang;            // lingua del diagramma (nomi delle attivita'), separata da quella dell'interfaccia
@@ -144,7 +149,7 @@ function initBpaEditor(o) {
   var translate = {
     translate: ["value", function (template, replacements) {
       replacements = replacements || {};
-      var t = uiLang === "it" && BPMN_IT[template] ? BPMN_IT[template] : template;
+      var t = uiLang === "it" && BPMN_IT[template] ? BPMN_IT[template] : (BPMN_EN[template] || template);
       return t.replace(/{([^}]+)}/g, function (_, key) { return replacements[key] !== undefined ? replacements[key] : "{" + key + "}"; });
     }]
   };

@@ -1279,3 +1279,6 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .ov-bpa { margin: 0; padding: 4px 10px; min-height: 0; font-size: 13px; white-space: nowrap; }
 .ov-bpa.sent { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 .ov-variant-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+/* menu dell'editor BPMN: le voci lunghe vanno a capo invece di essere tagliate con «…» */
+.bpa-canvas .djs-popup-label, .bpa-canvas .djs-popup-title, .bpa-canvas .djs-popup-entry-description {
+  white-space: normal; overflow: visible; text-overflow: clip; }
