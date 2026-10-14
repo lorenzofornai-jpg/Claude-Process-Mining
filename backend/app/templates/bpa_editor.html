@@ -39,7 +39,7 @@
   <p id="bpa-status" class="bpa-status" aria-live="polite"></p>
   <div class="bpa-work">
     <div id="bpa-canvas" class="bpa-canvas"></div>
-    <aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà del simbolo") }}">
+    <aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà dell'oggetto") }}">
       <div class="bpa-panel-head">
         <div><span id="bpa-panel-type" class="tiny muted"></span><strong id="bpa-panel-name"></strong></div>
         <button type="button" class="link-btn" id="bpa-panel-close" aria-label="{{ _("Chiudi") }}" title="{{ _("Chiudi") }}">✕</button>
@@ -80,35 +80,35 @@
       resetting: {{ _("Rifaccio il modello dalla variante…")|tojson }},
       repo: {
         dupTitle: {{ _("Nome già usato")|tojson }},
-        dupAsk: {{ _("Nell'archivio c'è già un simbolo di tipo {t} con il nome «{n}» (compare in: {w}). Vuoi riutilizzare quel simbolo (stessi attributi, in tutti i BPMN) o dare a questo un nome diverso?")|tojson }},
+        dupAsk: {{ _("Nell'archivio c'è già un oggetto di tipo {t} con il nome «{n}» (compare in: {w}). Vuoi riutilizzare quell'oggetto (stessi attributi, in tutti i BPMN) o dare a questo un nome diverso?")|tojson }},
         reuse: {{ _("Riutilizza")|tojson }}, rename: {{ _("Rinomina")|tojson }},
         renameTitle: {{ _("Cambia il nome ovunque")|tojson }},
-        renameAsk: {{ _("Questo simbolo compare anche in altri BPMN: il nome «{n}» cambierà anche lì quando salvi ({w}).")|tojson }},
+        renameAsk: {{ _("Questo oggetto compare anche in altri BPMN: il nome «{n}» cambierà anche lì quando salvi ({w}).")|tojson }},
         renameAll: {{ _("Cambia ovunque")|tojson }}, cancel: {{ _("Annulla")|tojson }},
         hiddenModels: {{ _("{n} BPMN di processi a cui non hai accesso")|tojson }},
         noModels: {{ _("nessun BPMN")|tojson }},
-        conflicts: {{ _("Alcuni nomi sono già usati da altri simboli: scegli se riutilizzarli o rinominare.")|tojson }},
-        refreshed: {{ _("Salvato. Alcuni simboli erano stati rinominati in un altro BPMN dopo l'apertura: il modello è stato ricaricato con i nomi aggiornati.")|tojson }},
+        conflicts: {{ _("Alcuni nomi sono già usati da altri oggetti: scegli se riutilizzarli o rinominare.")|tojson }},
+        refreshed: {{ _("Salvato. Alcuni oggetti erano stati rinominati in un altro BPMN dopo l'apertura: il modello è stato ricaricato con i nomi aggiornati.")|tojson }},
         renamedElsewhere: {{ _("Nomi aggiornati anche in {n} altri BPMN.")|tojson }},
         name: {{ _("Nome")|tojson }}, noName: {{ _("(senza nome)")|tojson }},
         otherName: {{ _("In {l}: {n}")|tojson }},
-        needName: {{ _("Dai un nome all'elemento per registrarlo nell'archivio dei simboli.")|tojson }},
-        genericName: {{ _("Nome generico: dai un nome specifico per registrare l'elemento nell'archivio dei simboli.")|tojson }},
-        anonymous: {{ _("Senza un nome proprio: è un simbolo di questa sola occorrenza (non condiviso). Dagli un nome per riutilizzarlo in altri BPMN.")|tojson }},
+        needName: {{ _("Dai un nome all'elemento per registrarlo nell'archivio degli oggetti.")|tojson }},
+        genericName: {{ _("Nome generico: dai un nome specifico per registrare l'elemento nell'archivio degli oggetti.")|tojson }},
+        anonymous: {{ _("Senza un nome proprio: è un oggetto di questa sola occorrenza (non condiviso). Dagli un nome per riutilizzarlo in altri BPMN.")|tojson }},
         noOccurrences: {{ _("Nessuna occorrenza.")|tojson }},
-        notYetSaved: {{ _("Simbolo nuovo: salva il modello per registrarlo nell'archivio, poi potrai compilarne gli attributi.")|tojson }},
-        noAttrs: {{ _("Nessun altro attributo definito per questo tipo di simbolo (li definisce l'Amministratore).")|tojson }},
+        notYetSaved: {{ _("Oggetto nuovo: salva il modello per registrarlo nell'archivio, poi potrai compilarne gli attributi.")|tojson }},
+        noAttrs: {{ _("Nessun altro attributo definito per questo tipo di oggetto (li definisce l'Amministratore).")|tojson }},
         attrSaving: {{ _("Salvataggio…")|tojson }}, attrSaved: {{ _("salvato")|tojson }},
         lastChange: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
         thisModel: {{ _("Questo BPMN")|tojson }}, timesIn: {{ _("{n} volte")|tojson }},
-        noRelations: {{ _("Nessuna relazione: collega il simbolo ad altri nel diagramma e salva.")|tojson }},
+        noRelations: {{ _("Nessuna relazione: collega l'oggetto ad altri nel diagramma e salva.")|tojson }},
         copyNone: {{ _("Seleziona gli elementi da copiare (pool e lane non si copiano: per riusare una lane dalle lo stesso nome).")|tojson }},
         copied: {{ _("{n} elementi copiati: incollali qui o in un altro BPMN aperto.")|tojson }},
         pasteNone: {{ _("Niente da incollare: copia prima degli elementi.")|tojson }},
         pasteFailed: {{ _("Non è stato possibile incollare qui gli elementi copiati.")|tojson }},
         pasteTitle: {{ _("Incolla")|tojson }},
-        pasteAsk: {{ _("{n} elementi incollati sono simboli dell'archivio. Vuoi usare gli stessi simboli (nuove occorrenze, stessi attributi) o crearne di nuovi (copie con un nome diverso)?")|tojson }},
-        pasteSame: {{ _("Stessi simboli")|tojson }}, pasteNew: {{ _("Simboli nuovi")|tojson }},
+        pasteAsk: {{ _("{n} elementi incollati sono oggetti dell'archivio. Vuoi usare gli stessi oggetti (nuove occorrenze, stessi attributi) o crearne di nuovi (copie con un nome diverso)?")|tojson }},
+        pasteSame: {{ _("Stessi oggetti")|tojson }}, pasteNew: {{ _("Oggetti nuovi")|tojson }},
         pasted: {{ _("{n} elementi incollati.")|tojson }}
       }
     }

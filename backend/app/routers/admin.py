@@ -471,7 +471,7 @@ async def admin_bpa_attr_save(request: Request):
                 if x.key != key and ((x.name or {}).get("it", "").casefold() == name_it.casefold()
                                      or (x.name or {}).get("en", "").casefold() == name_en.casefold())]
         if same:
-            errors.append(msg("Esiste già un attributo con questo nome per questo tipo di simbolo."))
+            errors.append(msg("Esiste già un attributo con questo nome per questo tipo di oggetto."))
         if errors:
             ctx = _bpa_context(db, request, symbol_type, key or None, errors, dict(form))
             return templates.TemplateResponse("admin_bpa.html", {**ctx, "user": user, "saved": 0}, status_code=400)
@@ -582,7 +582,7 @@ def admin_bpa_symbol(request: Request, symbol_id: str):
     db = SessionLocal()
     try:
         d = symbol_detail(db, symbol_id, lang, lang, user)
-        return JSONResponse(d or {"error": t(lang, "Simbolo non trovato.")}, status_code=200 if d else 404)
+        return JSONResponse(d or {"error": t(lang, "Oggetto non trovato.")}, status_code=200 if d else 404)
     finally:
         db.close()
 
@@ -601,6 +601,6 @@ async def admin_bpa_symbol_attrs(request: Request, symbol_id: str):
     db = SessionLocal()
     try:
         out = save_symbol_attrs(db, symbol_id, values, lang, ui, user.name)
-        return JSONResponse(out or {"error": t(ui, "Simbolo non trovato.")}, status_code=200 if out else 404)
+        return JSONResponse(out or {"error": t(ui, "Oggetto non trovato.")}, status_code=200 if out else 404)
     finally:
         db.close()

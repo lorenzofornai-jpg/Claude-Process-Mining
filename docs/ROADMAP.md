@@ -259,7 +259,9 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - Da fare: gateway e rami alternativi da più varianti insieme (modello unico), pannello delle proprietà
   (documentazione, tipi di task), lane suggerite dall'LLM quando il dataset non ha ruoli.
 
-## BPA — Archivio dei simboli BPMN (14 ottobre 2026)
+## BPA — Archivio degli oggetti BPMN (14 ottobre 2026)
+- Nell'interfaccia si parla di «oggetti» (EN «objects»), non di simboli; nel codice e nel database restano i nomi
+  tecnici (`bpa_symbol`, `services/bpa_repo.py`).
 - Decisioni: archivio **unico per l'azienda**; rinominare un simbolo usato in più BPMN lo cambia **ovunque** (prima si
   vede dove); all'**incolla** si sceglie ogni volta tra stessi simboli e simboli nuovi; i simboli senza occorrenze
   **restano** (l'Amministratore può eliminarli).

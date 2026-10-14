@@ -493,7 +493,7 @@ def bpa_symbol_detail(request: Request, symbol_id: str, workspace_id: str, lang:
     try:
         d = symbol_detail(db, symbol_id, ui, lang, user, model_id)
         if d is None:
-            return JSONResponse({"error": t(ui, "Simbolo non trovato.")}, status_code=404)
+            return JSONResponse({"error": t(ui, "Oggetto non trovato.")}, status_code=404)
         return JSONResponse(d)
     finally:
         db.close()
@@ -563,7 +563,7 @@ async def bpa_symbol_attrs(request: Request, symbol_id: str):
     db = SessionLocal()
     try:
         out = save_symbol_attrs(db, symbol_id, values, lang, ui, user.name)
-        return JSONResponse(out or {"error": t(ui, "Simbolo non trovato.")}, status_code=200 if out else 404)
+        return JSONResponse(out or {"error": t(ui, "Oggetto non trovato.")}, status_code=200 if out else 404)
     finally:
         db.close()
 
