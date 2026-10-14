@@ -156,6 +156,17 @@ function initBpaEditor(o) {
   var modeler = new BpmnJS({ container: "#bpa-canvas", additionalModules: [translate] });
   var api = function (path) { return "/analysis/bpa/" + encodeURIComponent(o.id) + path; };
   var loadedAt = null, focusId = o.focus || null;
+  // «Adatta»: tutto il modello visibile, a destra della tavolozza (che non lo copre)
+  function fit() {
+    var canvas = modeler.get("canvas");
+    canvas.zoom("fit-viewport", "auto");
+    var vb = canvas.viewbox(), inner = vb.inner, outer = vb.outer;
+    if (!inner || !inner.width) return;
+    var pal = document.querySelector("#bpa-canvas .djs-palette"), left = (pal ? pal.offsetWidth : 0) + 24, pad = 20;
+    var scale = Math.min(Math.max(vb.scale, 0.2), (outer.width - left - pad) / inner.width, (outer.height - 2 * pad) / inner.height);
+    var w = outer.width / scale, h = outer.height / scale;
+    canvas.viewbox({ x: inner.x - left / scale, y: inner.y - (h - inner.height) / 2, width: w, height: h });
+  }
   // archivio dei simboli: nomi gia' usati, pannello delle proprieta', copia/incolla (bpa_repo.js)
   var repo = initBpaRepo({
     modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id,
@@ -170,8 +181,7 @@ function initBpaEditor(o) {
       .then(function (xml) { return modeler.importXML(xml); })
       .then(function (res) {
         lang = l; dirty = false; busy = false; loading = false;
-        modeler.get("canvas").zoom("fit-viewport", "auto");
-        document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
+        fit();
         say((res && res.warnings && res.warnings.length) ? fmt(T.warnings, { n: res.warnings.length }) : "");
         return repo.reload().then(function () { if (focusId) { repo.focus(focusId); focusId = null; } });
       })
@@ -233,15 +243,16 @@ function initBpaEditor(o) {
   }
 
   document.getElementById("bpa-save").addEventListener("click", save);
-  document.querySelectorAll("[data-dlang]").forEach(function (b) {
-    b.addEventListener("click", function () {
-      var to = b.dataset.dlang;
-      if (to === lang || busy) return;
+  // la lingua del modello e' quella dell'app (IT | EN in alto): cambiandola con modifiche in sospeso prima si salva
+  document.querySelectorAll(".lang-switch a").forEach(function (a) {
+    a.addEventListener("click", function (e) {
       commitText();
-      (dirty ? save() : Promise.resolve(true)).then(function (ok) { if (ok) load(to); });
+      if (!dirty) return;
+      e.preventDefault();
+      save().then(function (ok) { if (ok) location.href = a.href; });
     });
   });
-  document.getElementById("bpa-fit").addEventListener("click", function () { modeler.get("canvas").zoom("fit-viewport", "auto"); });
+  document.getElementById("bpa-fit").addEventListener("click", fit);
   document.getElementById("bpa-zoom-in").addEventListener("click", function () { modeler.get("zoomScroll").stepZoom(1); });
   document.getElementById("bpa-zoom-out").addEventListener("click", function () { modeler.get("zoomScroll").stepZoom(-1); });
   document.getElementById("bpa-undo").addEventListener("click", function () { modeler.get("commandStack").undo(); });
@@ -295,8 +306,8 @@ function initBpaEditor(o) {
       modeler.importXML(d.xml).then(function () {
         lang = d.lang === "en" ? "en" : "it"; loading = false; busy = false; dirty = true;
         repo.setLinks(d.links);
-        document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
-        save();
+        // bozza in un'altra lingua: si salva in quella, poi si riapre nella lingua dell'app
+        save().then(function (ok) { if (ok && lang !== o.lang) load(o.lang); });
       }).catch(function (e) { loading = false; busy = false; clearDraft(); say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
     });
   });

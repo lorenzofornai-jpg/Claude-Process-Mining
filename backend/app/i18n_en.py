@@ -1619,8 +1619,6 @@ EN: dict[str, str] = {
     'Le varianti inviate alla BPA diventano modelli BPMN 2.0 da completare.': 'Variants sent to the BPA become BPMN 2.0 models to complete.',
     'Le varianti inviate dalla Process Overview, ognuna con il suo modello BPMN 2.0 (in italiano e in inglese) da aprire a tutta pagina e completare: lane e responsabilità, gateway, eventi, annotazioni.': 'The variants sent from the Process Overview, each with its BPMN 2.0 model (in Italian and English) to open full page and complete: lanes and responsibilities, gateways, events, annotations.',
     "Le varianti scelte nella Process Overview come modelli BPMN 2.0.": 'The variants chosen in the Process Overview as BPMN 2.0 models.',
-    'Lingua del modello': 'Model language',
-    'Lingua del modello: la struttura è la stessa, cambiano i nomi': 'Model language: the structure is the same, the names change',
     'Modello aperto con {n} avvisi (elementi non riconosciuti).': 'Model opened with {n} warnings (unrecognised elements).',
     'Modello non trovato.': 'Model not found.',
     'Modifiche non salvate': 'Unsaved changes',

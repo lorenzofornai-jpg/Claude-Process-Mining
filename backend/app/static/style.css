@@ -1332,3 +1332,8 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .bpa-sym-row:hover td, .bpa-sym-row.selected td { background: color-mix(in srgb, var(--brand) 8%, transparent); }
 .bpa-sym-val { max-width: 260px; overflow-wrap: anywhere; }
 .bpa-panel-drawer { position: fixed; right: 0; top: 64px; bottom: 0; z-index: 40; box-shadow: -8px 0 24px rgba(0,0,0,.12); }
+/* editor BPMN: tavolozza a una colonna, stretta, al bordo sinistro (non copre il modello: «Adatta» lo sposta a destra) */
+.bpa-canvas .djs-palette, .bpa-canvas .djs-palette.two-column.open { left: 0; top: 0; width: 42px; border-left: 0; border-top: 0;
+  border-radius: 0 0 6px 0; max-height: 100%; overflow-y: auto; }
+.bpa-canvas .djs-palette .entry, .bpa-canvas .djs-palette .djs-palette-toggle { width: 40px; height: 38px; line-height: 38px; font-size: 24px; float: none; }
+.bpa-canvas .djs-palette .separator { margin: 3px 5px; padding-top: 3px; }
