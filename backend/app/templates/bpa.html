@@ -27,6 +27,9 @@
         <span class="bpa-go" aria-hidden="true">→</span>
       </a>
       <div class="bpa-actions">
+        <label class="checkbox bpa-ref" title="{{ _("Il BPMN che il Process Overlay confronta con i dati (uno solo per dataset)") }}">
+          <input type="radio" name="bpa-ref" value="{{ m.id }}" {{ 'checked' if m.reference }}> {{ _("Riferimento per il process overlay") }}
+        </label>
         <a class="secondary button-link" href="/analysis/bpa/{{ m.id }}/xml?workspace_id={{ workspace_id }}&lang={{ current_lang() }}&download=1">{{ _("Scarica .bpmn") }}</a>
         <button type="button" class="secondary bpa-revoke" data-id="{{ m.id }}" data-edited="{{ 1 if m.edited else 0 }}">{{ _("Togli dalla BPA") }}</button>
       </div>
@@ -42,10 +45,19 @@
 
   <p class="tiny muted" style="margin-top:16px">
     <a href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ config.id }}">{{ _("Vai alla Process Overview") }}</a> ·
+    <a href="/analysis/overlay?workspace_id={{ workspace_id }}&config_id={{ config.id }}">{{ _("Vai al Process Overlay") }}</a> ·
     <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Analisi") }}</a>
   </p>
 </div>
 <script>
+  document.querySelectorAll('input[name="bpa-ref"]').forEach(function (r) {
+    r.addEventListener("change", function () {
+      fetch("/analysis/bpa/" + encodeURIComponent(r.value) + "/reference", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: {{ workspace_id|tojson }} })
+      }).then(function (x) { if (!x.ok) throw new Error(x.status); }).catch(function (e) { alert(e.message); location.reload(); });
+    });
+  });
   document.querySelectorAll(".bpa-revoke").forEach(function (b) {
     b.addEventListener("click", function () {
       var q = b.dataset.edited === "1" ? {{ _("Togliere la variante dalla BPA? Il modello BPMN e le modifiche fatte si perdono.")|tojson }}

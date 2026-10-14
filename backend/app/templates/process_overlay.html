@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Process Overlay · {{ process_name }}{% endblock %}
+{% block main_class %}content-wide{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/diagram-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-font/css/bpmn.css?v={{ static_version }}">
+<div class="card wide overview-card">
+  <div class="explorer-head">
+    <div>
+      <h1>Process Overlay</h1>
+      <p class="muted tiny">
+        {{ _("Processo: {p}.", p=strong(process_name)) }}
+        {{ _("Dataset {d}, v{v}: {o} oggetti, {e} eventi.", d=strong(config.name), v=config.current_version, o=run.object_count, e=run.event_count) }}
+      </p>
+    </div>
+  </div>
+  <p class="muted">{{ _("Il BPMN di riferimento sovrapposto ai dati del dataset (stesso oggetto guida, con gli oggetti collegati): in blu le attività e i collegamenti del modello che i casi seguono, in grigio quelli che nei dati non compaiono, in rosso le attività e i passaggi dei dati che il modello non prevede.") }}</p>
+
+  {% if not models %}
+  <div class="banner">{{ _("Nessun BPMN nella BPA per questo dataset: invia prima una variante dalla Process Overview («Invia alla BPA»).") }}
+    <a href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ config.id }}">{{ _("Vai alla Process Overview") }}</a></div>
+  {% else %}
+  <div class="ov-controls ovl-ref">
+    <label class="ovl-ref-field">{{ _("BPMN di riferimento per il process overlay") }}
+      <select id="ovl-ref">
+        {% if not reference %}<option value="">{{ _("— scegli un BPMN —") }}</option>{% endif %}
+        {% for m in models %}
+        <option value="{{ m.id }}" {{ 'selected' if reference and reference.id == m.id }}>{% if m.stats.rank %}{{ _("Variante {n}", n=m.stats.rank) }}{% else %}{{ _("Variante") }}{% endif %} · {{ m.lead }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <a id="ovl-open" class="secondary button-link" target="_blank" rel="noopener" {% if not reference %}hidden{% endif %}
+       href="{% if reference %}/analysis/bpa/{{ reference.id }}/edit?workspace_id={{ workspace_id }}{% endif %}">{{ _("Apri il BPMN") }} ↗</a>
+    <ul class="ovl-legend tiny">
+      <li><span class="ovl-key ok"></span>{{ _("nel modello e nei dati") }}</li>
+      <li><span class="ovl-key miss"></span>{{ _("nel modello, non nei dati") }}</li>
+      <li><span class="ovl-key extra"></span>{{ _("nei dati, non nel modello") }}</li>
+    </ul>
+  </div>
+
+  {% include "_case_filters.html" %}
+
+  <div class="ovl-work" id="ovl-work" {% if not reference %}hidden{% endif %}>
+    <div class="ovl-main">
+      <div class="ovl-tools">
+        <button type="button" class="secondary bpa-icon" id="ovl-zoom-out" aria-label="{{ _("Riduci") }}" title="{{ _("Riduci") }}">−</button>
+        <button type="button" class="secondary bpa-icon" id="ovl-zoom-in" aria-label="{{ _("Ingrandisci") }}" title="{{ _("Ingrandisci") }}">+</button>
+        <button type="button" class="secondary" id="ovl-fit">{{ _("Adatta") }}</button>
+        <span id="ovl-status" class="tiny muted" aria-live="polite"></span>
+      </div>
+      <div id="ovl-canvas" class="ovl-canvas"></div>
+      <p id="ovl-note" class="tiny muted"></p>
+    </div>
+    <aside class="ovl-side">
+      <h2 class="ovl-h">{{ _("Varianti") }}</h2>
+      <div class="ovl-meter"><span>{{ _("Varianti") }}</span><strong id="ovl-vcount"></strong></div>
+      <div class="ovl-bar"><div id="ovl-vbar" class="ovl-bar-fill v"></div></div>
+      <div class="ovl-meter"><span>{{ _("Casi") }}</span><strong id="ovl-ccount"></strong></div>
+      <div class="ovl-bar"><div id="ovl-cbar" class="ovl-bar-fill c"></div></div>
+      <p class="tiny ov-var-tools"><a href="#" data-pick="all">{{ _("tutte") }}</a> · <a href="#" data-pick="none">{{ _("nessuna") }}</a> · <a href="#" data-pick="top">{{ _("solo la più frequente") }}</a></p>
+      <div class="ovl-vhead tiny muted"><span></span><span>#</span><span>{{ _("% casi") }}</span><span>{{ _("Tempo") }}</span></div>
+      <ol id="ovl-variants" class="ovl-variants"></ol>
+    </aside>
+  </div>
+  <div id="ovl-empty" class="banner" {% if reference %}hidden{% endif %}>{{ _("Scegli il BPMN di riferimento: il process overlay lo confronta con i dati del dataset.") }}</div>
+  {% endif %}
+
+  <p class="tiny muted" style="margin-top:16px"><a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Analisi") }}</a></p>
+</div>
+{% if models %}
+<script src="/static/vendor/bpmn-js/bpmn-navigated-viewer.production.min.js?v={{ static_version }}"></script>
+<script src="/static/bpa_editor.js?v={{ static_version }}"></script>
+<script src="/static/overlay.js?v={{ static_version }}"></script>
+<script>
+  var CF = initCaseFilters({ ws: {{ workspace_id|tojson }}, config: {{ config.id|tojson }}, T: CASE_FILTER_T, lang: {{ current_lang()|tojson }}, plurals: {{ plurals|tojson }} });
+  initOverlay({
+    ws: {{ workspace_id|tojson }}, config: {{ config.id|tojson }}, lang: {{ current_lang()|tojson }}, CF: CF,
+    T: {
+      loading: {{ _("Calcolo del confronto…")|tojson }},
+      error: {{ _("Il confronto non è riuscito.")|tojson }},
+      cases: {{ _("{n} casi")|tojson }}, case1: {{ _("1 caso")|tojson }},
+      of: {{ _("{a} di {b}")|tojson }},
+      empty: {{ _("Nessun caso dell'oggetto guida del BPMN con i filtri attivi.")|tojson }},
+      none: {{ _("Nessuna variante scelta: spunta almeno una variante.")|tojson }},
+      extraHidden: {{ _("Altre {n} attività presenti nei dati e non nel modello non sono disegnate (le più rare).")|tojson }},
+      unmatched: {{ _("{n} attività del BPMN non hanno un'attività con lo stesso nome nei dati (in grigio).")|tojson }},
+      days: {{ _("{n} g")|tojson }}, weeks: {{ _("{n} sett")|tojson }}, months: {{ _("{n} mesi")|tojson }}, hours: {{ _("{n} h")|tojson }}
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

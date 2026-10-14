@@ -259,6 +259,18 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
 - Da fare: gateway e rami alternativi da più varianti insieme (modello unico), pannello delle proprietà
   (documentazione, tipi di task), lane suggerite dall'LLM quando il dataset non ha ruoli.
 
+## Process Overlay (14 ottobre 2026)
+- ✅ Analisi tra Process Explorer e BPA. Nella BPA si sceglie un solo BPMN per dataset come «Riferimento per il
+  process overlay» (anche dalla pagina dell'overlay). Il confronto usa i casi dell'oggetto guida del BPMN con gli
+  oggetti collegati (come la variante da cui è nato) e i filtri condivisi sui casi.
+- ✅ Sul BPMN (bpmn-js in sola lettura): in blu attività e collegamenti del modello trovati nei dati, con il numero di
+  casi; in grigio quelli non trovati; in rosso, sotto la pool, le attività dei dati assenti dal modello e i passaggi
+  (curve) che il modello non prevede. Collegamenti attraverso gateway ed eventi: un collegamento è «nei dati» se un
+  passaggio diretto tra le attività che unisce c'è nei casi. Task generati dalla variante legati per posizione (anche
+  rinominati), gli altri per nome.
+- ✅ Varianti a destra come filtro (tutte, nessuna, la più frequente), con varianti scelte, quota di casi e tempo.
+- Da fare: conformità per caso (fitness), attività del modello con nomi diversi da quelli dei dati da collegare a mano.
+
 ## BPA — Archivio degli oggetti BPMN (14 ottobre 2026)
 - Nell'interfaccia si parla di «oggetti» (EN «objects»), non di simboli; nel codice e nel database restano i nomi
   tecnici (`bpa_symbol`, `services/bpa_repo.py`).

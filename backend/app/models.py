@@ -462,6 +462,7 @@ class BpaModel(Base):
     edited: Mapped[bool] = mapped_column(Boolean, default=False)
     registered: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # simboli gia' nell'archivio (bpa_repo)
     workspace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # processo da cui e' stata inviata
+    overlay_reference: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # riferimento del Process Overlay (uno per dataset)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)

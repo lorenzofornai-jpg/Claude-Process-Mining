@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -21,7 +21,7 @@ from app.i18n import get_lang, setup_templates, t, utc_iso
 from app.models import BpaAttributeDef, BpaModel, BpaOccurrence, BpaRelation, BpaSymbol, ProcessWorkspace
 from app.routers.analysis import _explorer_dataset, _require_analyst_access
 from app.auth import has_process_access
-from app.services import bpa_repo, bpmn, ocel_filter
+from app.services import bpa_repo, bpmn, explorer, ocel_filter, overlay
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -49,6 +49,7 @@ def variant_key(lead: str, steps: list[dict]) -> str:
 
 def _json(m: BpaModel) -> dict:
     return {"id": m.id, "lead": m.lead_type, "key": m.variant_key, "steps": m.steps, "stats": m.stats or {},
+            "reference": bool(m.overlay_reference),
             "edited": bool(m.edited), "created_by": m.created_by, "created_at": utc_iso(m.created_at),
             "updated_by": m.updated_by, "updated_at": utc_iso(m.updated_at) if m.updated_at else None}
 
@@ -592,3 +593,82 @@ def save_symbol_attrs(db, symbol_id: str, values: dict, lang: str, ui: str, user
     db.commit()
     return {"saved": not errors, "errors": errors, "values": attrs,
             "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at)}
+
+
+
+# ---------- Process Overlay: il BPMN di riferimento confrontato con i dati ----------
+
+@router.post("/analysis/bpa/{model_id}/reference")
+async def bpa_reference(request: Request, model_id: str):
+    """Sceglie il BPMN di riferimento per il Process Overlay (uno solo per dataset)."""
+    body = await request.json()
+    workspace_id = str(body.get("workspace_id") or "")
+    ui = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
+    db = SessionLocal()
+    try:
+        m = _model(db, model_id, workspace_id)
+        if m is None:
+            return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
+        for x in db.query(BpaModel).filter_by(ingestion_config_id=m.ingestion_config_id).all():
+            x.overlay_reference = x.id == m.id
+            db.add(x)
+        db.commit()
+        return JSONResponse({"reference": m.id})
+    finally:
+        db.close()
+
+
+def _reference(db, config_id: str) -> BpaModel | None:
+    return db.query(BpaModel).filter_by(ingestion_config_id=config_id, overlay_reference=True).first()
+
+
+@router.get("/analysis/overlay", response_class=HTMLResponse)
+def overlay_page(request: Request, workspace_id: str, config_id: str | None = None):
+    ctx, denied = _page_context(request, workspace_id, config_id)
+    if denied:
+        return denied
+    from app.routers.analysis import _aliases, _plurals
+    db = SessionLocal()
+    try:
+        rows = (db.query(BpaModel).filter_by(ingestion_config_id=ctx["config"].id)
+                .order_by(BpaModel.lead_type, BpaModel.created_at).all())
+        models = [_json(m) for m in rows]
+        ref = next((m for m in models if m["reference"]), None)
+    finally:
+        db.close()
+    full = explorer.load_model(ctx["run"].ocel_file_path)
+    return templates.TemplateResponse("process_overlay.html", {
+        **ctx, "models": models, "reference": ref,
+        "plurals": _plurals(get_lang(request), full.types, _aliases(ctx["user"].id, ctx["config"].id))})
+
+
+@router.get("/analysis/overlay/data")
+def overlay_data(request: Request, workspace_id: str, config_id: str, var: list[int] = Query(default=[]),
+                 vsel: int = 0, filters: str = ""):
+    """BPMN di riferimento (nella lingua dell'interfaccia) e confronto con i casi delle varianti scelte."""
+    from app.routers.analysis import _filters
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    db = SessionLocal()
+    try:
+        m = _reference(db, config.id)
+        if m is None:
+            return JSONResponse({"reference": None})
+        ref = _json(m)
+        xml, steps, labels, lead = (m.xml_it if lang == "it" else m.xml_en), m.steps, m.labels or {}, m.lead_type
+    finally:
+        db.close()
+    sel = _filters(filters)
+    model = explorer.load_model(run.ocel_file_path, sel)
+    if lead not in model.sequences_by_type:
+        return JSONResponse({"reference": ref, "xml": xml, "empty": True, "filters": sel})
+    out = overlay.compute(model, lead, xml, steps, labels, lang, list(var) if vsel else None)
+    return JSONResponse({"reference": ref, "xml": xml, "filters": sel, **out})
