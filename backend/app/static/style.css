@@ -1236,3 +1236,46 @@ svg .pm-brush { opacity: 1 !important; stroke: var(--text); stroke-width: 2; }
 .pm-brush { opacity: 1 !important; }
 .ov-bar-col.pm-brush .ov-bar { outline: none; background: var(--brand-dark, #2c4fc4); }
 tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+/* BPA (Business Process Analysis): elenco dei modelli BPMN e editor a tutta pagina (bpmn-js) */
+.bpa-group { font-size: 16px; margin: 22px 0 8px; }
+.bpa-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.bpa-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 12px 14px; background: var(--card-bg); }
+.bpa-open { flex: 1 1 380px; min-width: 0; display: flex; align-items: center; gap: 14px; color: var(--text); text-decoration: none; }
+.bpa-open:hover strong { color: var(--brand); }
+.bpa-badge { flex: none; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--brand); border: 1.5px solid var(--brand);
+  border-radius: 8px; padding: 8px 7px; }
+.bpa-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bpa-chain { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bpa-go { margin-left: auto; color: var(--brand); font-size: 20px; }
+.bpa-actions { display: flex; gap: 8px; }
+.bpa-actions .button-link, .bpa-actions button { margin: 0; }
+.content.bpa-full { max-width: none; padding: 0; }
+.bpa-editor { display: flex; flex-direction: column; height: calc(100vh - 64px); height: calc(100dvh - 64px); }
+.bpa-bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--card-bg); }
+.bpa-back { font-weight: 600; text-decoration: none; }
+.bpa-title { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+.bpa-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bpa-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bpa-tools button, .bpa-tools .button-link { margin: 0; min-height: 0; padding: 7px 12px; }
+.bpa-icon { width: 36px; padding: 7px 0 !important; font-size: 17px; line-height: 1; }
+.bpa-more { position: relative; }
+.bpa-more summary { list-style: none; cursor: pointer; display: inline-block; }
+.bpa-more summary::-webkit-details-marker { display: none; }
+.bpa-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 6px; display: flex; flex-direction: column;
+  align-items: flex-start; min-width: 220px; }
+.bpa-menu .link-btn { padding: 8px 10px; font-size: 14px; width: 100%; text-align: left; }
+.bpa-menu .danger { color: var(--error); }
+.bpa-status { margin: 0; padding: 4px 16px; min-height: 22px; font-size: 13px; color: var(--muted); }
+.bpa-status.warn { color: var(--warn); } .bpa-status.ok { color: var(--ok); } .bpa-status.bad { color: var(--error); }
+.bpa-canvas { touch-action: none; overscroll-behavior: contain; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  flex: 1; min-height: 360px; position: relative; background: #fff; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.bpa-help { margin: 0; padding: 6px 16px 10px; }
+/* l'editor resta chiaro anche col tema scuro: e' il foglio del diagramma */
+.bpa-canvas .djs-container { color: #222; }
+/* Process Overview: invio delle varianti alla BPA */
+.ov-bpa { margin: 0; padding: 4px 10px; min-height: 0; font-size: 13px; white-space: nowrap; }
+.ov-bpa.sent { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.ov-variant-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }

@@ -37,6 +37,13 @@
         </div>
         <a class="primary button-link" href="/analysis/explorer?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">{{ _("Apri") }}</a>
       </div>
+      <div class="analysis-tool">
+        <div>
+          <h3>Business Process Analysis (BPA)</h3>
+          <p class="tiny muted">{{ _("Le varianti scelte nella Process Overview come modelli BPMN 2.0, in italiano e in inglese, da completare nell'editor: pool, lane, gateway, eventi.") }}</p>
+        </div>
+        <a class="primary button-link" href="/analysis/bpa?workspace_id={{ workspace_id }}&config_id={{ s.config.id }}">{{ _("Apri") }}</a>
+      </div>
     </div>
   </section>
   {% else %}

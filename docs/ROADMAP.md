@@ -243,6 +243,22 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   supera la metà. I pulsanti ✓ ✕ ◐ restano sempre nella parte visibile del grafico e dello schermo (colonne ai bordi,
   pagina ingrandita con due dita, grafici che scorrono).
 
+## BPA — Business Process Analysis (14 ottobre 2026)
+- ✅ Nella Process Overview, con «Con gli oggetti collegati», ogni variante ha «Invia alla BPA» (e «Togli dalla BPA»:
+  la scelta si revoca); si possono inviare più varianti. La BPA è l'ultima analisi della pagina Analisi.
+- ✅ Ogni variante diventa un vero modello BPMN 2.0 (XML con il disegno, `services/bpmn.py`, tabella `bpa_model`):
+  pool con il nome del processo, lane dai ruoli del dataset (attributi degli eventi come role/department/org:role,
+  valore più frequente per attività) o, senza, una lane «Ruolo da definire» da rinominare; evento di inizio, task
+  in sequenza (ripetizioni «×» con il simbolo del ciclo), evento di fine.
+- ✅ Sempre in italiano e in inglese con la stessa struttura: salvando in una lingua, l'altra prende le stesse
+  modifiche; solo i nomi nuovi o cambiati passano dall'LLM (senza LLM restano uguali, e l'editor lo dice).
+- ✅ Editor a tutta pagina con bpmn-js (bpmn.io, `static/vendor/bpmn-js`, licenza con il logo bpmn.io visibile):
+  tavolozza e menu in italiano o inglese, lingua del modello IT | EN, annulla/ripeti, zoom, salva (Ctrl/Cmd+S),
+  scarica .bpmn e .svg, «Rifai dalla variante». Al tocco (iPad): trascinare elementi e dalla tavolozza, doppio tocco
+  per rinominare, pizzico per lo zoom, un dito sullo sfondo per spostare la vista.
+- Da fare: gateway e rami alternativi da più varianti insieme (modello unico), pannello delle proprietà
+  (documentazione, tipi di task), lane suggerite dall'LLM quando il dataset non ha ruoli.
+
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o
   proxy), chiave API, timeout, tentativi; per ogni uso (mapping, controllo di pertinenza, Control Tower,

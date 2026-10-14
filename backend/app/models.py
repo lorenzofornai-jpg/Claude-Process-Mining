@@ -440,3 +440,29 @@ class AnalysisView(Base):
     created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class BpaModel(Base):
+    """BPA (Business Process Analysis): una variante della Process Overview (oggetto guida con gli oggetti
+    collegati) inviata alla BPA, con il suo modello BPMN 2.0 in italiano e in inglese (stessa struttura, nomi
+    tradotti). La revoca dalla Process Overview la toglie."""
+
+    __tablename__ = "bpa_model"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"))
+    lead_type: Mapped[str] = mapped_column(String(200))
+    variant_key: Mapped[str] = mapped_column(Text)        # oggetto guida + attivita' della variante (JSON)
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)   # rank, count, share, median al momento dell'invio
+    labels: Mapped[dict] = mapped_column(JSON, default=dict)  # {testo del dataset: {"it", "en"}}
+    lanes: Mapped[dict] = mapped_column(JSON, default=dict)   # {attivita': ruolo} dal dataset
+    xml_it: Mapped[str] = mapped_column(Text)
+    xml_en: Mapped[str] = mapped_column(Text)
+    edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

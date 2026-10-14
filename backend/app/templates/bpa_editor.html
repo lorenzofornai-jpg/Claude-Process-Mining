@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}BPMN · {{ process_name }}{% endblock %}
+{% block main_class %}bpa-full{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/diagram-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-font/css/bpmn.css?v={{ static_version }}">
+{% set title = (_("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante")) ~ " · " ~ model.lead %}
+<div class="bpa-editor">
+  <div class="bpa-bar">
+    <a class="bpa-back" href="/analysis/bpa?workspace_id={{ workspace_id }}&config_id={{ config_id }}">← BPA</a>
+    <div class="bpa-title">
+      <strong>{{ title }}</strong>
+      <span class="tiny muted">{{ process_name }} · BPMN 2.0</span>
+    </div>
+    <div class="segmented bpa-lang" role="group" aria-label="{{ _("Lingua del modello") }}" title="{{ _("Lingua del modello: la struttura è la stessa, cambiano i nomi") }}">
+      <button type="button" class="seg" data-dlang="it" aria-pressed="false">IT</button>
+      <button type="button" class="seg" data-dlang="en" aria-pressed="false">EN</button>
+    </div>
+    <div class="bpa-tools">
+      <button type="button" class="secondary bpa-icon" id="bpa-undo" title="{{ _("Annulla l'ultima modifica") }}" aria-label="{{ _("Annulla l'ultima modifica") }}">↶</button>
+      <button type="button" class="secondary bpa-icon" id="bpa-redo" title="{{ _("Ripeti") }}" aria-label="{{ _("Ripeti") }}">↷</button>
+      <button type="button" class="secondary bpa-icon" id="bpa-zoom-out" title="{{ _("Riduci") }}" aria-label="{{ _("Riduci") }}">−</button>
+      <button type="button" class="secondary bpa-icon" id="bpa-zoom-in" title="{{ _("Ingrandisci") }}" aria-label="{{ _("Ingrandisci") }}">+</button>
+      <button type="button" class="secondary" id="bpa-fit">{{ _("Adatta") }}</button>
+      <details class="bpa-more">
+        <summary class="secondary button-link">{{ _("Altro") }} ▾</summary>
+        <div class="bpa-menu">
+          <button type="button" class="link-btn" id="bpa-dl-bpmn">{{ _("Scarica .bpmn") }}</button>
+          <button type="button" class="link-btn" id="bpa-dl-svg">{{ _("Scarica l'immagine (.svg)") }}</button>
+          <button type="button" class="link-btn danger" id="bpa-reset">{{ _("Rifai dalla variante") }}</button>
+        </div>
+      </details>
+      <button type="button" class="primary" id="bpa-save">{{ _("Salva") }}</button>
+    </div>
+  </div>
+  <p id="bpa-status" class="bpa-status" aria-live="polite"></p>
+  <div id="bpa-canvas" class="bpa-canvas"></div>
+  <p class="tiny muted bpa-help">{{ _("Trascina gli elementi dalla tavolozza a sinistra; clic su un elemento per i comandi (aggiungi, collega, cambia tipo, elimina); doppio clic per rinominare. Le lane si aggiungono dal menu della pool o di una lane. Salvando, l'altra lingua prende le stesse modifiche con i nomi tradotti.") }}</p>
+</div>
+<script src="/static/vendor/bpmn-js/bpmn-modeler.production.min.js?v={{ static_version }}"></script>
+<script src="/static/bpa_editor.js?v={{ static_version }}"></script>
+<script>
+  window.BPA_MODELER = initBpaEditor({
+    id: {{ model.id|tojson }}, ws: {{ workspace_id|tojson }}, uiLang: {{ current_lang()|tojson }}, lang: {{ current_lang()|tojson }},
+    fileName: {{ ("variante-" ~ (model.stats.rank or "x"))|tojson }},
+    T: {
+      loading: {{ _("Caricamento del modello…")|tojson }},
+      loadError: {{ _("Il modello non si è aperto.")|tojson }},
+      warnings: {{ _("Modello aperto con {n} avvisi (elementi non riconosciuti).")|tojson }},
+      unsaved: {{ _("Modifiche non salvate")|tojson }},
+      saving: {{ _("Salvataggio e traduzione nell'altra lingua…")|tojson }},
+      saved: {{ _("Salvato in italiano e in inglese.")|tojson }},
+      savedTranslated: {{ _("Salvato; {n} nomi tradotti in {l}.")|tojson }},
+      savedUntranslated: {{ _("Salvato; {n} nomi nuovi o cambiati sono rimasti come sono anche in {l} (LLM non disponibile): puoi correggerli aprendo il modello in {l}.")|tojson }},
+      saveError: {{ _("Non salvato:")|tojson }},
+      resetConfirm: {{ _("Rifare il modello dalla variante? Le modifiche fatte (in tutte e due le lingue) si perdono.")|tojson }},
+      resetting: {{ _("Rifaccio il modello dalla variante…")|tojson }}
+    }
+  });
+</script>
+{% endblock %}

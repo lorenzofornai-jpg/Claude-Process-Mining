@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}BPA · {{ process_name }}{% endblock %}
+{% block content %}
+<div class="card wide">
+  <p class="eyebrow">{{ _("Analisi") }} · {{ config.name }}</p>
+  <h1>Business Process Analysis</h1>
+  <p class="muted">
+    {{ _("Le varianti inviate dalla Process Overview, ognuna con il suo modello BPMN 2.0 (in italiano e in inglese) da aprire a tutta pagina e completare: lane e responsabilità, gateway, eventi, annotazioni.") }}
+  </p>
+
+  {% if models %}
+  {% for lead, group in models|groupby("lead") %}
+  <h2 class="bpa-group">{{ _("Oggetto guida: {t}", t=lead) }}</h2>
+  <ul class="bpa-list">
+    {% for m in group %}
+    <li class="bpa-item">
+      <a class="bpa-open" href="/analysis/bpa/{{ m.id }}/edit?workspace_id={{ workspace_id }}">
+        <span class="bpa-badge">BPMN</span>
+        <span class="bpa-main">
+          <strong>{% if m.stats.rank %}{{ _("Variante {n}", n=m.stats.rank) }}{% else %}{{ _("Variante") }}{% endif %} · {{ lead }}</strong>
+          <span class="bpa-chain tiny">{% for s in m.steps[:6] %}{{ s.activity }}{% if s.repeated %} ×{% endif %}{% if not loop.last %} → {% endif %}{% endfor %}{% if m.steps|length > 6 %} → … (+{{ m.steps|length - 6 }}){% endif %}</span>
+          <span class="tiny muted">
+            {% if m.stats.count %}{{ _("{n} oggetti", n=m.stats.count) }}{% if m.stats.share %} · {{ (m.stats.share * 100)|round(0)|int }}%{% endif %} · {% endif %}
+            {% if m.edited and m.updated_by %}{{ _("modificato da {u}", u=m.updated_by) }} · <time class="lt" datetime="{{ m.updated_at }}">{{ m.updated_at }}</time>{% else %}{{ _("inviato da {u}", u=m.created_by or "—") }}{% endif %}
+          </span>
+        </span>
+        <span class="bpa-go" aria-hidden="true">→</span>
+      </a>
+      <div class="bpa-actions">
+        <a class="secondary button-link" href="/analysis/bpa/{{ m.id }}/xml?workspace_id={{ workspace_id }}&lang={{ current_lang() }}&download=1">{{ _("Scarica .bpmn") }}</a>
+        <button type="button" class="secondary bpa-revoke" data-id="{{ m.id }}" data-edited="{{ 1 if m.edited else 0 }}">{{ _("Togli dalla BPA") }}</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+  {% else %}
+  <div class="banner">
+    {{ _("Nessuna variante nella BPA. Nella Process Overview scegli l'oggetto guida e «Con gli oggetti collegati», poi «Invia alla BPA» sulle varianti che vuoi modellare.") }}
+  </div>
+  {% endif %}
+
+  <p class="tiny muted" style="margin-top:16px">
+    <a href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ config.id }}">{{ _("Vai alla Process Overview") }}</a> ·
+    <a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Analisi") }}</a>
+  </p>
+</div>
+<script>
+  document.querySelectorAll(".bpa-revoke").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var q = b.dataset.edited === "1" ? {{ _("Togliere la variante dalla BPA? Il modello BPMN e le modifiche fatte si perdono.")|tojson }}
+                                        : {{ _("Togliere la variante dalla BPA? Il modello BPMN si perde.")|tojson }};
+      if (!confirm(q)) return;
+      b.disabled = true;
+      fetch("/analysis/bpa/" + encodeURIComponent(b.dataset.id) + "/revoke", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id: {{ workspace_id|tojson }} })
+      }).then(function (r) { if (!r.ok) throw new Error(r.status); location.reload(); })
+        .catch(function (e) { b.disabled = false; alert(e.message); });
+    });
+  });
+</script>
+{% endblock %}

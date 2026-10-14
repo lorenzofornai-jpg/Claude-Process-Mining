@@ -89,6 +89,17 @@
     tpOver1: {{ _("oltre {a}: 1 oggetto")|tojson }},
     vs: {{ _("contro {d}")|tojson }},
     varTitle: {{ _("Varianti")|tojson }},
+    bpaSend: {{ _("Invia alla BPA")|tojson }},
+    bpaSendTip: {{ _("Crea il modello BPMN 2.0 di questa variante nella Business Process Analysis, da completare nell'editor")|tojson }},
+    bpaSending: {{ _("Creo il modello BPMN…")|tojson }},
+    bpaIn: {{ _("Nella BPA")|tojson }},
+    bpaOpenModel: {{ _("Apri il modello BPMN")|tojson }},
+    bpaRevoke: {{ _("Togli dalla BPA")|tojson }},
+    bpaRevokeAsk: {{ _("Togliere la variante dalla BPA? Il modello BPMN si perde.")|tojson }},
+    bpaRevokeEdited: {{ _("Togliere la variante dalla BPA? Il modello BPMN e le modifiche fatte si perdono.")|tojson }},
+    bpaNote: {{ _("Le varianti inviate alla BPA diventano modelli BPMN 2.0 da completare.")|tojson }},
+    bpaOpen: {{ _("Apri la BPA")|tojson }},
+    bpaOnlyRelated: {{ _("Per inviare varianti alla BPA (modelli BPMN) scegli «Con gli oggetti collegati».")|tojson }},
     varDesc: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t}. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     varDescRelated: {{ _("Ogni variante è la sequenza di attività di un oggetto di tipo {t} e dei suoi oggetti collegati (esclusi i tipi trasversali), in ordine di tempo. Le ripetizioni consecutive della stessa attività sono raggruppate (×).")|tojson }},
     timesTitle: {{ _("Tempi del processo e delle attività")|tojson }},
@@ -162,6 +173,49 @@
   CF.onChange(function () { load(); });
 
   var varsOpen = true;   // riquadro delle varianti aperto o chiuso dall'utente
+
+  // ---------- BPA: varianti inviate (oggetto guida con gli oggetti collegati) ----------
+  var bpaSent = {};   // chiave della variante -> {id, edited}
+  function bpaKey(v) { return JSON.stringify([lead, v.steps.map(function (s) { return [s.activity, !!s.repeated]; })]); }
+  function loadBpa() {
+    return fetch("/analysis/bpa/sent?" + new URLSearchParams({ workspace_id: WS, config_id: CONFIG }), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { bpaSent = {}; (j.models || []).forEach(function (m) { bpaSent[m.key] = m; }); })
+      .catch(function () {});
+  }
+  function bpaPost(url, body) {
+    return fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
+  }
+  function bpaButtons(v, rank) {
+    var box = el("div", "ov-variant-actions"), m = bpaSent[bpaKey(v)];
+    function redraw() { box.replaceWith(bpaButtons(v, rank)); }
+    if (!m) {
+      var send = el("button", "secondary ov-bpa", "→ " + T.bpaSend); send.type = "button"; send.title = T.bpaSendTip;
+      send.addEventListener("click", function () {
+        send.disabled = true; send.textContent = T.bpaSending;
+        bpaPost("/analysis/bpa/send", { workspace_id: WS, config_id: CONFIG, lead: lead, steps: v.steps,
+                                        stats: { rank: rank, count: v.count, share: v.share, median: v.median } })
+          .then(function (j) { bpaSent[bpaKey(v)] = { id: j.model.id, key: j.model.key, edited: j.model.edited }; redraw(); })
+          .catch(function (e) { send.disabled = false; send.textContent = "→ " + T.bpaSend; alert(e.message); });
+      });
+      box.appendChild(send);
+    } else {
+      var open = el("a", "secondary button-link ov-bpa sent", "✓ " + T.bpaIn);
+      open.href = "/analysis/bpa/" + encodeURIComponent(m.id) + "/edit?workspace_id=" + encodeURIComponent(WS);
+      open.title = T.bpaOpenModel;
+      var undo = el("button", "link-btn", T.bpaRevoke); undo.type = "button";
+      undo.addEventListener("click", function () {
+        if (!confirm(m.edited ? T.bpaRevokeEdited : T.bpaRevokeAsk)) return;
+        undo.disabled = true;
+        bpaPost("/analysis/bpa/" + encodeURIComponent(m.id) + "/revoke", { workspace_id: WS })
+          .then(function () { delete bpaSent[bpaKey(v)]; redraw(); })
+          .catch(function (e) { undo.disabled = false; alert(e.message); });
+      });
+      box.appendChild(open); box.appendChild(undo);
+    }
+    return box;
+  }
   function load() {
     document.getElementById("ov-body").style.opacity = 0.5;
     picked = null;   // nuovo oggetto guida o nuovo tempo: varianti diverse, si riparte da tutte
@@ -169,7 +223,7 @@
     if (CF.param()) q.set("filters", CF.param());
     fetch("/analysis/overview/data?" + q.toString(), { credentials: "same-origin" })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); })
-      .then(function (d) { data = d; lead = d.lead; render(); })
+      .then(function (d) { data = d; lead = d.lead; return loadBpa().then(render); })
       .catch(function (e) { var b = document.getElementById("ov-body"); b.textContent = ""; b.appendChild(el("p", "as-error", e.message || T.error)); })
       .finally(function () { document.getElementById("ov-body").style.opacity = 1; });
   }
@@ -415,6 +469,13 @@
     });
     var cover = el("span", "muted ov-var-cover"); tools.appendChild(cover);
     s4.appendChild(tools);
+    var bpaLink = el("p", "tiny muted ov-bpa-note");
+    if (scope === "related") {
+      bpaLink.appendChild(document.createTextNode(T.bpaNote + " "));
+      var go = el("a", "", T.bpaOpen + " →"); go.href = "/analysis/bpa?workspace_id=" + encodeURIComponent(WS) + "&config_id=" + encodeURIComponent(CONFIG);
+      bpaLink.appendChild(go);
+    } else bpaLink.textContent = T.bpaOnlyRelated;
+    s4.appendChild(bpaLink);
     var list = el("ol", "ov-variants ov-variants-check"); s4.appendChild(list);
     function isOn(id) { return !picked || picked.indexOf(id) >= 0; }
     function drawVariants() {
@@ -437,6 +498,7 @@
         meta.appendChild(el("span", "muted", fmt(T.varTime, { d: dur(v.median) })));
         var bar = el("div", "ov-share"); var fill = el("div", "ov-share-fill"); fill.style.width = (v.share * 100) + "%"; bar.appendChild(fill);
         main.appendChild(chain(v.steps)); main.appendChild(meta); main.appendChild(bar);
+        if (scope === "related") main.appendChild(bpaButtons(v, id));
         li.appendChild(cb); li.appendChild(main);
         list.appendChild(li);
       });
