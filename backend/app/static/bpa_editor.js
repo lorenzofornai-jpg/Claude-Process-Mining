@@ -169,8 +169,24 @@ function initBpaEditor(o) {
       })
       .catch(function (e) { busy = false; loading = false; say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
   }
+  // Bozza nel browser (non sul server) delle modifiche non salvate: su iPad chiudendo la scheda il browser non chiede
+  // nulla, quindi alla riapertura del modello si chiede se salvarle o scartarle.
+  var DRAFT = "pm-bpa-draft-" + o.id, draftTimer = null;
+  function readDraft() { try { var d = JSON.parse(localStorage.getItem(DRAFT) || "null"); return d && d.xml ? d : null; } catch (e) { return null; } }
+  function clearDraft() { clearTimeout(draftTimer); try { localStorage.removeItem(DRAFT); } catch (e) {} }
+  function storeDraft() {
+    clearTimeout(draftTimer);
+    if (!dirty) return;
+    modeler.saveXML({ format: false }).then(function (r) {
+      try { localStorage.setItem(DRAFT, JSON.stringify({ lang: lang, xml: r.xml, at: new Date().toISOString() })); } catch (e) {}
+    });
+  }
+  function storeDraftSoon() { clearTimeout(draftTimer); draftTimer = setTimeout(storeDraft, 600); }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") { commitText(); storeDraft(); } });
+  window.addEventListener("pagehide", function () { commitText(); storeDraft(); });
+
   var loading = false;   // durante l'apertura le modifiche non contano; durante il salvataggio si'
-  modeler.on("commandStack.changed", function () { if (!loading) { dirty = true; if (!busy) say(T.unsaved, "warn"); } });
+  modeler.on("commandStack.changed", function () { if (!loading) { dirty = true; storeDraftSoon(); if (!busy) say(T.unsaved, "warn"); } });
   modeler.on("directEditing.activate", function () { if (!loading) say(T.unsaved, "warn"); });
   // un nome in corso di scrittura (casella di testo aperta) si conferma prima di salvare, cambiare lingua o uscire
   function commitText() { try { var de = modeler.get("directEditing"); if (de.isActive()) de.complete(); } catch (e) {} }
@@ -185,7 +201,8 @@ function initBpaEditor(o) {
     }).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); })
       .then(function (j) {
         busy = false;
-        if (dirty) { say(T.unsaved, "warn"); return true; }   // cambiato ancora mentre si salvava
+        if (dirty) { say(T.unsaved, "warn"); storeDraftSoon(); return true; }   // cambiato ancora mentre si salvava
+        clearDraft();
         var other = lang === "it" ? "EN" : "IT";
         if (j.untranslated) say(fmt(T.savedUntranslated, { n: j.untranslated, l: other }), "warn");
         else say(j.translated ? fmt(T.savedTranslated, { n: j.translated, l: other }) : T.saved, "ok");
@@ -228,7 +245,7 @@ function initBpaEditor(o) {
       busy = true; say(T.resetting);
       fetch(api("/reset"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: o.ws }) })
-        .then(function (r) { if (!r.ok) throw new Error(r.status); busy = false; dirty = false; return load(lang); })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); busy = false; dirty = false; clearDraft(); return load(lang); })
         .catch(function (e) { busy = false; say(T.saveError + " " + (e.message || e), "bad"); });
     });
   });
@@ -247,7 +264,20 @@ function initBpaEditor(o) {
   function size() { box.style.height = Math.max(420, window.innerHeight - (box.getBoundingClientRect().top + window.scrollY)) + "px"; }
   size(); window.addEventListener("resize", size);
 
-  load(lang);
+  load(lang).then(function () {
+    var d = readDraft();
+    if (!d) return;
+    var when = d.at ? (window.pmLocalTime ? window.pmLocalTime(d.at) : d.at) : "";
+    pmConfirm(fmt(T.draftAsk, { d: when }), { title: T.draftTitle, ok: T.save, cancel: T.discard, safe: true }).then(function (yes) {
+      if (!yes) { clearDraft(); return; }
+      busy = true; loading = true;
+      modeler.importXML(d.xml).then(function () {
+        lang = d.lang === "en" ? "en" : "it"; loading = false; busy = false; dirty = true;
+        document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
+        save();
+      }).catch(function (e) { loading = false; busy = false; clearDraft(); say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
+    });
+  });
   return modeler;
 }
 

@@ -51,7 +51,7 @@
       <h2 id="confirm-title"></h2>
       <p id="confirm-text" class="muted"></p>
       <div class="confirm-actions">
-        <button value="cancel" class="secondary">{{ _("Annulla") }}</button>
+        <button value="cancel" class="secondary" id="confirm-cancel">{{ _("Annulla") }}</button>
         <button value="ok" class="primary danger-fill" id="confirm-ok">{{ _("Conferma") }}</button>
       </div>
     </form>
@@ -78,6 +78,8 @@
         document.getElementById("confirm-title").textContent = form.dataset.confirmTitle || {{ _("Confermi?")|tojson }};
         document.getElementById("confirm-text").textContent = form.dataset.confirm;
         document.getElementById("confirm-ok").textContent = form.dataset.confirmOk || {{ _("Conferma")|tojson }};
+        document.getElementById("confirm-cancel").textContent = {{ _("Annulla")|tojson }};
+        document.getElementById("confirm-ok").classList.add("danger-fill");
         dlg.returnValue = "";
         dlg.showModal();
         document.getElementById("confirm-ok").blur();
@@ -96,6 +98,8 @@
         document.getElementById("confirm-title").textContent = o.title || {{ _("Confermi?")|tojson }};
         document.getElementById("confirm-text").textContent = text;
         document.getElementById("confirm-ok").textContent = o.ok || {{ _("Conferma")|tojson }};
+        document.getElementById("confirm-cancel").textContent = o.cancel || {{ _("Annulla")|tojson }};
+        document.getElementById("confirm-ok").classList.toggle("danger-fill", !o.safe);
         dlg.returnValue = "";
         dlg.showModal();
         document.getElementById("confirm-ok").blur();

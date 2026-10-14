@@ -1632,6 +1632,7 @@ EN: dict[str, str] = {
     'Rifaccio il modello dalla variante…': 'Rebuilding the model from the variant…',
     'Rifai dalla variante': 'Rebuild from the variant',
     'Rifai': 'Rebuild',
+    "Quando hai chiuso questo modello ({d}) c'erano modifiche non salvate. Vuoi salvarle?": 'When you closed this model ({d}) there were unsaved changes. Do you want to save them?',
     'Rifare il modello dalla variante? Le modifiche fatte (in tutte e due le lingue) si perdono.': 'Rebuild the model from the variant? The changes made (in both languages) will be lost.',
     'Ripeti': 'Redo',
     "Salvataggio e traduzione nell'altra lingua…": 'Saving and translating into the other language…',
