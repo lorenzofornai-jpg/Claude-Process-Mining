@@ -152,35 +152,41 @@ function initBpaEditor(o) {
   var api = function (path) { return "/analysis/bpa/" + encodeURIComponent(o.id) + path; };
 
   function load(l) {
-    busy = true; say(T.loading);
+    busy = true; loading = true; say(T.loading);
     return fetch(api("/xml?workspace_id=" + encodeURIComponent(o.ws) + "&lang=" + l), { credentials: "same-origin" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
       .then(function (xml) { return modeler.importXML(xml); })
       .then(function (res) {
-        lang = l; dirty = false; busy = false;
+        lang = l; dirty = false; busy = false; loading = false;
         modeler.get("canvas").zoom("fit-viewport", "auto");
         document.querySelectorAll("[data-dlang]").forEach(function (b) { b.classList.toggle("active", b.dataset.dlang === lang); b.setAttribute("aria-pressed", b.dataset.dlang === lang ? "true" : "false"); });
         say((res && res.warnings && res.warnings.length) ? fmt(T.warnings, { n: res.warnings.length }) : "");
       })
-      .catch(function (e) { busy = false; say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
+      .catch(function (e) { busy = false; loading = false; say(T.loadError + " (" + (e.message || e) + ")", "bad"); });
   }
-  modeler.on("commandStack.changed", function () { if (!busy) { dirty = true; say(T.unsaved, "warn"); } });
+  var loading = false;   // durante l'apertura le modifiche non contano; durante il salvataggio si'
+  modeler.on("commandStack.changed", function () { if (!loading) { dirty = true; if (!busy) say(T.unsaved, "warn"); } });
+  modeler.on("directEditing.activate", function () { if (!loading) say(T.unsaved, "warn"); });
+  // un nome in corso di scrittura (casella di testo aperta) si conferma prima di salvare, cambiare lingua o uscire
+  function commitText() { try { var de = modeler.get("directEditing"); if (de.isActive()) de.complete(); } catch (e) {} }
 
   function save() {
     if (busy) return Promise.resolve(false);
-    busy = true; say(T.saving);
+    commitText();
+    busy = true; dirty = false; say(T.saving);
     return modeler.saveXML({ format: true }).then(function (r) {
       return fetch(api("/save"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspace_id: o.ws, lang: lang, xml: r.xml }) });
     }).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); })
       .then(function (j) {
-        busy = false; dirty = false;
+        busy = false;
+        if (dirty) { say(T.unsaved, "warn"); return true; }   // cambiato ancora mentre si salvava
         var other = lang === "it" ? "EN" : "IT";
         if (j.untranslated) say(fmt(T.savedUntranslated, { n: j.untranslated, l: other }), "warn");
         else say(j.translated ? fmt(T.savedTranslated, { n: j.translated, l: other }) : T.saved, "ok");
         return true;
       })
-      .catch(function (e) { busy = false; say(T.saveError + " " + (e.message || e), "bad"); return false; });
+      .catch(function (e) { busy = false; dirty = true; say(T.saveError + " " + (e.message || e), "bad"); return false; });
   }
 
   document.getElementById("bpa-save").addEventListener("click", save);
@@ -188,6 +194,7 @@ function initBpaEditor(o) {
     b.addEventListener("click", function () {
       var to = b.dataset.dlang;
       if (to === lang || busy) return;
+      commitText();
       (dirty ? save() : Promise.resolve(true)).then(function (ok) { if (ok) load(to); });
     });
   });
@@ -222,7 +229,15 @@ function initBpaEditor(o) {
   document.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { e.preventDefault(); save(); }
   });
-  window.addEventListener("beforeunload", function (e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+  // «← BPA»: con modifiche non salvate prima salva (su iPad il browser non chiede conferma uscendo)
+  var back = document.querySelector(".bpa-back");
+  if (back) back.addEventListener("click", function (e) {
+    commitText();
+    if (!dirty) return;
+    e.preventDefault();
+    save().then(function (ok) { if (ok) location.href = back.href; });
+  });
+  window.addEventListener("beforeunload", function (e) { commitText(); if (dirty) { e.preventDefault(); e.returnValue = ""; } });
 
   touchToMouse(document.getElementById("bpa-canvas"), modeler);
 
