@@ -1779,7 +1779,7 @@ EN: dict[str, str] = {
     'A parità di composizione il segmento va comunque peggio di {x}.': 'With the same mix of cases, the segment is still worse by {x}.',
     'Aggiorna': 'Update',
     'Analisi di {u}, {d} (dataset v{v}).': 'Analysis by {u}, {d} (dataset v{v}).',
-    'Analisi fatta sulla versione {v} del dataset ({d}): i dati sono cambiati. Puoi aggiornarla.': 'Analysis made on version {v} of the dataset ({d}): the data has changed. You can update it.',
+    'Analisi fatta il {d} su dati precedenti: il dataset è cambiato (nuova versione o nuovi dati caricati). Puoi aggiornarla.': 'Analysis made on {d} on earlier data: the dataset has changed (new version or new data loaded). You can update it.',
     "Analisi in corso: statistica sui casi, poi le spiegazioni dell'LLM…": "Analysis in progress: statistics on the cases, then the LLM's explanations…",
     'Attività «{a}» nel caso': 'Activity “{a}” in the case',
     'Avvia la RCA': 'Run the RCA',

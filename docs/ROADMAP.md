@@ -331,9 +331,10 @@ italiano e in inglese, senza numeri nel testo (i numeri li mostra l'app); giudic
 probabili conseguenze scambiate per cause, che finiscono tra gli scartati. Non può aggiungere cause.
 
 **Niente analisi ripetute.** Ogni RCA si salva con un'impronta (metodo, dataset e versione, definizione del KPI,
-periodo, filtri normalizzati): stessa impronta → il risultato salvato, con data e autore, per tutti quelli che
-vedono la Control Tower, senza ricalcolo né token. Nuova versione del dataset → la RCA precedente con l'avviso e il
-pulsante «Aggiorna». I testi dell'LLM si salvano per fattore: se lo stesso fattore riemerge (altri filtri, dati
+periodo, filtri normalizzati, caricamento dei dati): stessa impronta → il risultato salvato, con data e autore, per tutti quelli che
+vedono la Control Tower, senza ricalcolo né token. Nuova versione del dataset o nuovi dati caricati («Aggiorna i
+dati», che non cambia la versione) → la RCA precedente non si azzera: resta visibile con l'avviso e il pulsante
+«Aggiorna», per confrontare prima e dopo. I testi dell'LLM si salvano per fattore: se lo stesso fattore riemerge (altri filtri, dati
 aggiornati) il testo si riusa e l'LLM si chiama solo per i fattori nuovi.
 
 - ✅ Motore statistico (`services/rca.py`), salvataggio (`rca_analysis`, `rca_text`), terzo livello nella Control

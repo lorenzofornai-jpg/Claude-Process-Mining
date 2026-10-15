@@ -540,8 +540,8 @@ class BpaRelation(Base):
 
 class RcaAnalysis(Base):
     """Root Cause Analysis salvata (services/rca.py): stessa impronta (metodo, dataset e versione, definizione del
-    KPI, periodo, filtri) = stesso risultato, senza ricalcolo ne' token. «key» e' l'impronta senza la versione del
-    dataset: la stessa analisi su una versione precedente si mostra con l'avviso e il pulsante «Aggiorna»."""
+    KPI, periodo, filtri, caricamento dei dati) = stesso risultato, senza ricalcolo ne' token. «key» e' l'impronta senza
+    versione e caricamento: la stessa analisi su dati precedenti si mostra con l'avviso e il pulsante «Aggiorna»."""
 
     __tablename__ = "rca_analysis"
 
@@ -550,6 +550,8 @@ class RcaAnalysis(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     key: Mapped[str] = mapped_column(String(64), index=True)
     dataset_version: Mapped[int] = mapped_column(Integer, default=1)
+    # caricamento dei dati (ExtractionRun): «Aggiorna i dati» carica dati nuovi senza cambiare la versione
+    run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     kpi_id: Mapped[str] = mapped_column(String(100))
     section_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     filter_labels: Mapped[list | None] = mapped_column(JSON, nullable=True)   # come l'utente vedeva i filtri

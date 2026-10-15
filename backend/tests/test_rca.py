@@ -199,3 +199,14 @@ def test_llm_texts_parsed_and_consequences_dismissed(monkeypatch):
     assert out["stale"] is True
     assert [f["title"]["en"] for f in out["result"]["findings"]] == ["Slow supplier"]
     assert [f["title"]["en"] for f in out["result"]["dismissed"]] == ["Manual confirmation"]
+
+
+def test_stale_after_new_data_load_even_with_same_version():
+    from types import SimpleNamespace
+
+    from app.routers.analysis import _rca_stale
+    row = SimpleNamespace(dataset_version=1, run_id="run1")
+    assert not _rca_stale(row, 1, "run1")
+    assert _rca_stale(row, 1, "run2")          # «Aggiorna i dati»: stessa versione, dati nuovi
+    assert _rca_stale(row, 2, "run1")          # nuova versione del dataset
+    assert not _rca_stale(SimpleNamespace(dataset_version=1, run_id=None), 1, "run2")   # analisi di prima

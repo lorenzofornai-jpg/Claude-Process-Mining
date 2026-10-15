@@ -993,7 +993,13 @@ def _rca_scope(model, path, spec: dict, kpi_id: str, sel: list[dict], period: st
     return {"kpi": kpi, "seg": seg, "case_f": case_f, "months": months}
 
 
-def _rca_out(row: RcaAnalysis, texts: dict[str, RcaText], lang: str, current_version: int) -> dict:
+def _rca_stale(row: RcaAnalysis, version: int, run_id: str | None) -> bool:
+    """Fatta su dati precedenti: un'altra versione del dataset o un altro caricamento dei dati."""
+    return row.dataset_version != version or bool(row.run_id and run_id and row.run_id != run_id)
+
+
+def _rca_out(row: RcaAnalysis, texts: dict[str, RcaText], lang: str, current_version: int,
+             run_id: str | None = None) -> dict:
     res = dict(row.result or {})
     res["notes"] = [render(lang, x) for x in res.get("notes") or []]
     findings, dismissed = [], []
@@ -1003,7 +1009,7 @@ def _rca_out(row: RcaAnalysis, texts: dict[str, RcaText], lang: str, current_ver
             f = {**f, "verdict": tx.verdict, **(tx.texts or {})}
         (dismissed if f.get("verdict") == "consequence" else findings).append(f)
     res["findings"], res["dismissed"] = findings, dismissed
-    return {"id": row.id, "result": res, "version": row.dataset_version, "stale": row.dataset_version != current_version,
+    return {"id": row.id, "result": res, "version": row.dataset_version, "stale": _rca_stale(row, current_version, run_id),
             "months": row.months, "filter_labels": row.filter_labels or [], "cost_usd": row.cost_usd,
             "created_by": row.created_by, "created_at": utc_iso(row.created_at)}
 
@@ -1039,7 +1045,7 @@ async def control_tower_rca(request: Request):
                             status_code=400)
     kpi = scope["kpi"]
     key = rca.key_of(config.id, kpi, scope["months"], scope["case_f"])
-    fp = rca.fingerprint(key, config.current_version)
+    fp = rca.fingerprint(key, f"{config.current_version}|{run.id}")
     version = config.current_version or 1
     db = SessionLocal()
     try:
@@ -1055,7 +1061,7 @@ async def control_tower_rca(request: Request):
             if saved is None:
                 saved = db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, key=key) \
                     .order_by(RcaAnalysis.created_at.desc()).first()
-            out = {"analysis": _rca_out(saved, texts_for(saved), lang, version) if saved else None,
+            out = {"analysis": _rca_out(saved, texts_for(saved), lang, version, run.id) if saved else None,
                    "llm": explain.available()}
             if explain.available():
                 out["estimate"] = rca.narrate_estimate(rca.MAX_FINDINGS)
@@ -1091,14 +1097,15 @@ async def control_tower_rca(request: Request):
                 print(f"RCA: testi dell'LLM non riusciti ({exc!r}).")
                 result["notes"].append(msg("I testi dell'LLM non sono arrivati: le cause sono mostrate con i soli dati."))
         db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, fingerprint=fp).delete()
-        saved = RcaAnalysis(ingestion_config_id=config.id, fingerprint=fp, key=key, dataset_version=version,
+        saved = RcaAnalysis(ingestion_config_id=config.id, fingerprint=fp, key=key, dataset_version=version, run_id=run.id,
                             kpi_id=kpi["id"], section_id=str(body.get("section_id") or "")[:100] or None,
                             filter_labels=_filter_labels(body), filters=sel, months=scope["months"], result=result,
                             cost_usd=cost, created_by=user.name)
         db.add(saved)
         db.commit()
         db.refresh(saved)
-        return JSONResponse({"analysis": _rca_out(saved, texts_for(saved), lang, version), "llm": explain.available()})
+        return JSONResponse({"analysis": _rca_out(saved, texts_for(saved), lang, version, run.id),
+                             "llm": explain.available()})
     finally:
         db.close()
 
@@ -1135,7 +1142,8 @@ async def control_tower_rca_list(request: Request):
             tx = texts.get(top.get("text_key")) if top else None
             out.append({"id": r.id, "kpi_id": r.kpi_id, "section_id": r.section_id, "filter_labels": r.filter_labels or [],
                         "filters": r.filters, "months": r.months, "version": r.dataset_version,
-                        "stale": r.dataset_version != (config.current_version or 1), "status": res.get("status"),
+                        "stale": _rca_stale(r, config.current_version or 1, run.id if run else None),
+                        "status": res.get("status"),
                         "causes": len(causes), "top": ({"parts": top.get("parts"), "title": (tx.texts or {}).get("title")
                                                         if tx else None} if top else None),
                         "created_by": r.created_by, "created_at": utc_iso(r.created_at)})
