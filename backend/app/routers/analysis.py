@@ -1093,11 +1093,76 @@ async def control_tower_rca(request: Request):
         db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, fingerprint=fp).delete()
         saved = RcaAnalysis(ingestion_config_id=config.id, fingerprint=fp, key=key, dataset_version=version,
                             kpi_id=kpi["id"], section_id=str(body.get("section_id") or "")[:100] or None,
-                            filter_labels=_filter_labels(body), months=scope["months"], result=result,
+                            filter_labels=_filter_labels(body), filters=sel, months=scope["months"], result=result,
                             cost_usd=cost, created_by=user.name)
         db.add(saved)
         db.commit()
         db.refresh(saved)
         return JSONResponse({"analysis": _rca_out(saved, texts_for(saved), lang, version), "llm": explain.available()})
+    finally:
+        db.close()
+
+
+@router.post("/analysis/control-tower/rca/list")
+async def control_tower_rca_list(request: Request):
+    """RCA salvate del dataset: l'ultima per ogni analisi (stessa impronta senza versione), con filtri e periodo per
+    riaprirla."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None:
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    db = SessionLocal()
+    try:
+        rows = db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id).order_by(RcaAnalysis.created_at.desc()).all()
+        latest = {}
+        for r in rows:
+            latest.setdefault(r.key, r)
+        keys = [f.get("text_key") for r in latest.values() for f in ((r.result or {}).get("findings") or [])[:1]
+                if f.get("text_key")]
+        texts = {x.text_key: x for x in db.query(RcaText).filter(RcaText.ingestion_config_id == config.id,
+                                                                 RcaText.text_key.in_(keys or ["-"])).all()}
+        out = []
+        for r in latest.values():
+            res = r.result or {}
+            causes = [f for f in res.get("findings") or []
+                      if (texts.get(f.get("text_key")) is None or texts[f["text_key"]].verdict != "consequence")]
+            top = causes[0] if causes else None
+            tx = texts.get(top.get("text_key")) if top else None
+            out.append({"id": r.id, "kpi_id": r.kpi_id, "section_id": r.section_id, "filter_labels": r.filter_labels or [],
+                        "filters": r.filters, "months": r.months, "version": r.dataset_version,
+                        "stale": r.dataset_version != (config.current_version or 1), "status": res.get("status"),
+                        "causes": len(causes), "top": ({"parts": top.get("parts"), "title": (tx.texts or {}).get("title")
+                                                        if tx else None} if top else None),
+                        "created_by": r.created_by, "created_at": utc_iso(r.created_at)})
+        return JSONResponse({"analyses": out})
+    finally:
+        db.close()
+
+
+@router.post("/analysis/control-tower/rca/delete")
+async def control_tower_rca_delete(request: Request):
+    """Elimina una RCA salvata, con le sue versioni precedenti (i testi delle cause restano, si riusano)."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None:
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    db = SessionLocal()
+    try:
+        row = db.get(RcaAnalysis, str(body.get("id") or ""))
+        if row is None or row.ingestion_config_id != config.id:
+            return JSONResponse({"error": t(lang, "Analisi non trovata.")}, status_code=404)
+        n = db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, key=row.key).delete()
+        db.commit()
+        return JSONResponse({"deleted": n})
     finally:
         db.close()

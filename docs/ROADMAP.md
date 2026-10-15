@@ -338,6 +338,10 @@ aggiornati) il testo si riusa e l'LLM si chiama solo per i fattori nuovi.
 
 - ✅ Motore statistico (`services/rca.py`), salvataggio (`rca_analysis`, `rca_text`), terzo livello nella Control
   Tower con il pulsante «RCA».
+- ✅ «RCA salvate di questa domanda» in fondo al terzo livello: l'ultima versione di ogni analisi con KPI, filtri,
+  periodo, esito (cause e la principale), autore e data; «Apri» rimette i suoi filtri e il suo periodo e la mostra
+  senza ricalcolo, «Elimina» la toglie (con le versioni precedenti; i testi dell'LLM restano per essere riusati).
+  I filtri completi si salvano con l'analisi (`rca_analysis.filters`).
 - ✅ Assistente della Control Tower anche nella RCA (view.level = rca): conosce l'analisi che l'utente vede (cause,
   numeri, segmento contro resto, motivi degli scarti) e il metodo; domande suggerite sulla RCA.
 - Da fare: classificazione semantica una tantum delle attività (storni, blocchi, condizioni commerciali) con l'LLM,

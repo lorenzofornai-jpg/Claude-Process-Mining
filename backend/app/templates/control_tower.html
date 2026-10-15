@@ -100,7 +100,18 @@ var RCA_T = {
   segPerf: {{ _("A parità di composizione il segmento va comunque peggio di {x}.")|tojson }},
   segPerfNone: {{ _("A parità di composizione il segmento non va peggio del resto.")|tojson }},
   segNoMix: {{ _("La composizione dei casi non spiega il divario: a parità di condizioni il segmento lavora peggio.")|tojson }},
-  pp: {{ _("{n} punti")|tojson }}, other: {{ _("altri")|tojson }}
+  pp: {{ _("{n} punti")|tojson }}, other: {{ _("altri")|tojson }},
+  savedTitle: {{ _("RCA salvate di questa domanda ({n})")|tojson }},
+  savedNone: {{ _("Nessuna RCA salvata per questa domanda: ogni RCA che avvii si salva da sola.")|tojson }},
+  savedHint: {{ _("Ogni RCA che avvii si salva da sola, con i suoi filtri e il suo periodo. «Apri» li rimette e mostra l'analisi, senza ricalcolo né costi.")|tojson }},
+  savedNoFilters: {{ _("nessun filtro")|tojson }},
+  savedAllPeriod: {{ _("tutto il periodo")|tojson }},
+  savedCause1: {{ _("1 causa")|tojson }}, savedCauses: {{ _("{n} cause")|tojson }},
+  savedStale: {{ _("dataset cambiato")|tojson }},
+  savedShown: {{ _("quella che stai vedendo")|tojson }},
+  savedOpen: {{ _("Apri")|tojson }}, savedDelete: {{ _("Elimina")|tojson }},
+  savedDeleteQ: {{ _("Eliminare questa RCA? Si può rifare in ogni momento (la statistica non costa nulla e le spiegazioni dell'LLM già scritte si riusano).")|tojson }},
+  savedNoRestore: {{ _("Fatta prima che l'app salvasse i filtri completi: rimetti a mano i filtri indicati.")|tojson }}
 };
 </script>
 
@@ -1631,7 +1642,13 @@ var RCA_T = {
     num: num, pct: pct, days: days, api: api, kpiById: kpiById, go: go,
     values: function () { return data.values; }, filters: function () { return CF.get(); },
     filterLabels: function () { return CF.get().map(CF.label); }, period: function () { return period; },
-    assistant: function () { if (assistant) assistant.open(); },
+    assistant: function () { if (assistant) assistant.open(); }, monthLabel: monthLabel,
+    // riapre una RCA salvata: la sua domanda e il suo KPI, con i suoi filtri (e il periodo, che e' un filtro)
+    open: function (sid, kid, filters) {
+      location.hash = "q=" + encodeURIComponent(sid) + "&rca=" + encodeURIComponent(kid);
+      CF.edit(function () { return JSON.parse(JSON.stringify(filters)); });
+      window.scrollTo(0, 0);
+    },
     onShown: function () { if (assistant) assistant.refresh(); }
   });
   assistant = initAssistant({

@@ -683,7 +683,9 @@ def analyze(full, seg, kpi: dict, months: list[str] | None, filters: list[dict])
                              "median": statistics.median([abs(v) for v in y.values()]) if not binary and y else None},
               "findings": [], "rejected": {}, "notes": [], "segment": None}
     # segmento contro resto: solo con filtri sui casi
-    case_filters = [f for f in filters or [] if f.get("kind") != "start_month"]
+    # filtri sui casi (il chiamante ha gia' tolto i mesi di inizio degli oggetti dei KPI, che sono il periodo;
+    # un mese di inizio di un altro tipo di oggetto e' un filtro sui casi)
+    case_filters = list(filters or [])
     excl_attrs_f, excl_acts_f = _filter_refs(case_filters, lead)
     def_acts, def_attrs = _definition_refs(kpi)
     excl_attrs = {(lead, a) for a in def_attrs} | excl_attrs_f
@@ -746,7 +748,7 @@ def analyze(full, seg, kpi: dict, months: list[str] | None, filters: list[dict])
 
 def _norm_filters(filters: list[dict]) -> list:
     keep = ("kind", "type", "dimension", "values", "condition", "ranges", "scope", "attribute", "ids")
-    out = [{k: f[k] for k in keep if k in f} for f in filters or [] if f.get("kind") != "start_month"]
+    out = [{k: f[k] for k in keep if k in f} for f in filters or []]
     return sorted(out, key=lambda f: json.dumps(f, sort_keys=True, ensure_ascii=False))
 
 

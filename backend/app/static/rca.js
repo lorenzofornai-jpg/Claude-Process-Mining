@@ -41,10 +41,12 @@ function initRca(h) {
 
     var body = el("div", "rca-body");
     wrap.appendChild(body);
+    var savedBox = el("section", "rca-saved");
+    wrap.appendChild(savedBox);
     var k = h.kpiById(kpiId);
-    if (!k) { body.appendChild(el("p", "muted", T.chooseKpi)); return wrap; }
+    if (!k) { body.appendChild(el("p", "muted", T.chooseKpi)); savedList(savedBox, sec, null); return wrap; }
     body.appendChild(el("p", "muted", T.loading));
-    request(false).then(function (j) { show(body, k, j); }).catch(function (e) { fail(body, e); });
+    request(false).then(function (j) { show(body, k, j); }).catch(function (e) { fail(body, e); savedList(savedBox, sec, null); });
     return wrap;
 
     function request(run) {
@@ -61,6 +63,7 @@ function initRca(h) {
     function show(box, k, j) {
       box.textContent = "";
       var a = j.analysis;
+      savedList(savedBox, sec, a && !a.stale ? a.id : null);
       if (!a || a.stale) {
         var card = el("div", "rca-start");
         if (a && a.stale) card.appendChild(el("p", "rca-stale", fmt(T.stale, { v: a.version, d: when(a.created_at) })));
@@ -76,6 +79,59 @@ function initRca(h) {
       box.appendChild(result(k, a));
     }
     function fail(box, e) { box.textContent = ""; box.appendChild(el("p", "as-error", e.message || String(e))); }
+  }
+
+  // ---------- RCA salvate della domanda: si riaprono con i loro filtri e il loro periodo ----------
+  function savedList(box, sec, currentId) {
+    h.api("/analysis/control-tower/rca/list", { workspace_id: h.ws, config_id: h.config }).then(function (j) {
+      box.textContent = "";
+      var rows = (j.analyses || []).filter(function (r) { return r.section_id === sec.id || sec.kpis.indexOf(r.kpi_id) >= 0; });
+      var det = el("details", "rca-saved-box"); det.open = rows.length > 0 && rows.length <= 6;
+      det.appendChild(el("summary", "", fmt(T.savedTitle, { n: rows.length })));
+      if (!rows.length) { det.appendChild(el("p", "tiny muted", T.savedNone)); box.appendChild(det); return; }
+      det.appendChild(el("p", "tiny muted", T.savedHint));
+      var ul = el("ul", "rca-saved-list");
+      rows.forEach(function (r) {
+        var k = h.kpiById(r.kpi_id);
+        var li = el("li", "rca-saved-row" + (r.id === currentId ? " on" : ""));
+        var main = el("div", "rca-saved-main");
+        main.appendChild(el("strong", "", k ? h.tx(k.name) : r.kpi_id));
+        var fl = r.filter_labels.length ? r.filter_labels.join(" · ") : T.savedNoFilters, per = months(r.months);
+        var scope = fl.indexOf(per) >= 0 ? fl : fl + " · " + per;   // il periodo e' gia' nei filtri (mese di inizio)
+        main.appendChild(el("span", "tiny", scope));
+        var res = r.status === "ok" ? fmt(r.causes === 1 ? T.savedCause1 : T.savedCauses, { n: r.causes }) +
+                    (r.top ? ": " + (h.tx(r.top.title) || factor(r.top.parts || [])) : "")
+                : r.status === "insufficient" ? T.insufficient : T.noCauses;
+        main.appendChild(el("span", "tiny rca-saved-res" + (r.status === "ok" ? " ok" : ""), res));
+        main.appendChild(el("span", "tiny muted", fmt(T.savedBy, { u: r.created_by || "—", d: when(r.created_at), v: r.version }) +
+                                                (r.stale ? " · " + T.savedStale : "")));
+        li.appendChild(main);
+        var acts = el("div", "rca-saved-acts");
+        if (r.id === currentId) acts.appendChild(el("span", "tiny muted", T.savedShown));
+        else {
+          var canOpen = (r.filters !== null && r.filters !== undefined) || !r.filter_labels.length;
+          var ob = h.button(T.savedOpen, "secondary", function () { h.open(sec.id, r.kpi_id, r.filters || []); });
+          if (!canOpen) { ob.disabled = true; ob.title = T.savedNoRestore; }
+          acts.appendChild(ob);
+        }
+        acts.appendChild(h.button(T.savedDelete, "secondary", function () {
+          pmConfirm(T.savedDeleteQ, { ok: T.savedDelete }).then(function (yes) {
+            if (!yes) return;
+            h.api("/analysis/control-tower/rca/delete", { workspace_id: h.ws, config_id: h.config, id: r.id })
+              .then(function () { if (r.id === currentId) h.go(sec.id, r.kpi_id); else savedList(box, sec, currentId); })
+              .catch(function (e) { alert(e.message || e); });
+          });
+        }));
+        li.appendChild(acts);
+        ul.appendChild(li);
+      });
+      det.appendChild(ul);
+      box.appendChild(det);
+    }).catch(function () { box.textContent = ""; });
+  }
+  function months(m) {
+    if (!m || !m.length) return T.savedAllPeriod;
+    return m.length === 1 ? h.monthLabel(m[0]) : h.monthLabel(m[0]) + " – " + h.monthLabel(m[m.length - 1]);
   }
 
   function when(iso) { if (!iso) return "—"; try { return new Date(iso).toLocaleString(h.lang, { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return iso; } }

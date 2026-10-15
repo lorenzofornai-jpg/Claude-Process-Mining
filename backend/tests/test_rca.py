@@ -156,6 +156,9 @@ def test_fingerprint_stable_and_versioned():
     assert k1 == k2   # stessi filtri, etichette diverse
     assert rca.fingerprint(k1, 1) != rca.fingerprint(k1, 2)
     assert rca.key_of("c", KPI_DUR, ["2026-01"], f1) != k1
+    # il mese di inizio di un altro tipo di oggetto e' un filtro sui casi: cambia l'impronta
+    other = [{"kind": "start_month", "type": "Supplier", "values": ["2026-01"]}]
+    assert rca.key_of("c", KPI_DUR, None, f1 + other) != k1
 
 
 def test_llm_texts_parsed_and_consequences_dismissed(monkeypatch):

@@ -553,6 +553,7 @@ class RcaAnalysis(Base):
     kpi_id: Mapped[str] = mapped_column(String(100))
     section_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     filter_labels: Mapped[list | None] = mapped_column(JSON, nullable=True)   # come l'utente vedeva i filtri
+    filters: Mapped[list | None] = mapped_column(JSON, nullable=True)   # filtri condivisi (per riaprirla con gli stessi)
     months: Mapped[list | None] = mapped_column(JSON, nullable=True)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
