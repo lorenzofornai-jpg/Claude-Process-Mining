@@ -273,6 +273,74 @@ Stato: ✅ fatto · 🔄 in corso · ⬜ da fare
   attività e passaggi in rosso e le varianti (con quelle spuntate), es. «differenza tra la variante 1 e la 2».
 - Da fare: conformità per caso (fitness), attività del modello con nomi diversi da quelli dei dati da collegare a mano.
 
+## Root Cause Analysis — RCA (15 ottobre 2026)
+Terzo livello della Control Tower. Al secondo livello (una domanda di business) l'utente vede i sintomi: KPI e
+grafici con i filtri sui casi e il periodo che ha scelto (prodotto o servizio, area, cliente, fornitore…). Il
+pulsante «RCA» (uguale in italiano e in inglese) apre il terzo livello: le cause probabili del sintomo, sugli stessi
+casi. Principio: **meglio dire che i dati non bastano che dare evidenze banali**. Vale per qualunque processo e
+dataset: il motore usa solo la struttura OCEL (oggetti, attributi, eventi, collegamenti, utenti), mai nomi di un
+sistema sorgente.
+
+**Il sintomo.** Un KPI della domanda, scelto dall'utente (uno alla volta). Ogni misura della Control Tower si
+scompone per caso: quota, conteggio, importo → caso «colpito» sì/no (dalla parte sbagliata secondo l'obiettivo o il
+verso del KPI); durata → giorni del caso (peggio = più lungo, se il KPI non dice il contrario).
+
+**Due confronti, tutti e due nella prima versione.**
+1. Dentro i filtri: tra i casi del segmento scelto, cosa distingue quelli con il sintomo.
+2. Segmento contro resto (se ci sono filtri): perché il segmento va peggio degli altri casi dello stesso periodo,
+   scomposto in **effetto mix** (il segmento ha più casi di un tipo difficile, es. più categorie lente) ed
+   **effetto prestazione** (a parità di composizione va comunque peggio).
+
+**I fattori candidati** (calcolati dall'app, zero token):
+- di contesto, noti all'inizio del caso: attributi dell'oggetto guida (testo: i valori più frequenti; numeri: fasce
+  per quartili; valori mancanti come segnale), oggetti collegati (anche trasversali, es. il cliente o il fornitore) e
+  loro attributi (es. la regione del fornitore);
+- di comportamento: presenza di un'attività, ripetizioni (rilavorazioni), modifiche dai log di modifiche
+  (Imposta/Rimuovi/Modifica + campo);
+- interventi manuali, ricavati dai dati: l'utente di ogni evento si classifica dal comportamento (utenti tecnici:
+  molti eventi nello stesso istante, orari e giorni fissi, anche notte e festivi; il nome — BATCH, RFC, WF… — è
+  solo un indizio); un'attività di solito automatica eseguita da una persona è un intervento manuale (es. un
+  sollecito fatto a mano invece che dall'esecuzione periodica). Senza utenti, stima più debole dagli istanti degli
+  eventi (eventi in blocco = esecuzione automatica). Ogni fattore manuale dice come è stato riconosciuto;
+- temporali: giorno della settimana e fine trimestre all'inizio del caso, carico di lavoro (casi iniziati nella
+  stessa settimana).
+
+**Filtri anti-banalità** (un candidato arriva all'utente solo se li supera tutti):
+- niente tautologie: attività e attributi usati nella definizione del KPI (condizione, popolazione, punti della
+  durata) e quelli dei filtri attivi (se filtri «area Nord», «area Nord» non è una causa);
+- precedenza nel tempo: un fattore di comportamento conta solo se accade prima che il sintomo si manifesti (per una
+  durata: inizio + obiettivo, o la mediana se non c'è obiettivo); dopo è una conseguenza (es. il sollecito per una
+  fattura già in ritardo);
+- supporto minimo (almeno 20 casi e il 3% della popolazione, abbastanza casi con il sintomo);
+- effetto grande (quota almeno 1,5 volte e +5 punti; durata almeno +2 giorni e +20% della mediana);
+- significatività corretta per i confronti multipli (test esatto di Fisher o Mann-Whitney, Benjamini-Hochberg);
+- stabilità: l'effetto c'è in tutte e due le metà del periodo;
+- a parità di condizioni: se l'effetto sparisce confrontando casi simili rispetto a un altro fattore (es. il
+  fornitore a parità di categoria), la causa è l'altro fattore;
+- doppioni: fattori sugli stessi casi (≥ 80% in comune) diventano uno solo, che cita gli altri.
+Combinazioni di due fattori di contesto: solo se la combinazione è molto più forte dei due fattori da soli (es.
+cliente A × categoria B). Ordine per **impatto**: casi (o giorni) in eccesso che il fattore spiega, non per
+correlazione. Al massimo 5 cause, con confidenza alta o media.
+
+**Dati insufficienti.** Se non resta nulla, la RCA lo dice con il motivo (pochi casi con il sintomo, effetti piccoli
+o instabili, quanti candidati e perché sono caduti) e cosa servirebbe (es. «nessun attributo dice chi esegue gli
+eventi: con questo dato si potrebbero analizzare gli interventi manuali»).
+
+**L'LLM viene dopo i numeri.** Una chiamata, solo sulle cause trovate: titolo, spiegazione e cosa verificare, in
+italiano e in inglese, senza numeri nel testo (i numeri li mostra l'app); giudica anche la plausibilità e segnala le
+probabili conseguenze scambiate per cause, che finiscono tra gli scartati. Non può aggiungere cause.
+
+**Niente analisi ripetute.** Ogni RCA si salva con un'impronta (metodo, dataset e versione, definizione del KPI,
+periodo, filtri normalizzati): stessa impronta → il risultato salvato, con data e autore, per tutti quelli che
+vedono la Control Tower, senza ricalcolo né token. Nuova versione del dataset → la RCA precedente con l'avviso e il
+pulsante «Aggiorna». I testi dell'LLM si salvano per fattore: se lo stesso fattore riemerge (altri filtri, dati
+aggiornati) il testo si riusa e l'LLM si chiama solo per i fattori nuovi.
+
+- ✅ Motore statistico (`services/rca.py`), salvataggio (`rca_analysis`, `rca_text`), terzo livello nella Control
+  Tower con il pulsante «RCA».
+- Da fare: classificazione semantica una tantum delle attività (storni, blocchi, condizioni commerciali) con l'LLM,
+  confermata dai dati; drill-down sui casi di una causa e collegamento al Process Overlay con il filtro applicato.
+
 ## BPA — Archivio degli oggetti BPMN (14 ottobre 2026)
 - Nell'interfaccia si parla di «oggetti» (EN «objects»), non di simboli; nel codice e nel database restano i nomi
   tecnici (`bpa_symbol`, `services/bpa_repo.py`).

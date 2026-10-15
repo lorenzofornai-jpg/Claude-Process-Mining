@@ -536,3 +536,40 @@ class BpaRelation(Base):
     kind: Mapped[str] = mapped_column(String(30))
     source_id: Mapped[str] = mapped_column(ForeignKey("bpa_symbol.id"), index=True)
     target_id: Mapped[str] = mapped_column(ForeignKey("bpa_symbol.id"), index=True)
+
+
+class RcaAnalysis(Base):
+    """Root Cause Analysis salvata (services/rca.py): stessa impronta (metodo, dataset e versione, definizione del
+    KPI, periodo, filtri) = stesso risultato, senza ricalcolo ne' token. «key» e' l'impronta senza la versione del
+    dataset: la stessa analisi su una versione precedente si mostra con l'avviso e il pulsante «Aggiorna»."""
+
+    __tablename__ = "rca_analysis"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    dataset_version: Mapped[int] = mapped_column(Integer, default=1)
+    kpi_id: Mapped[str] = mapped_column(String(100))
+    section_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    filter_labels: Mapped[list | None] = mapped_column(JSON, nullable=True)   # come l'utente vedeva i filtri
+    months: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class RcaText(Base):
+    """Testi dell'LLM di una causa della RCA, in italiano e in inglese e senza numeri: lo stesso fattore per lo stesso
+    KPI riusa il testo (altri filtri, dati aggiornati) e l'LLM si chiama solo per i fattori nuovi."""
+
+    __tablename__ = "rca_text"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"), index=True)
+    text_key: Mapped[str] = mapped_column(String(64), index=True)
+    verdict: Mapped[str] = mapped_column(String(20), default="cause")    # cause | consequence | uncertain
+    texts: Mapped[dict] = mapped_column(JSON, default=dict)              # {"title", "explanation", "check"}: {it, en}
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

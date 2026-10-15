@@ -18,9 +18,11 @@ from app.auth import current_user, has_process_access
 from app.i18n import get_lang, msg, render, setup_templates, t, ui_labels, utc_iso
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
-from app.models import AnalysisObjective, AnalysisView, ControlTower, ExtractionRun, FieldMapping, IngestionConfig, ProcessWorkspace
+from app.models import (AnalysisObjective, AnalysisView, ControlTower, ExtractionRun, FieldMapping, IngestionConfig,
+                        ProcessWorkspace, RcaAnalysis, RcaText)
 from app.routers.assessment import load_assessment
-from app.services import analysis_assistant, control_tower, control_tower_assistant, explain, explorer, objectives, ocel_filter, overview
+from app.services import (analysis_assistant, control_tower, control_tower_assistant, explain, explorer, objectives,
+                          ocel_filter, overview, rca)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -965,3 +967,137 @@ async def control_tower_translate(request: Request):
         finally:
             db.close()
     return JSONResponse({"available": True, "spec": result["spec"], "cost_usd": result["cost_usd"], "saved": working is None})
+
+
+# ---------- Root Cause Analysis (terzo livello della Control Tower) ----------
+
+def _rca_scope(model, path, spec: dict, kpi_id: str, sel: list[dict], period: str):
+    """KPI, dataset filtrato e mesi del periodo: gli stessi casi del secondo livello (vedi _tower_payload)."""
+    clean, issues = control_tower.validate(spec, model)
+    kpi = next((k for k in clean["kpis"] if k["id"] == kpi_id), None)
+    if kpi is None or kpi_id in issues:
+        return None
+    kpi_types = {k.get("object_type") for k in clean["kpis"]}
+    month_f = [f for f in sel if f["kind"] == "start_month" and f["type"] in kpi_types]
+    case_f = [f for f in sel if f not in month_f]
+    if month_f:
+        period = control_tower.period_from_months([m for f in month_f for m in f["values"]])
+    seg = explorer.load_model(path, case_f) if case_f else model
+    ctx = control_tower.context(seg)
+    picked = control_tower.month_list(period)
+    if picked:
+        months = picked
+    else:
+        p = period if period in control_tower.PERIODS or control_tower.parse_range(period) else "all"
+        months = control_tower.period_months(ctx, p, ctx.last_start(kpi_types), ctx.first_start(kpi_types))[0]
+    return {"kpi": kpi, "seg": seg, "case_f": case_f, "months": months}
+
+
+def _rca_out(row: RcaAnalysis, texts: dict[str, RcaText], lang: str, current_version: int) -> dict:
+    res = dict(row.result or {})
+    res["notes"] = [render(lang, x) for x in res.get("notes") or []]
+    findings, dismissed = [], []
+    for f in res.get("findings") or []:
+        tx = texts.get(f.get("text_key"))
+        if tx is not None:
+            f = {**f, "verdict": tx.verdict, **(tx.texts or {})}
+        (dismissed if f.get("verdict") == "consequence" else findings).append(f)
+    res["findings"], res["dismissed"] = findings, dismissed
+    return {"id": row.id, "result": res, "version": row.dataset_version, "stale": row.dataset_version != current_version,
+            "months": row.months, "filter_labels": row.filter_labels or [], "cost_usd": row.cost_usd,
+            "created_by": row.created_by, "created_at": utc_iso(row.created_at)}
+
+
+@router.post("/analysis/control-tower/rca")
+async def control_tower_rca(request: Request):
+    """RCA di un KPI sui casi del secondo livello. Senza run: l'analisi salvata con la stessa impronta (o quella di
+    una versione precedente del dataset) e il costo indicativo. Con run: calcolo (statistica, zero token), testi
+    dell'LLM solo per i fattori senza testo, salvataggio."""
+    body = await request.json()
+    workspace_id, config_id = str(body.get("workspace_id") or ""), str(body.get("config_id") or "")
+    lang = get_lang(request)
+    user, denied = _require_analyst_access(request, workspace_id)
+    if denied:
+        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    config, run, _ = _explorer_dataset(workspace_id, config_id)
+    if config is None or run is None or not Path(run.ocel_file_path).exists():
+        return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
+    db = SessionLocal()
+    try:
+        row = _tower_row(db, config.id)
+        ws = db.get(ProcessWorkspace, workspace_id)
+    finally:
+        db.close()
+    if row is None or not row.spec:
+        return JSONResponse({"error": t(lang, "Salva prima le definizioni dei KPI.")}, status_code=400)
+    model = explorer.load_model(run.ocel_file_path)
+    sel = _filters(body.get("filters"))
+    scope = await run_in_threadpool(_rca_scope, model, run.ocel_file_path, row.spec, str(body.get("kpi_id") or ""),
+                                    sel, str(body.get("period") or "all"))
+    if scope is None:
+        return JSONResponse({"error": t(lang, "Questo KPI non si può calcolare sul dataset: la RCA non è possibile.")},
+                            status_code=400)
+    kpi = scope["kpi"]
+    key = rca.key_of(config.id, kpi, scope["months"], scope["case_f"])
+    fp = rca.fingerprint(key, config.current_version)
+    version = config.current_version or 1
+    db = SessionLocal()
+    try:
+        def texts_for(r):
+            keys = [f.get("text_key") for f in (r.result or {}).get("findings") or [] if f.get("text_key")]
+            if not keys:
+                return {}
+            return {x.text_key: x for x in db.query(RcaText).filter(RcaText.ingestion_config_id == config.id,
+                                                                     RcaText.text_key.in_(keys)).all()}
+        if not body.get("run"):
+            saved = db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, fingerprint=fp) \
+                .order_by(RcaAnalysis.created_at.desc()).first()
+            if saved is None:
+                saved = db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, key=key) \
+                    .order_by(RcaAnalysis.created_at.desc()).first()
+            out = {"analysis": _rca_out(saved, texts_for(saved), lang, version) if saved else None,
+                   "llm": explain.available()}
+            if explain.available():
+                out["estimate"] = rca.narrate_estimate(rca.MAX_FINDINGS)
+            return JSONResponse(out)
+    finally:
+        db.close()
+    # calcolo: statistica (zero token), poi i testi dell'LLM per i fattori nuovi
+    result = await run_in_threadpool(rca.analyze, model, scope["seg"], kpi, scope["months"], scope["case_f"])
+    for f in result.get("findings") or []:
+        f["text_key"] = rca.text_key(kpi, f)
+    cost = 0.0
+    db = SessionLocal()
+    try:
+        known = {x.text_key for x in db.query(RcaText).filter(
+            RcaText.ingestion_config_id == config.id,
+            RcaText.text_key.in_([f["text_key"] for f in result["findings"]] or ["-"])).all()}
+        new = [f for f in result["findings"] if f["text_key"] not in known]
+        if new and explain.available():
+            payload = rca.narrate_payload(
+                process_name=ws.process_name if ws else "", kpi=kpi, filter_labels=_filter_labels(body),
+                object_names=(row.spec or {}).get("object_names") or {}, result=result, findings=new)
+            try:
+                got = await run_in_threadpool(rca.narrate, payload)
+                cost = got["cost_usd"]
+                share = cost / max(1, len(got["items"]))
+                for f in new:
+                    it = got["items"].get(f["text_key"])
+                    if it:
+                        db.add(RcaText(ingestion_config_id=config.id, text_key=f["text_key"], verdict=it["verdict"],
+                                       texts={k: it[k] for k in ("title", "explanation", "check") if k in it},
+                                       cost_usd=share))
+            except Exception as exc:   # i numeri restano validi anche senza testi
+                print(f"RCA: testi dell'LLM non riusciti ({exc!r}).")
+                result["notes"].append(msg("I testi dell'LLM non sono arrivati: le cause sono mostrate con i soli dati."))
+        db.query(RcaAnalysis).filter_by(ingestion_config_id=config.id, fingerprint=fp).delete()
+        saved = RcaAnalysis(ingestion_config_id=config.id, fingerprint=fp, key=key, dataset_version=version,
+                            kpi_id=kpi["id"], section_id=str(body.get("section_id") or "")[:100] or None,
+                            filter_labels=_filter_labels(body), months=scope["months"], result=result,
+                            cost_usd=cost, created_by=user.name)
+        db.add(saved)
+        db.commit()
+        db.refresh(saved)
+        return JSONResponse({"analysis": _rca_out(saved, texts_for(saved), lang, version), "llm": explain.available()})
+    finally:
+        db.close()

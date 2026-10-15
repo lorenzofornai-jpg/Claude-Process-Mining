@@ -42,6 +42,66 @@
 {% set assistant_title = _("Assistente della Control Tower") %}
 {% set assistant_intro = _("Chiedimi cosa significa un numero o come si calcola un KPI, oppure cosa cambiare: aggiungere, modificare o togliere grafici, statistiche, obiettivi, domande e KPI. Ti propongo la modifica: la vedi in anteprima e decidi se salvarla.") %}
 {% include "_assistant.html" %}
+<script src="/static/rca.js?v={{ static_version }}"></script>
+<script>
+var RCA_T = {
+  title: {{ _("Root Cause Analysis (RCA)")|tojson }},
+  intro: {{ _("Le cause probabili del sintomo sugli stessi casi del secondo livello (filtri e periodo). L'app le cerca con la statistica e mostra solo quelle solide: se i dati non bastano lo dice. L'LLM spiega le cause trovate e scarta quelle che sono probabili conseguenze.")|tojson }},
+  back: {{ _("Torna alla domanda")|tojson }},
+  symptom: {{ _("Sintomo")|tojson }},
+  chooseKpi: {{ _("Scegli il KPI da analizzare.")|tojson }},
+  scopeAll: {{ _("Casi: tutti quelli del periodo, senza filtri.")|tojson }},
+  scopeFiltered: {{ _("Casi filtrati: {f}.")|tojson }},
+  loading: {{ _("Cerco un'analisi già fatta…")|tojson }},
+  working: {{ _("Analisi in corso: statistica sui casi, poi le spiegazioni dell'LLM…")|tojson }},
+  notYet: {{ _("Per questo KPI, con questi filtri e questo periodo, la RCA non è ancora stata fatta. Una volta fatta resta salvata: chi la riapre la vede subito, senza ricalcolo né costi.")|tojson }},
+  stale: {{ _("Analisi fatta sulla versione {v} del dataset ({d}): i dati sono cambiati. Puoi aggiornarla.")|tojson }},
+  cost: {{ _("La statistica non costa nulla; le spiegazioni dell'LLM per le cause nuove costano circa {c} (al massimo {m}).")|tojson }},
+  noLlm: {{ _("L'LLM non è configurato: la RCA mostra le cause con i soli dati, senza spiegazioni.")|tojson }},
+  run: {{ _("Avvia la RCA")|tojson }}, update: {{ _("Aggiorna")|tojson }},
+  popBinary: {{ _("Sintomo in {b} {tp} su {n} ({p}).")|tojson }},
+  popDuration: {{ _("{n} {tp} con il tempo misurato, mediana {m}.")|tojson }},
+  insufficient: {{ _("Dati insufficienti")|tojson }},
+  noCauses: {{ _("Nessuna causa solida")|tojson }},
+  causes: {{ _("Cause probabili")|tojson }},
+  dismissed: {{ _("{n} fattori scartati dall'LLM come probabili conseguenze del sintomo")|tojson }},
+  examined: {{ _("Fattori esaminati: {c}. Scartati: {e} per effetto piccolo, {s} non significativi, {u} non stabili nel tempo, {f} spiegati da un altro fattore, {d} doppioni.")|tojson }},
+  savedBy: {{ _("Analisi di {u}, {d} (dataset v{v}).")|tojson }},
+  spent: {{ _("costo {c}")|tojson }},
+  fam_context: {{ _("Contesto")|tojson }}, fam_behavior: {{ _("Comportamento")|tojson }},
+  fam_manual: {{ _("Intervento manuale")|tojson }}, fam_time: {{ _("Tempo")|tojson }},
+  fam_combination: {{ _("Combinazione")|tojson }},
+  confHigh: {{ _("confidenza alta")|tojson }}, confMedium: {{ _("confidenza media")|tojson }},
+  uncertain: {{ _("plausibilità incerta")|tojson }},
+  sHere: {{ _("Sintomo in questi casi")|tojson }}, sElsewhere: {{ _("Negli altri casi")|tojson }},
+  sHereMed: {{ _("Mediana in questi casi")|tojson }}, sElsewhereMed: {{ _("Mediana negli altri")|tojson }},
+  sTimes: {{ _("Rischio")|tojson }}, times: {{ _("{n} volte")|tojson }},
+  sCases: {{ _("Casi")|tojson }}, casesShare: {{ _("{n} ({p})")|tojson }},
+  sExplainsCases: {{ _("Casi con il sintomo spiegati")|tojson }},
+  sExplainsDays: {{ _("Giorni totali spiegati")|tojson }},
+  check: {{ _("Da verificare")|tojson }},
+  howManualUser: {{ _("Riconosciuto dai dati: «{a}» è eseguita da utenti tecnici nel {p} dei casi; qui l'ha eseguita una persona.")|tojson }},
+  howManualTime: {{ _("Stima dagli istanti degli eventi: «{a}» avviene in blocco (esecuzione automatica) nel {p} dei casi; qui no.")|tojson }},
+  sameCases: {{ _("Riguarda gli stessi casi di: {x}.")|tojson }},
+  relAttr: {{ _("{a} di {t}")|tojson }},
+  pValue: {{ _("{w} = {v}")|tojson }}, pRange: {{ _("{w} tra {a} e {b}")|tojson }},
+  pUpTo: {{ _("{w} fino a {b}")|tojson }}, pOver: {{ _("{w} oltre {a}")|tojson }},
+  pEmpty: {{ _("{w} non compilato")|tojson }}, pObject: {{ _("{t}: {v}")|tojson }},
+  pActivity: {{ _("Attività «{a}» nel caso")|tojson }}, pChange: {{ _("Modifica «{a}» nel caso")|tojson }},
+  pRepeated: {{ _("«{a}» ripetuta")|tojson }}, pManual: {{ _("«{a}» eseguita a mano")|tojson }},
+  pWeekday: {{ _("Inizio di {d}")|tojson }}, pQuarterEnd: {{ _("Inizio nelle ultime due settimane del trimestre")|tojson }},
+  pWorkload: {{ _("Inizio in una settimana di carico alto")|tojson }},
+  segTitle: {{ _("Questo segmento contro il resto")|tojson }},
+  segLine: {{ _("Qui {a}, nel resto {b} ({n} casi contro {m}).")|tojson }},
+  segNotWorse: {{ _("Il segmento non va peggio del resto dei casi in modo significativo.")|tojson }},
+  segMix: {{ _("Il {p} del divario si spiega con la composizione per {w}: il segmento ha più casi dei valori che vanno peggio anche nel resto.")|tojson }},
+  segMixRow: {{ _("{v}: {a} dei casi qui, {b} nel resto (nel resto: {m})")|tojson }},
+  segPerf: {{ _("A parità di composizione il segmento va comunque peggio di {x}.")|tojson }},
+  segPerfNone: {{ _("A parità di composizione il segmento non va peggio del resto.")|tojson }},
+  segNoMix: {{ _("La composizione dei casi non spiega il divario: a parità di condizioni il segmento lavora peggio.")|tojson }},
+  pp: {{ _("{n} punti")|tojson }}, other: {{ _("altri")|tojson }}
+};
+</script>
 
 <script>
 (function () {
@@ -80,6 +140,8 @@
     openDetail: {{ _("Apri il dettaglio")|tojson }},
     backSummary: {{ _("Sintesi")|tojson }},
     assistant: {{ _("Assistente")|tojson }},
+    rca: {{ _("RCA")|tojson }},
+    rcaHint: {{ _("Root Cause Analysis: le cause probabili dei sintomi di questa domanda, sugli stessi casi")|tojson }},
     questionOf: {{ _("Domanda {n} di {m}")|tojson }},
     prevQ: {{ _("Domanda precedente")|tojson }}, nextQ: {{ _("Domanda successiva")|tojson }},
     noKpis: {{ _("Nessun KPI per questa domanda.")|tojson }},
@@ -229,13 +291,18 @@
 
   // ---------- navigazione su due livelli: sintesi (#) e dettaglio di una domanda (#q=<id>) ----------
   function openSection() {
-    var m = /^#q=(.+)$/.exec(location.hash || "");
+    var m = /^#q=([^&]+)/.exec(location.hash || "");
     if (!m || !spec) return null;
     var id = decodeURIComponent(m[1]);
     return spec.sections.filter(function (s) { return s.id === id; })[0] || null;
   }
-  function go(sectionId) {
-    if (sectionId) location.hash = "q=" + encodeURIComponent(sectionId);
+  // terzo livello: la Root Cause Analysis di un KPI della domanda (#q=<id>&rca=<kpi>)
+  function openRca() {
+    var m = /&rca=([^&]*)/.exec(location.hash || "");
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function go(sectionId, rcaKpi) {
+    if (sectionId) location.hash = "q=" + encodeURIComponent(sectionId) + (rcaKpi !== undefined ? "&rca=" + encodeURIComponent(rcaKpi || "") : "");
     else history.pushState("", document.title, location.pathname + location.search);
     if (!sectionId) render();
     window.scrollTo(0, 0);
@@ -460,7 +527,9 @@
     if (!has) { body.style.minHeight = ""; body.appendChild(emptyState()); return; }
     if (editing) { body.style.minHeight = ""; body.appendChild(editor()); return; }
     if (!sec) body.appendChild(periodNote());
-    if (sec) { body.appendChild(detail(sec)); drawCharts(); }
+    var rcaKpi = sec ? openRca() : null;
+    if (sec && rcaKpi !== null) body.appendChild(RCA.view(sec, rcaKpi || rcaDefault(sec)));
+    else if (sec) { body.appendChild(detail(sec)); drawCharts(); }
     else { body.appendChild(summaryView()); drawSparks(); }
     body.style.minHeight = "";
     if (anchor) {
@@ -555,6 +624,12 @@
     });
   }
 
+  // KPI proposto per la RCA: il primo fuori obiettivo, altrimenti il primo calcolabile
+  function rcaDefault(s) {
+    var ks = s.kpis.filter(function (id) { var r = data.values.kpis[id] || {}; return !r.issues; });
+    return ks.filter(function (id) { return (data.values.kpis[id] || {}).status === "ko"; })[0] || ks[0] || "";
+  }
+
   // secondo livello: tutti i dettagli di una domanda
   function detail(s) {
     var wrap = el("div", "ct-detail");
@@ -573,7 +648,12 @@
     var head = el("div", "ct-section-head");
     head.appendChild(el("span", "ct-section-n", String(idx + 1)));
     var ht = el("div"); ht.appendChild(el("h2", "ct-h ct-h-big", tx(s.question))); if (tx(s.why) && lay("show_why", true)) ht.appendChild(el("p", "tiny muted ct-why", tx(s.why)));
-    head.appendChild(ht); sec.appendChild(head);
+    head.appendChild(ht);
+    if (s.kpis.length) {
+      var rb = button(T.rca, "secondary ct-rca-btn", function () { go(s.id, rcaDefault(s)); });
+      rb.title = T.rcaHint; head.appendChild(rb);
+    }
+    sec.appendChild(head);
     if (tx(s.missing)) {
       var m = el("div", "ct-missing"); m.appendChild(el("strong", "", T.missing + ": ")); m.appendChild(document.createTextNode(tx(s.missing))); sec.appendChild(m);
     }
@@ -1538,6 +1618,12 @@
     row.appendChild(button(T.asDiscard, "link-btn", function () { row.remove(); out.textContent = T.asDiscarded; as.resolve(a); as.note(T.asNoteDiscarded); }));
     box.appendChild(row); box.appendChild(out);
   }
+  var RCA = initRca({
+    T: RCA_T, ws: WS, config: CONFIG, lang: LANG, el: el, button: button, fmt: fmt, tx: tx, tp: tp, value: value,
+    num: num, pct: pct, days: days, api: api, kpiById: kpiById, go: go,
+    values: function () { return data.values; }, filters: function () { return CF.get(); },
+    filterLabels: function () { return CF.get().map(CF.label); }, period: function () { return period; }
+  });
   assistant = initAssistant({
     ws: WS, config: CONFIG, page: "control_tower", lang: LANG, T: AS_T, endpoint: "/analysis/control-tower/assistant",
     persistKey: "pm-ct-assistant-" + CONFIG,
