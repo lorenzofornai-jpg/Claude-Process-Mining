@@ -5,10 +5,14 @@
 function initRca(h) {
   var T = h.T, el = h.el, fmt = h.fmt;
 
+  var shown = null;   // l'analisi mostrata, per l'assistente
+
   function view(sec, kpiId) {
+    shown = null;
     var wrap = el("div", "rca");
     var nav = el("div", "ct-crumbs");
     nav.appendChild(h.button("← " + T.back, "secondary", function () { h.go(sec.id); }));
+    if (h.assistant) nav.appendChild(h.button("✦ " + T.assistant, "secondary", function () { h.assistant(); }));
     wrap.appendChild(nav);
     var head = el("div", "rca-head");
     head.appendChild(el("p", "eyebrow", T.title));
@@ -67,6 +71,8 @@ function initRca(h) {
         box.appendChild(card);
         if (!a) return;
       }
+      shown = { kpi: k, analysis: a };
+      if (h.onShown) h.onShown();
       box.appendChild(result(k, a));
     }
     function fail(box, e) { box.textContent = ""; box.appendChild(el("p", "as-error", e.message || String(e))); }
@@ -197,5 +203,28 @@ function initRca(h) {
     return box;
   }
 
-  return { view: view };
+  // la RCA che l'utente sta guardando, compatta, nella lingua attiva (contesto dell'assistente)
+  function context() {
+    if (!shown) return null;
+    var a = shown.analysis, r = a.result || {}, binary = r.symptom && r.symptom.kind === "binary";
+    var rd = function (x) { return typeof x === "number" ? Math.round(x * 1000) / 1000 : x; };
+    function f(x) {
+      var o = { factor: factor(x.parts), family: x.family, confidence: x.confidence, cases: x.n, share_of_cases: rd(x.share_pop),
+                explains_share: rd(x.excess_share), verdict: x.verdict || null,
+                title: h.tx(x.title) || null, explanation: h.tx(x.explanation) || null, check: h.tx(x.check) || null };
+      if (binary) { o.symptom_rate_here = rd(x.m_g); o.symptom_rate_others = rd(x.m_r); o.times = rd(x.lift); }
+      else { o.median_days_here = rd(Math.abs(x.med_g)); o.median_days_others = rd(Math.abs(x.med_r)); }
+      if (x.same_cases && x.same_cases.length) o.same_cases_as = x.same_cases.map(factor);
+      return o;
+    }
+    return {
+      kpi_id: shown.kpi.id, symptom: r.symptom, status: r.status, population: r.population,
+      causes: (r.findings || []).map(f), dismissed_as_consequences: (r.dismissed || []).map(f),
+      segment_vs_rest: r.segment || null, notes: r.notes || [], rejected_counts: r.rejected || {},
+      behaviour_timing: r.timing || null, saved_at: a.created_at, saved_by: a.created_by,
+      dataset_version: a.version, stale: !!a.stale, case_filters: a.filter_labels || []
+    };
+  }
+
+  return { view: view, context: context };
 }

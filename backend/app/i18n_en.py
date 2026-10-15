@@ -1854,4 +1854,11 @@ EN: dict[str, str] = {
     '«{a}» eseguita a mano': '“{a}” done manually',
     '«{a}» ripetuta': '“{a}” repeated',
     'RCA': 'RCA',
+    'Cosa fa la RCA e quanto costa?': 'What does the RCA do and how much does it cost?',
+    "Come fa l'app a decidere che una causa è solida?": 'How does the app decide that a cause is solid?',
+    'Perché non ci sono cause solide?': 'Why are there no solid causes?',
+    'Quali dati servirebbero per trovare le cause?': 'What data would be needed to find the causes?',
+    'Spiegami meglio la causa «{x}»': 'Explain the cause “{x}” in more detail',
+    'Da quale causa conviene partire e cosa verificare per primo?': 'Which cause should I start from and what should I check first?',
+    'Come leggo il confronto tra questo segmento e il resto?': 'How do I read the comparison between this segment and the rest?',
 }

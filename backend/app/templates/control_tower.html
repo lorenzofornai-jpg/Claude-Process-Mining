@@ -46,6 +46,7 @@
 <script>
 var RCA_T = {
   title: {{ _("Root Cause Analysis (RCA)")|tojson }},
+  assistant: {{ _("Assistente")|tojson }},
   intro: {{ _("Le cause probabili del sintomo sugli stessi casi del secondo livello (filtri e periodo). L'app le cerca con la statistica e mostra solo quelle solide: se i dati non bastano lo dice. L'LLM spiega le cause trovate e scarta quelle che sono probabili conseguenze.")|tojson }},
   back: {{ _("Torna alla domanda")|tojson }},
   symptom: {{ _("Sintomo")|tojson }},
@@ -141,6 +142,13 @@ var RCA_T = {
     backSummary: {{ _("Sintesi")|tojson }},
     assistant: {{ _("Assistente")|tojson }},
     rca: {{ _("RCA")|tojson }},
+    asSugRcaWhat: {{ _("Cosa fa la RCA e quanto costa?")|tojson }},
+    asSugRcaHow: {{ _("Come fa l'app a decidere che una causa è solida?")|tojson }},
+    asSugRcaNone: {{ _("Perché non ci sono cause solide?")|tojson }},
+    asSugRcaData: {{ _("Quali dati servirebbero per trovare le cause?")|tojson }},
+    asSugRcaMain: {{ _("Spiegami meglio la causa «{x}»")|tojson }},
+    asSugRcaFirst: {{ _("Da quale causa conviene partire e cosa verificare per primo?")|tojson }},
+    asSugRcaSegment: {{ _("Come leggo il confronto tra questo segmento e il resto?")|tojson }},
     rcaHint: {{ _("Root Cause Analysis: le cause probabili dei sintomi di questa domanda, sugli stessi casi")|tojson }},
     questionOf: {{ _("Domanda {n} di {m}")|tojson }},
     prevQ: {{ _("Domanda precedente")|tojson }}, nextQ: {{ _("Domanda successiva")|tojson }},
@@ -1622,15 +1630,19 @@ var RCA_T = {
     T: RCA_T, ws: WS, config: CONFIG, lang: LANG, el: el, button: button, fmt: fmt, tx: tx, tp: tp, value: value,
     num: num, pct: pct, days: days, api: api, kpiById: kpiById, go: go,
     values: function () { return data.values; }, filters: function () { return CF.get(); },
-    filterLabels: function () { return CF.get().map(CF.label); }, period: function () { return period; }
+    filterLabels: function () { return CF.get().map(CF.label); }, period: function () { return period; },
+    assistant: function () { if (assistant) assistant.open(); },
+    onShown: function () { if (assistant) assistant.refresh(); }
   });
   assistant = initAssistant({
     ws: WS, config: CONFIG, page: "control_tower", lang: LANG, T: AS_T, endpoint: "/analysis/control-tower/assistant",
     persistKey: "pm-ct-assistant-" + CONFIG,
     getView: function () {
-      var s = openSection();
-      return { spec: spec, period: period, level: editing ? "definitions" : s ? "question" : "summary", section_id: s ? s.id : null,
-               unsaved_changes: dirty || previewing };
+      var s = openSection(), r = s && !editing && openRca() !== null;
+      var v = { spec: spec, period: period, level: editing ? "definitions" : r ? "rca" : s ? "question" : "summary",
+                section_id: s ? s.id : null, unsaved_changes: dirty || previewing };
+      if (r) v.rca = RCA.context() || { kpi_id: openRca() || rcaDefault(s), status: "not_run" };
+      return v;
     },
     suggestions: function () {
       if (!spec) return [];
@@ -1638,6 +1650,15 @@ var RCA_T = {
       var ko = ks.filter(function (k) { return (data.values.kpis[k.id] || {}).status === "ko"; })[0];
       var out = [];
       if (editing) return [T.asSugQuestion, ks[0] ? fmt(T.asSugTarget, { k: tx(ks[0].name) }) : null, T.asSugSummary].filter(Boolean);
+      if (s && openRca() !== null) {   // terzo livello: la RCA
+        var c = RCA.context();
+        if (!c) return [T.asSugRcaWhat, T.asSugRcaHow];
+        if (c.status !== "ok") return [T.asSugRcaNone, T.asSugRcaData, T.asSugRcaHow];
+        out = [fmt(T.asSugRcaMain, { x: c.causes[0].title || c.causes[0].factor }), T.asSugRcaFirst];
+        if (c.segment_vs_rest) out.push(T.asSugRcaSegment);
+        out.push(T.asSugRcaHow);
+        return out;
+      }
       if (ks[0]) out.push(fmt(T.asSugExplain, { k: tx(ks[0].name) }));
       if (ko) out.push(fmt(T.asSugWhy, { k: tx(ko.name) }));
       if (s) out.push(T.asSugChart);
