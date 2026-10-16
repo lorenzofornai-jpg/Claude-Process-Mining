@@ -2,7 +2,9 @@
 
 - Simbolo (BpaSymbol): pool, lane, attivita', sottoprocesso, evento, gateway, oggetto dati, archivio dati, con un
   identificativo univoco nascosto, il nome in italiano e in inglese e gli attributi definiti dall'Amministratore
-  (BpaAttributeDef). Il nome e' unico per tipo e lingua: stesso nome = stesso simbolo (si riusa) oppure si rinomina.
+  (BpaAttributeDef). Il nome e' unico per tipo e lingua dentro un dataset: stesso nome = stesso simbolo (si riusa)
+  oppure si rinomina; in dataset diversi lo stesso nome puo' essere di simboli diversi (l'Amministratore li puo'
+  consolidare in uno, merge()). Per i BPMN generati dalle varianti guida il nome inglese.
 - Occorrenza (BpaOccurrence): l'elemento di un modello BPMN che rappresenta il simbolo. Lo stesso simbolo puo'
   comparire in piu' modelli (es. la lane «Buyer»); rinominarlo cambia il nome in tutti.
 - Relazione (BpaRelation): contiene, precede, attiva, crea, input, output, attaccato a, messaggio; ricalcolate dal
@@ -284,21 +286,38 @@ def set_name(s, lang: str, name: str) -> None:
         s.name_en, s.key_en = name, norm(name)
 
 
-def find_by_name(db, symbol_type: str, name: str, lang: str, exclude: str | None = None):
-    from app.models import BpaSymbol
+def find_by_name(db, symbol_type: str, name: str, lang: str, exclude: str | None = None,
+                 configs: set[str] | None = None):
+    """Simbolo con questo tipo e nome. configs: solo tra i simboli che compaiono in un BPMN di questi dataset."""
+    from app.models import BpaModel, BpaOccurrence, BpaSymbol
     col = BpaSymbol.key_it if lang == "it" else BpaSymbol.key_en
     q = db.query(BpaSymbol).filter(BpaSymbol.symbol_type == symbol_type, col == norm(name))
     if exclude:
         q = q.filter(BpaSymbol.id != exclude)
+    if configs is not None:
+        if not configs:
+            return None
+        q = q.filter(BpaSymbol.id.in_(
+            db.query(BpaOccurrence.symbol_id).join(BpaModel, BpaModel.id == BpaOccurrence.model_id)
+            .filter(BpaModel.ingestion_config_id.in_(sorted(configs)))))
     return q.first()
+
+
+def symbol_configs(db, symbol_id: str) -> set[str]:
+    """I dataset (ingestion config) dei BPMN in cui compare il simbolo."""
+    from app.models import BpaModel, BpaOccurrence
+    return {c for (c,) in db.query(BpaModel.ingestion_config_id).join(BpaOccurrence, BpaOccurrence.model_id == BpaModel.id)
+            .filter(BpaOccurrence.symbol_id == symbol_id).distinct()}
 
 
 def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | None = None,
             policy: str = "ask") -> dict:
     """Quale simbolo e' ogni elemento con nome. Non scrive nulla.
+    I nomi gia' usati si cercano solo tra i simboli del dataset del modello (e, per un simbolo rinominato, anche dei
+    dataset in cui compare): lo stesso nome in un altro dataset e' un altro simbolo.
     links: {id elemento: {"symbol": id} | {"copy_of": id}} scelti dall'utente nell'editor.
     policy: "ask" -> i nomi gia' usati da un altro simbolo sono conflitti da far decidere all'utente;
-            "reuse" -> stesso nome = stesso simbolo (modelli generati dalle varianti).
+            "reuse" -> stesso nome = stesso simbolo (modelli generati dalle varianti, con lang="en").
     Ritorna {"assign", "new", "renames", "conflicts", "xml", "refreshed", "ext"}."""
     from app.models import BpaOccurrence, BpaSymbol
     ext = extract(xml)
@@ -335,7 +354,10 @@ def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | N
                 s = None   # l'elemento ha cambiato tipo (es. attivita' -> evento): e' un altro simbolo
         if s is not None and s.anonymous and link.get("symbol") == s.id:
             s = None   # un simbolo senza nome non si condivide
-        same = find_by_name(db, e["type"], e["name"], lang, exclude=s.id if s else None)
+        scope = {model.ingestion_config_id}
+        if s is not None and not s.anonymous:
+            scope |= symbol_configs(db, s.id)   # un nome cambiato vale in tutti i BPMN del simbolo
+        same = find_by_name(db, e["type"], e["name"], lang, exclude=s.id if s else None, configs=scope)
         if s is not None and s.anonymous:   # elemento che prima non aveva un nome proprio e ora ce l'ha
             if same is not None:
                 if policy == "reuse":
@@ -550,25 +572,98 @@ def backfill(db) -> int:
             continue
         if all(eid in have for eid in ext["elements"]):
             continue
-        plan = resolve(db, m, "it", m.xml_it, {}, policy="reuse")
+        plan = resolve(db, m, "en", m.xml_en, {}, policy="reuse")
         if plan["conflicts"]:
             continue
-        out = apply(db, m, "it", plan["xml"], m.xml_en, plan, None)
-        m.xml_it, m.xml_en = out["xml"], out["other_xml"]
+        out = apply(db, m, "en", plan["xml"], m.xml_it, plan, None)
+        m.xml_en, m.xml_it = out["xml"], out["other_xml"]
         n += 1
     return n
 
 
 def register_generated(db, model, user_name: str | None = None) -> None:
-    """Modello generato da una variante (o mai registrato): i suoi simboli entrano nell'archivio; stesso nome di un
-    simbolo gia' presente = stesso simbolo (es. la stessa attivita' in due varianti)."""
-    plan = resolve(db, model, "it", model.xml_it, {}, policy="reuse")
-    # nell'altra lingua i simboli gia' presenti hanno il loro nome: si allinea il modello
-    names = other_names(db, plan, "it")
+    """Modello generato da una variante (o mai registrato): i suoi simboli entrano nell'archivio. Guida il nome
+    inglese e si cerca solo nel dataset: stesso tipo e stesso nome inglese di un simbolo gia' in un BPMN dello stesso
+    dataset = stesso simbolo (es. la stessa attivita' in due varianti); altrimenti un simbolo nuovo, anche se un altro
+    dataset ha un simbolo con lo stesso nome (l'Amministratore li puo' consolidare)."""
+    plan = resolve(db, model, "en", model.xml_en, {}, policy="reuse")
+    # in italiano i simboli gia' presenti hanno il loro nome: si allinea il modello
+    names = other_names(db, plan, "en")
     if names:
-        model.xml_en = set_names(model.xml_en, names)
-    out = apply(db, model, "it", plan["xml"], model.xml_en, plan, user_name)
-    model.xml_it, model.xml_en = out["xml"], out["other_xml"]
+        model.xml_it = set_names(model.xml_it, names)
+    out = apply(db, model, "en", plan["xml"], model.xml_it, plan, user_name)
+    model.xml_en, model.xml_it = out["xml"], out["other_xml"]
+
+
+# ---------- consolidamento (Amministratore) ----------
+
+def merge(db, master_id: str, ids: list[str], user_name: str | None = None) -> dict:
+    """Consolida piu' simboli dello stesso tipo nel master: occorrenze e relazioni passano al master, gli altri si
+    eliminano; il master tiene nomi e attributi suoi e prende dagli altri solo gli attributi che non ha. In tutti i
+    BPMN gli elementi prendono i nomi del master.
+    Ritorna {"merged": n, "models": n} oppure {"error": msg, ...} senza scrivere nulla."""
+    from app.models import BpaModel, BpaOccurrence, BpaRelation, BpaSymbol
+    from app.i18n import msg
+    master = db.get(BpaSymbol, master_id)
+    others = [db.get(BpaSymbol, i) for i in dict.fromkeys(ids) if i != master_id]
+    others = [o for o in others if o is not None]
+    if master is None or not others:
+        return {"error": msg("Scegli almeno due oggetti e quale tenere.")}
+    if any(o.symbol_type != master.symbol_type for o in others):
+        return {"error": msg("Si consolidano solo oggetti dello stesso tipo.")}
+    if master.anonymous or any(o.anonymous for o in others):
+        return {"error": msg("Gli oggetti senza nome non si consolidano.")}
+    group = {master.id} | {o.id for o in others}
+    configs = set()
+    for sid in group:
+        configs |= symbol_configs(db, sid)
+    # nei dataset dei simboli consolidati il nome del master non deve essere gia' di un altro oggetto
+    for lang in ("it", "en"):
+        for cfg in sorted(configs):
+            hit = find_by_name(db, master.symbol_type, name_of(master, lang), lang, configs={cfg})
+            if hit is not None and hit.id not in group:
+                return {"error": msg("Il nome «{n}» è già di un altro oggetto dello stesso tipo in un dataset di questi "
+                                     "oggetti: consolidalo insieme o rinominalo prima.", n=name_of(master, lang)),
+                        "conflict": hit.id}
+    attrs = dict(master.attrs or {})
+    for o in others:
+        for k, v in (o.attrs or {}).items():
+            if attrs.get(k) in (None, "", [], {}):
+                attrs[k] = copy.deepcopy(v)
+    master.attrs = attrs
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    master.updated_at, master.updated_by = now, user_name
+    ids_other = [o.id for o in others]
+    db.query(BpaOccurrence).filter(BpaOccurrence.symbol_id.in_(ids_other)).update(
+        {BpaOccurrence.symbol_id: master.id}, synchronize_session=False)
+    db.query(BpaRelation).filter(BpaRelation.source_id.in_(ids_other)).update(
+        {BpaRelation.source_id: master.id}, synchronize_session=False)
+    db.query(BpaRelation).filter(BpaRelation.target_id.in_(ids_other)).update(
+        {BpaRelation.target_id: master.id}, synchronize_session=False)
+    db.flush()
+    seen = set()
+    for r in db.query(BpaRelation).filter((BpaRelation.source_id == master.id) | (BpaRelation.target_id == master.id)).all():
+        k = (r.model_id, r.kind, r.source_id, r.target_id)
+        if r.source_id == r.target_id or k in seen:
+            db.delete(r)
+        else:
+            seen.add(k)
+    for o in others:
+        db.delete(o)
+    # i nomi del master in tutti i BPMN in cui compare
+    by_model = defaultdict(list)
+    for o in db.query(BpaOccurrence).filter_by(symbol_id=master.id).all():
+        by_model[o.model_id].append(o.element_id)
+    for mid, eids in by_model.items():
+        m = db.get(BpaModel, mid)
+        if m is None:
+            continue
+        m.xml_it = set_names(m.xml_it, {e: master.name_it for e in eids if master.name_it})
+        m.xml_en = set_names(m.xml_en, {e: master.name_en for e in eids if master.name_en})
+        db.add(m)
+    db.add(master)
+    db.flush()
+    return {"merged": len(others), "models": len(by_model)}
 
 
 # ---------- valori degli attributi ----------

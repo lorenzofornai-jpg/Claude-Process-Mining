@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Consolida gli oggetti BPMN") }}{% endblock %}
+{% block content %}
+{% set lang = current_lang() %}
+<div class="card wide">
+  <p class="eyebrow">{{ _("Amministrazione") }} · BPA</p>
+  <h1>{{ _("Consolida gli oggetti BPMN") }}</h1>
+  <p class="muted">
+    {{ _("Scegli l'oggetto da tenere (master): gli altri diventano lui in tutti i BPMN in cui compaiono, con le loro occorrenze e relazioni, e si eliminano. Il master tiene il nome in italiano e in inglese e i suoi attributi; dagli altri prende solo gli attributi che non ha. Non si annulla.") }}
+  </p>
+  {% if error %}<div class="banner error"><strong>{{ _("Non consolidato:") }}</strong> {{ error|tr }}</div>{% endif %}
+  <form method="post" action="/admin/bpa/merge" data-confirm="{{ _("Consolidare gli oggetti scelti nell'oggetto da tenere? Non si annulla.") }}" data-confirm-ok="{{ _("Consolida") }}">
+    <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
+    {% for i in items %}<input type="hidden" name="symbol" value="{{ i.id }}">{% endfor %}
+    <div class="table-scroll">
+    <table class="admin-table bpa-merge-table">
+      <thead><tr>
+        <th>{{ _("Da tenere") }}</th><th>{{ _("Nome (italiano)") }}</th><th>{{ _("Nome (inglese)") }}</th>
+        <th>{{ _("Dataset") }}</th><th class="num">{{ _("Occorrenze") }}</th><th>{{ _("Creato da") }}</th>
+        {% for d in defs %}<th>{{ d.name.get(lang) or d.name.get('it') }}</th>{% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td><input type="radio" name="master" value="{{ i.id }}" {{ 'checked' if i.id == master }} aria-label="{{ _("Tieni «{n}»", n=i.name_it if lang == 'it' else i.name_en) }}"></td>
+          <td><strong>{{ i.name_it }}</strong></td><td>{{ i.name_en }}</td>
+          <td class="tiny">{{ i.datasets or "—" }}</td><td class="num">{{ i.occ }}</td>
+          <td class="tiny muted">{{ i.created_by or "—" }}</td>
+          {% for v in i["values"] %}<td>{{ v }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions">
+      <a class="secondary button-link" href="/admin/bpa?type={{ symbol_type }}#symbols">{{ _("Annulla") }}</a>
+      <button type="submit" class="primary">{{ _("Consolida") }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -7,9 +7,10 @@
   <p class="eyebrow">{{ _("Amministrazione") }} · BPA</p>
   <h1>{{ _("Attributi degli oggetti BPMN") }}</h1>
   <p class="muted">
-    {{ _("L'archivio degli oggetti dei BPMN è unico per l'azienda: ogni pool, lane, attività, evento, gateway... ha un identificativo univoco e un nome unico per tipo, e compare in uno o più BPMN. Qui definisci gli attributi di ogni tipo di oggetto: gli utenti li compilano nel pannello delle proprietà dell'editor.") }}
+    {{ _("L'archivio degli oggetti dei BPMN è unico per l'azienda: ogni pool, lane, attività, evento, gateway... ha un identificativo univoco e un nome unico per tipo dentro un dataset, e compare in uno o più BPMN. Lo stesso nome in dataset diversi può essere di oggetti diversi: qui puoi consolidarli in uno. Definisci anche gli attributi di ogni tipo di oggetto: gli utenti li compilano nel pannello delle proprietà dell'editor.") }}
   </p>
   {% if saved %}<div class="banner ok">{{ _("Modifiche salvate.") }}</div>{% endif %}
+  {% if merged %}<div class="banner ok">{{ _("Oggetti consolidati: {n} uniti all'oggetto scelto.", n=merged) }}</div>{% endif %}
   {% if errors %}
   <div class="banner error"><strong>{{ _("Non salvato:") }}</strong>
     <ul class="tight">{% for e in errors %}<li>{{ e|tr }}</li>{% endfor %}</ul></div>
@@ -29,7 +30,7 @@
       <tr class="bpa-system">
         <td>🔒</td><td><strong>{{ _("Nome") }}</strong> <span class="tiny muted">{{ _("(italiano e inglese)") }}</span></td>
         <td>{{ data_types.short_text[lang] }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">name</td>
-        <td class="tiny muted">{{ _("Di sistema: unico per tipo, si cambia nel diagramma.") }}</td>
+        <td class="tiny muted">{{ _("Di sistema: unico per tipo nel dataset, si cambia nel diagramma.") }}</td>
       </tr>
       <tr class="bpa-system">
         <td>🔒</td><td><strong>{{ _("Identificativo") }}</strong></td>
@@ -120,10 +121,16 @@
     <input type="search" id="bpa-sym-search" placeholder="{{ _("Cerca un oggetto") }}" aria-label="{{ _("Cerca un oggetto") }}">
     <span class="tiny muted">{{ _("Tocca una riga per aprire il pannello delle proprietà.") }}</span>
   </div>
+  <form method="get" action="/admin/bpa/merge" id="bpa-merge-form" class="bpa-merge-bar">
+    <input type="hidden" name="type" value="{{ symbol_type }}">
+    <button type="submit" class="secondary" id="bpa-merge-btn" disabled>{{ _("Consolida gli oggetti scelti") }}</button>
+    <span class="tiny muted">{{ _("Spunta due o più oggetti che sono la stessa cosa (es. lo stesso nome in dataset diversi) e scegli quale tenere.") }}</span>
+  </form>
   <div class="table-scroll">
   <table class="admin-table bpa-symbols">
     <thead><tr>
-      <th>{{ _("Nome") }}</th><th>{{ _("Nome") }} ({{ 'EN' if lang == 'it' else 'IT' }})</th>
+      <th><span class="sr-only">{{ _("Consolida") }}</span></th>
+      <th>{{ _("Nome") }}</th><th>{{ _("Nome") }} ({{ 'EN' if lang == 'it' else 'IT' }})</th><th>{{ _("Dataset") }}</th>
       {% if symbol_type in ('event', 'gateway', 'activity', 'subprocess') %}<th>{{ _("Sottotipo") }}</th>{% endif %}
       <th class="num">{{ _("Occorrenze") }}</th>
       {% for d in defs %}<th>{{ d.name.get(lang) or d.name.get('it') }}</th>{% endfor %}
@@ -131,8 +138,10 @@
     <tbody>
       {% for r in rows %}
       <tr class="bpa-sym-row" data-id="{{ r.id }}" tabindex="0" role="button">
+        <td class="bpa-pick">{% if not r.anonymous %}<input type="checkbox" name="symbol" value="{{ r.id }}" form="bpa-merge-form" aria-label="{{ _("Scegli «{n}» per consolidarlo", n=r.name) }}">{% endif %}</td>
         <td><strong>{{ r.name }}</strong>{% if r.anonymous %} <span class="tiny bpa-tag">{{ _("senza nome") }}</span>{% endif %}</td>
         <td class="muted">{{ r.other }}</td>
+        <td class="tiny">{{ r.datasets or "—" }}</td>
         {% if symbol_type in ('event', 'gateway', 'activity', 'subprocess') %}<td class="tiny">{{ r.subtypes }}</td>{% endif %}
         <td class="num">{{ r.occ }}</td>
         {% for v in r["values"] %}<td class="bpa-sym-val" data-key="{{ defs[loop.index0].key }}">{{ v }}</td>{% endfor %}
@@ -216,6 +225,15 @@
         .then(function (d) { if (d.error) throw new Error(d.error); detail = d; panel.hidden = false; draw(); })
         .catch(function (e) { alert(e.message); });
     }
+    // consolidamento: le caselle non aprono il pannello; il pulsante si attiva con almeno due oggetti
+    var mergeBtn = document.getElementById("bpa-merge-btn");
+    function syncMerge() { if (mergeBtn) mergeBtn.disabled = document.querySelectorAll('.bpa-pick input:checked').length < 2; }
+    document.querySelectorAll(".bpa-pick").forEach(function (td) {
+      td.addEventListener("click", function (e) { e.stopPropagation(); });
+      td.addEventListener("keydown", function (e) { e.stopPropagation(); });
+      var cb = td.querySelector("input"); if (cb) cb.addEventListener("change", syncMerge);
+    });
+    syncMerge();
     document.querySelectorAll(".bpa-sym-row").forEach(function (row) {
       row.addEventListener("click", function () { open(row); });
       row.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(row); } });

@@ -140,7 +140,7 @@ async def bpa_send(request: Request):
                      cost_usd=built["cost_usd"], created_by_id=user.id, created_by=user.name)
         db.add(m)
         db.flush()
-        bpa_repo.register_generated(db, m, user.name)   # i simboli entrano nell'archivio (stesso nome = stesso simbolo)
+        bpa_repo.register_generated(db, m, user.name)   # i simboli entrano nell'archivio (stesso nome inglese nel dataset = stesso simbolo)
         db.commit()
         return JSONResponse({"model": _json(m), "cost_usd": built["cost_usd"]})
     finally:
@@ -465,8 +465,10 @@ def bpa_model_symbols(request: Request, model_id: str, workspace_id: str):
 
 
 @router.get("/analysis/bpa/symbols/lookup")
-def bpa_symbol_lookup(request: Request, workspace_id: str, type: str, name: str, lang: str = "it", exclude: str = ""):
-    """Simbolo dell'archivio con questo tipo e nome (nella lingua del modello), se c'e'."""
+def bpa_symbol_lookup(request: Request, workspace_id: str, model_id: str, type: str, name: str, lang: str = "it",
+                      exclude: str = ""):
+    """Simbolo con questo tipo e nome (nella lingua del modello) tra quelli del dataset del modello, se c'e'.
+    exclude: il simbolo che si sta rinominando (si cerca anche nei dataset in cui compare)."""
     ui = get_lang(request)
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
@@ -476,7 +478,11 @@ def bpa_symbol_lookup(request: Request, workspace_id: str, type: str, name: str,
         return JSONResponse({"symbol": None})
     db = SessionLocal()
     try:
-        s = bpa_repo.find_by_name(db, type, name, lang, exclude=exclude or None)
+        m = _model(db, model_id, workspace_id)
+        if m is None:
+            return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
+        scope = {m.ingestion_config_id} | (bpa_repo.symbol_configs(db, exclude) if exclude else set())
+        s = bpa_repo.find_by_name(db, type, name, lang, exclude=exclude or None, configs=scope)
         return JSONResponse({"symbol": _symbol_brief(db, s.id, ui, user) if s else None})
     finally:
         db.close()

@@ -382,6 +382,19 @@ aggiornati) il testo si riusa e l'LLM si chiama solo per i fattori nuovi.
   stesso pannello delle proprietà dell'editor (`static/bpa_panel.js`, condiviso), con gli attributi modificabili.
 - Da fare: pool e lane nel copia/incolla, relazioni aggiunte a mano (non dal disegno).
 
+## BPA — Oggetti per dataset e consolidamento (16 ottobre 2026)
+- Decisione: l'archivio resta unico per l'azienda, ma **i nomi si confrontano solo dentro il dataset**. All'invio di una
+  variante **guida il nome inglese**: stesso tipo e stesso nome inglese di un oggetto già in un BPMN dello stesso dataset
+  = stesso oggetto (il modello italiano prende il nome italiano dell'oggetto); altrimenti un oggetto nuovo, anche se un
+  altro dataset ne ha uno con lo stesso nome.
+- ✅ Editor: «Riutilizza» / «Rinomina» solo per i nomi già usati nel dataset del modello (nella lingua del modello); per
+  un oggetto rinominato si controllano anche i dataset in cui compare. Lo stesso nome in un altro dataset = oggetto nuovo.
+- ✅ Gli oggetti già condivisi tra dataset diversi restano come sono.
+- ✅ Amministrazione > oggetti di un tipo: colonna «Dataset» e **consolidamento**: si spuntano due o più oggetti, si
+  sceglie quello da tenere (master); occorrenze e relazioni passano al master, gli altri si eliminano, in tutti i BPMN
+  gli elementi prendono i nomi del master; attributi del master, completati con quelli che non ha. Rifiutato se il nome
+  del master è già di un altro oggetto in uno dei dataset coinvolti.
+
 ## Amministrazione > LLM (13 ottobre 2026)
 - ✅ Pagina dell'amministratore (IT/EN) per configurare l'LLM: attivo/disattivo, indirizzo dell'API (gateway o
   proxy), chiave API, timeout, tentativi; per ogni uso (mapping, controllo di pertinenza, Control Tower,

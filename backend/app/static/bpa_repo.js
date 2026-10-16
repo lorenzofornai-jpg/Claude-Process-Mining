@@ -1,5 +1,6 @@
 /* BPA: archivio dei simboli nell'editor BPMN (bpa_editor.js).
- * - Nome gia' usato da un simbolo dello stesso tipo: «Riutilizza» (stesso simbolo) o «Rinomina».
+ * - Nome gia' usato da un simbolo dello stesso tipo nel dataset del modello: «Riutilizza» (stesso simbolo) o «Rinomina»;
+ *   lo stesso nome in un altro dataset e' un altro simbolo.
  * - Rinominare un simbolo che compare in altri BPMN: si conferma vedendo dove cambiera' (cambia ovunque).
  * - Pannello delle proprieta' a destra: Attributi (modificabili), Occorrenze, Relazioni del simbolo selezionato.
  * - Copia/incolla anche tra schede (clipboard nel browser): a ogni incolla si sceglie se usare gli stessi simboli
@@ -93,7 +94,7 @@ function initBpaRepo(c) {
     var type = typeOf(e), name = nameOf(e);
     if (!type || generic(name)) return Promise.resolve();
     var sid = symbolOf(e);
-    return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, type: type, name: name, lang: c.lang(), exclude: sid || "" }))
+    return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, model_id: c.modelId, type: type, name: name, lang: c.lang(), exclude: sid || "" }))
       .then(function (j) {
         if (j.symbol) return askDuplicate(e, j.symbol);
         var m = map[e.id];
@@ -256,7 +257,7 @@ function initBpaRepo(c) {
     var base = name.replace(/\s*\(\d+\)$/, ""), n = 2;
     function next() {
       var cand = base + " (" + n + ")";
-      return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, type: type, name: cand, lang: c.lang() }))
+      return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, model_id: c.modelId, type: type, name: cand, lang: c.lang() }))
         .then(function (j) {
           var local = reg().filter(function (e) { return typeOf(e) === type && norm(nameOf(e)) === norm(cand); }).length;
           if (!j.symbol && !local) return cand;

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -395,17 +395,54 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
     occ_count = {}
     for (sid,) in db.query(BpaOccurrence.symbol_id).all():
         occ_count[sid] = occ_count.get(sid, 0) + 1
+    datasets = _bpa_datasets(db)
     rows = []
     for s in db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all():
         rows.append({"id": s.id, "name": bpa_repo.display_name(db, s, lang), "anonymous": bool(s.anonymous),
                      "other": "" if s.anonymous else bpa_repo.name_of(s, "en" if lang == "it" else "it"),
                      "subtypes": ", ".join(bpa_repo.subtypes(db, s, lang)), "occ": occ_count.get(s.id, 0),
+                     "datasets": ", ".join(sorted(datasets.get(s.id, ()), key=str.casefold)),
                      "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
     rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
     return {"request": request, "types": bpa_repo.SYMBOL_TYPES, "symbol_type": symbol_type, "defs": defs,
             "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
             "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
             "errors": errors or [], "form": form, "rows": rows}
+
+
+def _bpa_datasets(db) -> dict[str, set[str]]:
+    """{id simbolo: nomi dei dataset dei BPMN in cui compare}."""
+    from app.models import BpaModel, BpaOccurrence, IngestionConfig
+    out: dict[str, set[str]] = {}
+    q = (db.query(BpaOccurrence.symbol_id, IngestionConfig.name)
+         .join(BpaModel, BpaModel.id == BpaOccurrence.model_id)
+         .join(IngestionConfig, IngestionConfig.id == BpaModel.ingestion_config_id).distinct())
+    for sid, name in q.all():
+        out.setdefault(sid, set()).add(name)
+    return out
+
+
+def _bpa_merge_context(db, request, symbol_type: str, ids: list[str], master: str | None = None, error=None):
+    """Pagina del consolidamento: gli oggetti scelti con nomi, dataset, occorrenze e attributi."""
+    from app.models import BpaAttributeDef, BpaOccurrence, BpaSymbol
+    from app.services import bpa_repo
+    lang = get_lang(request)
+    defs = db.query(BpaAttributeDef).filter_by(symbol_type=symbol_type).order_by(BpaAttributeDef.position).all()
+    datasets = _bpa_datasets(db)
+    items = []
+    for sid in dict.fromkeys(ids):
+        s = db.get(BpaSymbol, sid)
+        if s is None or s.symbol_type != symbol_type or s.anonymous:
+            continue
+        items.append({"id": s.id, "name_it": s.name_it, "name_en": s.name_en,
+                      "datasets": ", ".join(sorted(datasets.get(s.id, ()), key=str.casefold)),
+                      "occ": db.query(BpaOccurrence).filter_by(symbol_id=s.id).count(),
+                      "created_by": s.created_by,
+                      "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
+    if master not in {i["id"] for i in items}:
+        master = max(items, key=lambda i: i["occ"])["id"] if items else None
+    return {"request": request, "types": bpa_repo.SYMBOL_TYPES, "symbol_type": symbol_type, "defs": defs,
+            "items": items, "master": master, "error": error}
 
 
 def _bpa_value_text(d, v, lang: str) -> str:
@@ -427,7 +464,7 @@ def _bpa_value_text(d, v, lang: str) -> str:
 
 
 @router.get("/bpa", response_class=HTMLResponse)
-def admin_bpa(request: Request, type: str = "activity", edit: str = "", saved: int = 0):
+def admin_bpa(request: Request, type: str = "activity", edit: str = "", saved: int = 0, merged: int = 0):
     from app.services import bpa_repo
     user, denied = _require_admin(request)
     if denied:
@@ -438,7 +475,7 @@ def admin_bpa(request: Request, type: str = "activity", edit: str = "", saved: i
         ctx = _bpa_context(db, request, symbol_type, edit or None)
     finally:
         db.close()
-    return templates.TemplateResponse("admin_bpa.html", {**ctx, "user": user, "saved": saved})
+    return templates.TemplateResponse("admin_bpa.html", {**ctx, "user": user, "saved": saved, "merged": merged})
 
 
 @router.post("/bpa/attr")
@@ -568,6 +605,48 @@ async def admin_bpa_unused_delete(request: Request):
     finally:
         db.close()
     return RedirectResponse(f"/admin/bpa?type={form.get('symbol_type') or 'activity'}&saved=1#unused", status_code=303)
+
+
+@router.get("/bpa/merge", response_class=HTMLResponse)
+def admin_bpa_merge_page(request: Request, type: str = "activity", symbol: list[str] = Query(default=[])):
+    """Consolidamento: l'Amministratore sceglie l'oggetto da tenere (master) tra quelli spuntati nella tabella."""
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    symbol_type = type if type in bpa_repo.SYMBOL_TYPES else "activity"
+    db = SessionLocal()
+    try:
+        ctx = _bpa_merge_context(db, request, symbol_type, symbol)
+    finally:
+        db.close()
+    if len(ctx["items"]) < 2:
+        return RedirectResponse(f"/admin/bpa?type={symbol_type}#symbols", status_code=303)
+    return templates.TemplateResponse("admin_bpa_merge.html", {**ctx, "user": user})
+
+
+@router.post("/bpa/merge")
+async def admin_bpa_merge(request: Request):
+    """Consolida gli oggetti scelti nel master (services/bpa_repo.merge)."""
+    from app.services import bpa_repo
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    form = await request.form()
+    symbol_type = form.get("symbol_type") if form.get("symbol_type") in bpa_repo.SYMBOL_TYPES else "activity"
+    ids = [str(x) for x in form.getlist("symbol")]
+    master = str(form.get("master") or "")
+    db = SessionLocal()
+    try:
+        out = bpa_repo.merge(db, master, ids, user.name)
+        if out.get("error"):
+            db.rollback()
+            ctx = _bpa_merge_context(db, request, symbol_type, ids, master, out["error"])
+            return templates.TemplateResponse("admin_bpa_merge.html", {**ctx, "user": user}, status_code=400)
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(f"/admin/bpa?type={symbol_type}&merged={out['merged']}#symbols", status_code=303)
 
 
 @router.get("/bpa/symbols/{symbol_id}")

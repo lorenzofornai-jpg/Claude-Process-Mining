@@ -1,5 +1,6 @@
-"""Archivio dei simboli dei BPMN (services/bpa_repo.py): stesso nome = stesso simbolo, occorrenze in piu' modelli,
-rinomina propagata, conflitti di nome, relazioni, attributi e viste SQL.
+"""Archivio dei simboli dei BPMN (services/bpa_repo.py): stesso nome nel dataset = stesso simbolo (per le varianti guida
+il nome inglese), occorrenze in piu' modelli, rinomina propagata, conflitti di nome, consolidamento, relazioni,
+attributi e viste SQL.
 Uso: python -m pytest backend/tests
 """
 from __future__ import annotations
@@ -35,10 +36,10 @@ def db(tmp_path):
     s.close()
 
 
-def _model(db, steps, lanes=LANES):
-    xml = bpmn.generate_both({"it": "P2P", "en": "P2P"}, steps, {}, lanes)
-    m = BpaModel(ingestion_config_id="c1", lead_type="Order", variant_key=str(len(steps)), steps=steps, stats={},
-                 labels={}, lanes=lanes, xml_it=xml["it"], xml_en=xml["en"])
+def _model(db, steps, lanes=LANES, config="c1", labels=None):
+    xml = bpmn.generate_both({"it": "P2P", "en": "P2P"}, steps, labels or {}, lanes)
+    m = BpaModel(ingestion_config_id=config, lead_type="Order", variant_key=str(len(steps)), steps=steps, stats={},
+                 labels=labels or {}, lanes=lanes, xml_it=xml["it"], xml_en=xml["en"])
     db.add(m)
     db.flush()
     bpa_repo.register_generated(db, m, "tester")
@@ -150,3 +151,71 @@ def test_unnamed_gateways_are_symbols_and_naming_them_shares_them(db):
     bpa_repo.apply(db, a, "it", xml2, xml2, plan2, "tester")
     db.commit()
     assert not db.get(BpaSymbol, g.id).anonymous and db.get(BpaSymbol, g.id).name_it == "Fattura corretta?"
+
+
+def _occ_symbols(db, m, typ="activity"):
+    return {db.get(BpaSymbol, o.symbol_id).name_en: o.symbol_id for o in db.query(BpaOccurrence).filter_by(model_id=m.id)
+            if db.get(BpaSymbol, o.symbol_id).symbol_type == typ}
+
+
+def test_variants_match_english_names_within_the_dataset_only(db):
+    a = _model(db, STEPS_A, config="c1")
+    b = _model(db, STEPS_B, config="c2")   # stessi nomi, altro dataset: oggetti nuovi
+    sa, sb = _occ_symbols(db, a), _occ_symbols(db, b)
+    assert sa["Create Purchase Order"] != sb["Create Purchase Order"]
+    assert _occ_symbols(db, a, "lane")["Buyer"] != _occ_symbols(db, b, "lane")["Buyer"]
+    # stesso dataset, stesso nome inglese ma traduzione italiana diversa: stesso oggetto, col nome italiano dell'oggetto
+    labels = {"Create Purchase Order": {"it": "Creazione ordine di acquisto", "en": "Create Purchase Order"}}
+    c = _model(db, STEPS_B, config="c1", labels=labels)
+    sid = _occ_symbols(db, c)["Create Purchase Order"]
+    assert sid == sa["Create Purchase Order"]
+    assert db.get(BpaSymbol, sid).name_it == "Create Purchase Order"
+    assert "Create Purchase Order" in bpmn.texts(db.get(BpaModel, c.id).xml_it).values()
+    assert "Creazione ordine di acquisto" not in bpmn.texts(db.get(BpaModel, c.id).xml_it).values()
+
+
+def test_editor_conflicts_only_for_names_used_in_the_dataset(db):
+    a = _model(db, STEPS_A, config="c1")
+    _model(db, [{"activity": "Check Stock", "repeated": False}], config="c2")
+    xml = a.xml_it.replace("</bpmn:process>", '<bpmn:task id="New_1" name="Check Stock" /></bpmn:process>')
+    plan = bpa_repo.resolve(db, a, "it", xml, {})
+    assert not plan["conflicts"] and "New_1" in plan["new"]   # nome usato solo nell'altro dataset: oggetto nuovo
+    xml2 = a.xml_it.replace("</bpmn:process>", '<bpmn:task id="New_2" name="approve order" /></bpmn:process>')
+    plan2 = bpa_repo.resolve(db, a, "it", xml2, {})
+    assert [c["element_id"] for c in plan2["conflicts"]] == ["New_2"]
+
+
+def test_merge_keeps_master_and_moves_occurrences(db):
+    db.add(BpaAttributeDef(symbol_type="lane", key="a_mgr", name={"it": "Responsabile", "en": "Manager"},
+                           data_type="short_text"))
+    db.add(BpaAttributeDef(symbol_type="lane", key="a_sys", name={"it": "Sistema", "en": "System"},
+                           data_type="short_text"))
+    a = _model(db, STEPS_A, config="c1")
+    b = _model(db, STEPS_B, lanes={"Create Purchase Order": "Purchaser", "Post Supplier Invoice": "Accounts payable"},
+               config="c2")
+    buyer, purchaser = _occ_symbols(db, a, "lane")["Buyer"], _occ_symbols(db, b, "lane")["Purchaser"]
+    db.get(BpaSymbol, buyer).attrs = {"a_mgr": "Anna"}
+    db.get(BpaSymbol, purchaser).attrs = {"a_mgr": "Luca", "a_sys": "SAP"}
+    db.commit()
+    out = bpa_repo.merge(db, buyer, [buyer, purchaser], "admin")
+    db.commit()
+    assert out == {"merged": 1, "models": 2}
+    assert db.get(BpaSymbol, purchaser) is None
+    m = db.get(BpaSymbol, buyer)
+    assert m.attrs == {"a_mgr": "Anna", "a_sys": "SAP"}   # del master; dagli altri solo quelli che non ha
+    assert _occ_symbols(db, b, "lane")["Buyer"] == buyer
+    assert "Buyer" in bpmn.texts(db.get(BpaModel, b.id).xml_en).values()
+    assert "Purchaser" not in bpmn.texts(db.get(BpaModel, b.id).xml_it).values()
+    rel = {(r.kind, r.source_id, r.target_id) for r in db.query(BpaRelation).filter_by(model_id=b.id)}
+    assert any(k == "contains" and s_ == buyer for k, s_, _ in rel) and all(s_ != t_ for _, s_, t_ in rel)
+
+
+def test_merge_refuses_a_name_already_used_in_a_dataset(db):
+    a = _model(db, STEPS_A, config="c1")
+    b = _model(db, STEPS_A, lanes={**LANES, "Approve Order": "Purchaser"}, config="c2")
+    buyer_a, purchaser_b = _occ_symbols(db, a, "lane")["Buyer"], _occ_symbols(db, b, "lane")["Purchaser"]
+    # in c2 c'e' gia' un'altra lane «Buyer»: consolidare «Purchaser» in «Buyer» di c1 la duplicherebbe
+    out = bpa_repo.merge(db, buyer_a, [buyer_a, purchaser_b], "admin")
+    assert out.get("conflict") == _occ_symbols(db, b, "lane")["Buyer"]
+    assert bpa_repo.merge(db, buyer_a, [buyer_a], "admin").get("error")
+    assert bpa_repo.merge(db, buyer_a, [buyer_a, _occ_symbols(db, a)["Approve Order"]], "admin").get("error")
