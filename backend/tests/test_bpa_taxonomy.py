@@ -36,8 +36,7 @@ def _staging(db, config="c1", lanes=LANES):
                  labels={}, lanes=lanes, xml_it=xml["it"], xml_en=xml["en"])
     db.add(m)
     db.flush()
-    bpa_repo.register_generated(db, m, "tester")
-    return m
+    return m   # i BPMN delle varianti non sono nell'archivio degli oggetti
 
 
 def _name(v):
@@ -76,30 +75,44 @@ def test_names_in_both_languages():
     assert tax.both("Acquisti", "it", {"it": "Vecchio", "en": "Vecchio"}, None) == {"it": "Acquisti", "en": "Acquisti"}
 
 
-def test_import_copies_and_keeps_the_staging_model(db):
+def test_import_copies_and_consolidates_in_the_repository(db):
     p = tax.create_process(db, None, _name("Purchasing"), "arch")
     src = _staging(db, "c1")
     m = tax.import_model(db, src, p, "arch")
     db.commit()
     assert m.stage == "repository" and m.ingestion_config_id is None and m.source_model_id == src.id
     assert db.get(BpaModel, src.id).stage is None   # la variante resta in staging
-    # stessi oggetti della variante
-    assert _symbols(db, m, "activity") == _symbols(db, src, "activity")
-    # un'altra variante (altro dataset) con gli stessi nomi: oggetti diversi in staging, ma importata nel repository
-    # prende quelli gia' nel repository (nomi unici nel repository)
+    assert db.query(BpaOccurrence).filter_by(model_id=src.id).count() == 0   # e non e' nell'archivio
+    acts = _symbols(db, m, "activity")
+    assert set(acts) == {"Create Purchase Order", "Approve Order"}
+    # un'altra variante (altro dataset) con gli stessi nomi: all'import diventa occorrenza degli stessi oggetti
     src2 = _staging(db, "c2")
-    assert _symbols(db, src2, "lane")["Buyer"] != _symbols(db, src, "lane")["Buyer"]
     m2 = tax.import_model(db, src2, p, "arch")
     db.commit()
     assert _symbols(db, m2, "lane")["Buyer"] == _symbols(db, m, "lane")["Buyer"]
-    assert _symbols(db, m2, "activity") == _symbols(db, m, "activity")
+    assert _symbols(db, m2, "activity") == acts
     # gli eventi senza nome sono oggetti di quella sola occorrenza
     ev = [o.symbol_id for o in db.query(BpaOccurrence).filter_by(model_id=m2.id) if db.get(BpaSymbol, o.symbol_id).anonymous]
-    ev_src = [o.symbol_id for o in db.query(BpaOccurrence).filter_by(model_id=src2.id) if db.get(BpaSymbol, o.symbol_id).anonymous]
-    assert ev and not set(ev) & set(ev_src)
+    ev1 = [o.symbol_id for o in db.query(BpaOccurrence).filter_by(model_id=m.id) if db.get(BpaSymbol, o.symbol_id).anonymous]
+    assert ev and not set(ev) & set(ev1)
     tax.delete_model(db, m2)
     db.commit()
     assert db.get(BpaModel, src2.id) is not None and db.query(BpaOccurrence).filter_by(model_id=m2.id).count() == 0
+
+
+def test_staging_models_leave_the_archive(db):
+    src = _staging(db, "c1")
+    bpa_repo.register_generated(db, src, "old")   # registrato come prima
+    p = tax.create_process(db, None, _name("Purchasing"), "arch")
+    m = tax.import_model(db, _staging(db, "c2"), p, "arch")
+    kept = db.query(BpaSymbol).filter_by(symbol_type="activity").count()
+    db.commit()
+    assert bpa_repo.unregister_staging(db) > 0
+    db.commit()
+    assert db.query(BpaOccurrence).filter_by(model_id=src.id).count() == 0
+    assert db.query(BpaOccurrence).filter_by(model_id=m.id).count() > 0
+    # gli oggetti della sola variante (senza valori) spariscono; quelli del repository restano
+    assert db.query(BpaSymbol).filter_by(symbol_type="activity").count() == kept - 2
 
 
 def test_repository_names_are_checked_in_the_repository(db):
@@ -114,8 +127,7 @@ def test_repository_names_are_checked_in_the_repository(db):
     plan = bpa_repo.resolve(db, new, "en", xml, {})
     assert [c["existing"] for c in plan["conflicts"]] == [_symbols(db, m, "activity")["Approve Order"]]
     # un nome usato solo in staging (non nel repository): oggetto nuovo
-    st = _staging(db, "c9", {"Create Purchase Order": "Clerk", "Approve Order": "Clerk"})
-    assert "Clerk" in _symbols(db, st, "lane")
+    _staging(db, "c9", {"Create Purchase Order": "Clerk", "Approve Order": "Clerk"})
     xml2 = new.xml_en.replace("</bpmn:process>", '<bpmn:task id="T2" name="Clerk" /></bpmn:process>')
     xml2 = xml2.replace('name="Role to be defined"', 'name="Clerk"')
     plan2 = bpa_repo.resolve(db, new, "en", xml2, {})

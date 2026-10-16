@@ -17,7 +17,10 @@
   </aside>
 
   <section class="tax-main">
-    <p class="eyebrow">{{ _("Repository BPA") }} · {{ "Process Architect" if can_edit else "Process Viewer" }}</p>
+    <div class="tax-top">
+      <p class="eyebrow">{{ _("Repository BPA") }} · {{ "Process Architect" if can_edit else "Process Viewer" }}</p>
+      {% if can_edit %}<a class="secondary button-link" href="/bpa/attributes">◇ {{ _("Attributi della BPA") }}</a>{% endif %}
+    </div>
     <div id="tax-none" class="card">
       <p class="muted">{{ _("Scegli un processo nella tassonomia a sinistra per vederne gli attributi e i modelli BPMN.") }}</p>
     </div>

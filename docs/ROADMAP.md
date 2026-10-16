@@ -549,3 +549,17 @@ processi; poi altri cataloghi e oggetti.
 - ✅ Nel repository ogni modello dice in quali **Process Overlay** è il BPMN di riferimento (dataset · processo);
   togliendolo dal repository lo si avvisa e quei riferimenti si tolgono.
 - Parcheggiato: altri cataloghi e oggetti del digital twin.
+
+## BPA — staging solo per il Process Overlay, archivio solo nel repository (16 ottobre 2026)
+- Decisione: nell'analisi i BPMN delle varianti (staging) servono **solo a generare il Process Overlay**: non sono
+  nell'archivio degli oggetti. Niente controllo dei nomi già usati, niente pannello delle proprietà (attributi,
+  occorrenze, relazioni), niente oggetti condivisi; l'editor resta per il disegno, bilingue, con copia/incolla.
+  All'avvio le occorrenze registrate prima per i BPMN della staging si tolgono (gli oggetti rimasti senza occorrenze e
+  senza valori si eliminano; quelli con valori restano tra gli «Oggetti senza occorrenze»).
+- ✅ **Il consolidamento avviene all'import nel repository**: un elemento con lo stesso tipo e lo stesso nome inglese di
+  un oggetto del repository diventa un'occorrenza di quello, gli altri sono oggetti nuovi. Il Process Architect può poi
+  consolidare a mano più oggetti del repository in uno.
+- ✅ **«Attributi della BPA»** passa dall'Amministratore al **Process Architect** (Repository BPA > «◇ Attributi della
+  BPA», `/bpa/attributes`, `routers/bpa_attributes.py`): attributi degli oggetti dei BPMN del repository e dei processi
+  della tassonomia; la tabella degli oggetti mostra solo quelli del repository, con i processi (codici) in cui compaiono.
+- Sostituisce le decisioni «Oggetti per dataset e consolidamento» del 16 ottobre per la parte staging.

@@ -7,7 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.auth import seed_default_admin
 from app.config import SESSION_SECRET_KEY
 from app.db import init_db
-from app.routers import admin, analysis, assessment, bpa, bpa_repository, ingestion, login
+from app.routers import admin, analysis, assessment, bpa, bpa_attributes, bpa_repository, ingestion, login
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -24,6 +24,7 @@ app.include_router(assessment.router)
 app.include_router(analysis.router)
 app.include_router(bpa.router)
 app.include_router(bpa_repository.router)
+app.include_router(bpa_attributes.router)
 
 
 @app.middleware("http")
@@ -74,6 +75,7 @@ def _startup() -> None:
             bpa_repo.text_attrs_in_both_languages(db)   # attributi di testo: sempre italiano e inglese
             from app.routers.bpa import migrate_overlay_flags
             migrate_overlay_flags(db)   # riferimenti del Process Overlay: dal flag sul modello alla tabella
+            bpa_repo.unregister_staging(db)   # i BPMN delle varianti non sono nell'archivio degli oggetti
             db.commit()
         finally:
             db.close()

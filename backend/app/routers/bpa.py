@@ -140,7 +140,6 @@ async def bpa_send(request: Request):
                      cost_usd=built["cost_usd"], created_by_id=user.id, created_by=user.name)
         db.add(m)
         db.flush()
-        bpa_repo.register_generated(db, m, user.name)   # i simboli entrano nell'archivio (stesso nome inglese nel dataset = stesso simbolo)
         db.commit()
         return JSONResponse({"model": _json(m), "cost_usd": built["cost_usd"]})
     finally:
@@ -285,18 +284,21 @@ async def save_model(get, body: dict, ui: str, user):
         m = get(db)
         if m is None:
             return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
-        if not m.registered:
-            bpa_repo.register_generated(db, m, user.name)
-            db.commit()
-        plan = bpa_repo.resolve(db, m, lang, xml, links, loaded_at)
-        if plan["conflicts"]:
-            return JSONResponse({"conflicts": [{**c, "existing": _symbol_brief(db, c["existing"], lang, user)}
-                                               for c in plan["conflicts"]]}, status_code=409)
-        known = bpa_repo.other_names(db, plan, lang)
+        archive = m.stage == "repository"   # i BPMN delle varianti (staging) non sono nell'archivio degli oggetti
+        plan, known = None, {}
+        if archive:
+            if not m.registered:
+                bpa_repo.register_generated(db, m, user.name)
+                db.commit()
+            plan = bpa_repo.resolve(db, m, lang, xml, links, loaded_at)
+            if plan["conflicts"]:
+                return JSONResponse({"conflicts": [{**c, "existing": _symbol_brief(db, c["existing"], lang, user)}
+                                                   for c in plan["conflicts"]]}, status_code=409)
+            known = bpa_repo.other_names(db, plan, lang)
+            xml = plan["xml"]
         old_same, old_other = (m.xml_it, m.xml_en) if lang == "it" else (m.xml_en, m.xml_it)
     finally:
         db.close()
-    xml = plan["xml"]
     cost, n_done = [0.0], [0]
 
     def tr(items):
@@ -313,7 +315,9 @@ async def save_model(get, body: dict, ui: str, user):
         m = get(db)
         if m is None:
             return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
-        res = bpa_repo.apply(db, m, lang, xml, other_xml, plan, user.name)
+        res = {"xml": xml, "other_xml": other_xml, "others": [], "self_changed": False}
+        if plan is not None:
+            res = bpa_repo.apply(db, m, lang, xml, other_xml, plan, user.name)
         xml, other_xml, others = res["xml"], res["other_xml"], res["others"]
         if lang == "it":
             m.xml_it, m.xml_en = xml, other_xml
@@ -326,7 +330,7 @@ async def save_model(get, body: dict, ui: str, user):
         db.commit()
         # untranslated: nomi nuovi o cambiati rimasti uguali nell'altra lingua (LLM non disponibile o senza risposta)
         return JSONResponse({"saved": True, "translated": n_done[0], "untranslated": len(todo) - n_done[0],
-                             "cost_usd": round(cost[0], 5), "refreshed": plan["refreshed"] or res["self_changed"],
+                             "cost_usd": round(cost[0], 5), "refreshed": bool(plan and plan["refreshed"]) or res["self_changed"],
                              "renamed_elsewhere": len(others),
                              "updated_at": utc_iso(m.updated_at), "updated_by": m.updated_by})
     finally:
@@ -362,7 +366,6 @@ async def bpa_reset(request: Request, model_id: str):
         m.edited = False
         _forget(db, m.id)
         db.flush()
-        bpa_repo.register_generated(db, m, user.name)
         m.cost_usd = round((m.cost_usd or 0.0) + built["cost_usd"], 5)
         m.updated_by, m.updated_at = user.name, _now()
         db.add(m)
@@ -372,7 +375,7 @@ async def bpa_reset(request: Request, model_id: str):
         db.close()
 
 
-# ---------- archivio dei simboli (unico per l'azienda) ----------
+# ---------- archivio degli oggetti (solo i modelli del repository BPA: routers/bpa_repository.py) ----------
 
 def _workspace_of(db, m: BpaModel) -> str | None:
     if m.workspace_id:
@@ -443,16 +446,6 @@ def _def_json(d: BpaAttributeDef, lang: str) -> dict:
                         for o in d.options or []]}
 
 
-@router.get("/analysis/bpa/meta")
-def bpa_meta(request: Request, workspace_id: str):
-    """Tipi di simbolo, relazioni e attributi definiti dall'Amministratore, nella lingua dell'interfaccia."""
-    lang = get_lang(request)
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
-    return meta(lang)
-
-
 def meta(lang: str):
     db = SessionLocal()
     try:
@@ -464,16 +457,6 @@ def meta(lang: str):
                          "tags": bpa_repo.TAG_TYPE,
                          "relations": {k: v[lang] for k, v in bpa_repo.RELATION_KINDS.items()},
                          "generic": sorted(bpa_repo.GENERIC_NAMES), "attributes": attrs})
-
-
-@router.get("/analysis/bpa/{model_id}/symbols")
-def bpa_model_symbols(request: Request, model_id: str, workspace_id: str):
-    """Elementi del modello legati a simboli dell'archivio: {id elemento: {symbol, type, elsewhere}}."""
-    lang = get_lang(request)
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
-    return model_symbols(lambda db: _model(db, model_id, workspace_id), lang, user)
 
 
 def model_symbols(get, lang: str, user):
@@ -497,18 +480,6 @@ def model_symbols(get, lang: str, user):
         db.close()
 
 
-@router.get("/analysis/bpa/symbols/lookup")
-def bpa_symbol_lookup(request: Request, workspace_id: str, model_id: str, type: str, name: str, lang: str = "it",
-                      exclude: str = ""):
-    """Simbolo con questo tipo e nome (nella lingua del modello) tra quelli del dataset del modello, se c'e'.
-    exclude: il simbolo che si sta rinominando (si cerca anche nei dataset in cui compare)."""
-    ui = get_lang(request)
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
-    return symbol_lookup(lambda db: _model(db, model_id, workspace_id), type, name, lang, exclude, ui, user)
-
-
 def symbol_lookup(get, type: str, name: str, lang: str, exclude: str, ui: str, user):
     lang = lang if lang in bpmn.LANGS else "it"
     if type not in bpa_repo.SYMBOL_TYPES or not bpa_repo.norm(name):
@@ -521,24 +492,6 @@ def symbol_lookup(get, type: str, name: str, lang: str, exclude: str, ui: str, u
         scope = {bpa_repo.scope_of(m)} | (bpa_repo.symbol_configs(db, exclude) if exclude else set())
         s = bpa_repo.find_by_name(db, type, name, lang, exclude=exclude or None, configs=scope)
         return JSONResponse({"symbol": _symbol_brief(db, s.id, ui, user) if s else None})
-    finally:
-        db.close()
-
-
-@router.get("/analysis/bpa/symbols/{symbol_id}")
-def bpa_symbol_detail(request: Request, symbol_id: str, workspace_id: str, lang: str = "", model_id: str = ""):
-    """Pannello delle proprieta': attributi (con i valori), occorrenze e relazioni del simbolo."""
-    ui = get_lang(request)
-    lang = lang if lang in bpmn.LANGS else ui
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
-    db = SessionLocal()
-    try:
-        d = symbol_detail(db, symbol_id, ui, lang, user, model_id)
-        if d is None:
-            return JSONResponse({"error": t(ui, "Oggetto non trovato.")}, status_code=404)
-        return JSONResponse(d)
     finally:
         db.close()
 
@@ -590,26 +543,6 @@ def symbol_detail(db, symbol_id: str, ui: str, lang: str, user, model_id: str = 
     return {"symbol": brief, "attributes": attrs, "occurrences": occurrences, "hidden_occurrences": hidden,
             "relations": relations, "created_by": s.created_by, "created_at": utc_iso(s.created_at),
             "updated_by": s.updated_by, "updated_at": utc_iso(s.updated_at) if s.updated_at else None}
-
-
-@router.post("/analysis/bpa/symbols/{symbol_id}/attrs")
-async def bpa_symbol_attrs(request: Request, symbol_id: str):
-    """Cambia i valori degli attributi di un simbolo (valgono in tutti i BPMN in cui compare). Il nome si cambia nel
-    diagramma (passa dal controllo dei nomi gia' usati)."""
-    body = await request.json()
-    workspace_id = str(body.get("workspace_id") or "")
-    ui = get_lang(request)
-    user, denied = _require_analyst_access(request, workspace_id)
-    if denied:
-        return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
-    lang = body.get("lang") if body.get("lang") in bpmn.LANGS else ui
-    values = body.get("values") if isinstance(body.get("values"), dict) else {}
-    db = SessionLocal()
-    try:
-        out = save_symbol_attrs(db, symbol_id, values, lang, ui, user.name)
-        return JSONResponse(out or {"error": t(ui, "Oggetto non trovato.")}, status_code=200 if out else 404)
-    finally:
-        db.close()
 
 
 def save_symbol_attrs(db, symbol_id: str, values: dict, lang: str, ui: str, user_name: str) -> dict | None:

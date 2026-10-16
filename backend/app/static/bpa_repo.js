@@ -1,4 +1,5 @@
-/* BPA: archivio dei simboli nell'editor BPMN (bpa_editor.js).
+/* BPA: archivio dei simboli nell'editor BPMN (bpa_editor.js), solo per i modelli del repository BPA. Per i BPMN delle
+ * varianti (staging, c.archive === false: servono al Process Overlay) resta solo il copia/incolla degli elementi.
  * - Nome gia' usato da un simbolo dello stesso tipo nel dataset del modello: «Riutilizza» (stesso simbolo) o «Rinomina»;
  *   lo stesso nome in un altro dataset e' un altro simbolo.
  * - Rinominare un simbolo che compare in altri BPMN: si conferma vedendo dove cambiera' (cambia ovunque).
@@ -8,6 +9,7 @@
 function initBpaRepo(c) {
   var modeler = c.modeler, T = c.T, ws = c.ws;
   var base = c.base || "/analysis/bpa", params = c.params || { workspace_id: ws };
+  var archive = c.archive !== false;
   function qp(extra) { return q(Object.assign({}, params, extra || {})); }
   var meta = null, map = {}, links = {}, suppress = 0, queue = Promise.resolve();
   var CLIP = "pm-bpa-clipboard";
@@ -50,6 +52,7 @@ function initBpaRepo(c) {
   var reg = function () { return modeler.get("elementRegistry"); };
 
   function reload() {
+    if (!archive) return Promise.resolve();
     return Promise.all([
       meta ? Promise.resolve(meta) : getJSON(base + "/meta?" + qp()).then(function (j) { meta = j; return j; }),
       getJSON(base + "/" + encodeURIComponent(c.modelId) + "/symbols?" + qp())
@@ -110,7 +113,7 @@ function initBpaRepo(c) {
   }
   function enqueue(fn) { queue = queue.then(fn, fn); return queue; }
   modeler.on("commandStack.element.updateLabel.postExecuted", function (ev) {
-    if (suppress || c.isLoading()) return;
+    if (!archive || suppress || c.isLoading()) return;
     var e = ev.context.element;
     enqueue(function () { return checkName(e); }).then(refreshPanel);
   });
@@ -131,7 +134,7 @@ function initBpaRepo(c) {
   }
 
   // ---------- pannello delle proprieta' ----------
-  var panel = document.getElementById("bpa-panel"), current = null, tab = "attrs", detail = null;
+  var panel = archive ? document.getElementById("bpa-panel") : null, current = null, tab = "attrs", detail = null;
   function openPanel(open) {
     var was = !panel.hidden;
     panel.hidden = !open;
@@ -139,8 +142,9 @@ function initBpaRepo(c) {
   }
   var closedFor = null;   // pannello chiuso con ✕ per questo elemento: resta chiuso finche' non se ne seleziona un altro
   var propsBtn = document.getElementById("bpa-props");
-  function syncPropsBtn() { if (propsBtn) propsBtn.disabled = !current || !panel.hidden; }
+  function syncPropsBtn() { if (propsBtn && panel) propsBtn.disabled = !current || !panel.hidden; }
   modeler.on("selection.changed", function (ev) {
+    if (!panel) return;
     var s = ev.newSelection || [];
     var e = s.length === 1 ? target(s[0]) : null;
     if (!e || !typeOf(e)) { current = null; closedFor = null; openPanel(false); syncPropsBtn(); return; }
@@ -151,21 +155,21 @@ function initBpaRepo(c) {
     syncPropsBtn();
   });
   // ✕ chiude solo il pannello: l'elemento resta selezionato; «Proprietà» lo riapre
-  document.getElementById("bpa-panel-close").addEventListener("click", function () {
+  if (panel) document.getElementById("bpa-panel-close").addEventListener("click", function () {
     closedFor = current; openPanel(false); syncPropsBtn();
   });
-  if (propsBtn) propsBtn.addEventListener("click", function () {
+  if (propsBtn && panel) propsBtn.addEventListener("click", function () {
     if (!current) return;
     closedFor = null; openPanel(true); refreshPanel(); syncPropsBtn();
   });
   syncPropsBtn();
-  panel.querySelectorAll("[data-ptab]").forEach(function (b) {
+  if (panel) panel.querySelectorAll("[data-ptab]").forEach(function (b) {
     b.addEventListener("click", function () { tab = b.dataset.ptab; draw(); });
   });
 
   var loadSeq = 0;
   function refreshPanel() {
-    if (!current || panel.hidden || !meta) return;
+    if (!panel || !current || panel.hidden || !meta) return;
     if (!reg().get(current.id)) { current = null; openPanel(false); return; }
     var sid = symbolOf(current), seq = ++loadSeq;
     if (!sid) { detail = null; draw(); return; }

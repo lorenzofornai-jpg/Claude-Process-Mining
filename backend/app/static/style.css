@@ -1498,3 +1498,5 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 #tax-detail:not([hidden]) { display: flex; flex-direction: column; gap: 14px; }
 .tax-attrs .bpa-field { margin-bottom: 10px; }
 .tax-overlay { color: var(--brand-dark); }
+.tax-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tax-top .eyebrow { margin: 0; }

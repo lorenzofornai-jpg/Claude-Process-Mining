@@ -172,7 +172,7 @@ function initBpaEditor(o) {
   }
   // archivio dei simboli: nomi gia' usati, pannello delle proprieta', copia/incolla (bpa_repo.js)
   var repo = initBpaRepo({
-    modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id, base: base, params: params,
+    modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id, base: base, params: params, archive: !!o.archive,
     lang: function () { return lang; }, isLoading: function () { return loading; }, say: function (t, c) { say(t, c); },
     changed: function () { dirty = true; storeDraftSoon(); if (!busy) say(T.unsaved, "warn"); }
   });

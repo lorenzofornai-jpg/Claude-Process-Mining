@@ -4,9 +4,8 @@
 - La tassonomia e' un albero di processi (distinti dalle attivita' dei BPMN), unico per l'azienda: codice interno
   (PR-0001...), nome e descrizione in italiano e in inglese.
 - Un modello del repository e' assegnato a un processo. Si crea vuoto o si importa dalla staging: l'import e' una
-  copia (la variante resta in staging, anche per il Process Overlay) che usa gli stessi oggetti dell'archivio, salvo
-  quando il repository ha gia' un oggetto dello stesso tipo con lo stesso nome inglese (si usa quello: nel repository
-  i nomi sono unici per tipo).
+  copia (la variante resta in staging, per il Process Overlay) e registra gli oggetti nell'archivio, consolidandoli
+  con quelli del repository con lo stesso tipo e nome inglese (nel repository i nomi sono unici per tipo).
 """
 from __future__ import annotations
 
@@ -171,12 +170,10 @@ def staging_title(src, lang: str) -> str:
 
 
 def import_model(db, src, process, user_name: str | None, user_id: str | None = None):
-    """Copia nel repository un modello della staging, assegnata al processo. Gli elementi restano occorrenze degli
-    stessi oggetti della variante; se nel repository c'e' gia' un oggetto dello stesso tipo con lo stesso nome inglese,
-    diventano occorrenze di quello (nomi unici nel repository). Gli elementi senza nome proprio hanno oggetti nuovi."""
-    from app.models import BpaModel, BpaOccurrence, BpaSymbol
-    if not src.registered:
-        bpa_repo.register_generated(db, src, user_name)
+    """Copia nel repository un modello della staging, assegnata al processo, e ne registra gli oggetti: e' qui che si
+    consolida. Un elemento con lo stesso tipo e lo stesso nome inglese di un oggetto del repository diventa
+    un'occorrenza di quello; gli altri sono oggetti nuovi (anche gli elementi senza nome proprio)."""
+    from app.models import BpaModel, BpaSymbol
     m = BpaModel(ingestion_config_id=None, stage="repository", process_id=process.id, source_model_id=src.id,
                  source_config_id=src.ingestion_config_id, lead_type=src.lead_type, variant_key=src.variant_key,
                  steps=copy.deepcopy(src.steps or []), stats=copy.deepcopy(src.stats or {}),
@@ -186,7 +183,6 @@ def import_model(db, src, process, user_name: str | None, user_id: str | None = 
                  created_by_id=user_id, created_by=user_name)
     db.add(m)
     db.flush()
-    occ = {o.element_id: o.symbol_id for o in db.query(BpaOccurrence).filter_by(model_id=src.id).all()}
     ext = bpa_repo.extract(m.xml_en)
     assign, new = {}, {}
     for eid, e in ext["elements"].items():
@@ -195,7 +191,7 @@ def import_model(db, src, process, user_name: str | None, user_id: str | None = 
             new[eid] = {"type": e["type"], "name": e["name"], "anonymous": True}
             continue
         hit = bpa_repo.find_by_name(db, e["type"], e["name"], "en", configs={bpa_repo.REPO_SCOPE})
-        s = hit or db.get(BpaSymbol, occ.get(eid) or "")
+        s = hit
         if s is not None and s.symbol_type == e["type"] and not s.anonymous:
             assign[eid] = s.id
         else:

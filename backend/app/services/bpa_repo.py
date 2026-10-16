@@ -2,9 +2,10 @@
 
 - Simbolo (BpaSymbol): pool, lane, attivita', sottoprocesso, evento, gateway, oggetto dati, archivio dati, con un
   identificativo univoco nascosto, il nome in italiano e in inglese e gli attributi definiti dall'Amministratore
-  (BpaAttributeDef). Il nome e' unico per tipo e lingua dentro un dataset: stesso nome = stesso simbolo (si riusa)
-  oppure si rinomina; in dataset diversi lo stesso nome puo' essere di simboli diversi (l'Amministratore li puo'
-  consolidare in uno, merge()). Per i BPMN generati dalle varianti guida il nome inglese.
+  (BpaAttributeDef). Solo i modelli del repository BPA sono nell'archivio (i BPMN delle varianti, in staging, servono
+  solo al Process Overlay). Il nome e' unico per tipo e lingua nel repository: stesso nome = stesso simbolo (si riusa)
+  oppure si rinomina; all'import di un BPMN guida il nome inglese. Il Process Architect puo' consolidare piu' simboli
+  in uno (merge()).
 - Occorrenza (BpaOccurrence): l'elemento di un modello BPMN che rappresenta il simbolo. Lo stesso simbolo puo'
   comparire in piu' modelli (es. la lane «Buyer»); rinominarlo cambia il nome in tutti.
 - Relazione (BpaRelation): contiene, precede, attiva, crea, input, output, attaccato a, messaggio; ricalcolate dal
@@ -589,7 +590,7 @@ def backfill(db) -> int:
     """Modelli gia' registrati prima dei simboli senza nome (eventi, gateway...): si completano. Ritorna quanti."""
     from app.models import BpaModel, BpaOccurrence
     n = 0
-    for m in db.query(BpaModel).filter(BpaModel.registered.is_(True)).all():
+    for m in db.query(BpaModel).filter(BpaModel.registered.is_(True), BpaModel.stage == "repository").all():
         have = {o.element_id for o in db.query(BpaOccurrence).filter_by(model_id=m.id).all()}
         try:
             ext = extract(m.xml_it)
@@ -606,11 +607,33 @@ def backfill(db) -> int:
     return n
 
 
+def unregister_staging(db) -> int:
+    """I BPMN delle varianti (staging) servono solo al Process Overlay e non sono nell'archivio degli oggetti: le loro
+    occorrenze e relazioni registrate prima si tolgono. Gli oggetti rimasti senza occorrenze si eliminano se non hanno
+    valori negli attributi (quelli con valori restano tra gli «Oggetti senza occorrenze»). Ritorna i modelli puliti."""
+    from app.models import BpaModel, BpaOccurrence, BpaRelation, BpaSymbol
+    ids = [m.id for m in db.query(BpaModel).filter(BpaModel.stage.is_(None)).all()]
+    touched = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).filter(BpaOccurrence.model_id.in_(ids)).distinct()} if ids else set()
+    n = 0
+    if ids:
+        n = db.query(BpaOccurrence).filter(BpaOccurrence.model_id.in_(ids)).delete(synchronize_session=False)
+        db.query(BpaRelation).filter(BpaRelation.model_id.in_(ids)).delete(synchronize_session=False)
+        db.query(BpaModel).filter(BpaModel.id.in_(ids)).update({BpaModel.registered: None}, synchronize_session=False)
+        db.flush()
+    used = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).distinct()}
+    for sid in touched - used:
+        s = db.get(BpaSymbol, sid)
+        if s is not None and (s.anonymous or not s.attrs):
+            db.query(BpaRelation).filter((BpaRelation.source_id == sid) | (BpaRelation.target_id == sid)).delete(synchronize_session=False)
+            db.delete(s)
+    db.flush()
+    return n
+
+
 def register_generated(db, model, user_name: str | None = None) -> None:
-    """Modello generato da una variante (o mai registrato): i suoi simboli entrano nell'archivio. Guida il nome
-    inglese e si cerca solo nel dataset: stesso tipo e stesso nome inglese di un simbolo gia' in un BPMN dello stesso
-    dataset = stesso simbolo (es. la stessa attivita' in due varianti); altrimenti un simbolo nuovo, anche se un altro
-    dataset ha un simbolo con lo stesso nome (l'Amministratore li puo' consolidare)."""
+    """Modello del repository BPA (o mai registrato): i suoi simboli entrano nell'archivio. Guida il nome inglese:
+    stesso tipo e stesso nome inglese di un simbolo gia' nel repository = stesso simbolo; altrimenti un simbolo nuovo
+    (il Process Architect puo' consolidarli)."""
     plan = resolve(db, model, "en", model.xml_en, {}, policy="reuse")
     # in italiano i simboli gia' presenti hanno il loro nome: si allinea il modello
     names = other_names(db, plan, "en")

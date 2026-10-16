@@ -22,7 +22,7 @@
       <button type="button" class="secondary" id="bpa-fit">{{ _("Adatta") }}</button>
       <button type="button" class="secondary" id="bpa-copy" title="{{ _("Copia gli elementi selezionati (Ctrl/Cmd+C): si possono incollare anche in un altro BPMN aperto") }}">{{ _("Copia") }}</button>
       <button type="button" class="secondary" id="bpa-paste" title="{{ _("Incolla (Ctrl/Cmd+V)") }}">{{ _("Incolla") }}</button>
-      <button type="button" class="secondary" id="bpa-props" title="{{ _("Mostra le proprietà dell'oggetto selezionato") }}">{{ _("Proprietà") }}</button>
+      {% if repo_title is defined %}<button type="button" class="secondary" id="bpa-props" title="{{ _("Mostra le proprietà dell'oggetto selezionato") }}">{{ _("Proprietà") }}</button>{% endif %}
       <details class="bpa-more">
         <summary class="secondary button-link">{{ _("Altro") }} ▾</summary>
         <div class="bpa-menu">
@@ -37,7 +37,7 @@
   <p id="bpa-status" class="bpa-status" aria-live="polite"></p>
   <div class="bpa-work">
     <div id="bpa-canvas" class="bpa-canvas"></div>
-    <aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà dell'oggetto") }}">
+    {% if repo_title is defined %}<aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà dell'oggetto") }}">
       <div class="bpa-panel-head">
         <div><span id="bpa-panel-type" class="tiny muted"></span><strong id="bpa-panel-name"></strong></div>
         <button type="button" class="link-btn" id="bpa-panel-close" aria-label="{{ _("Chiudi") }}" title="{{ _("Chiudi") }}">✕</button>
@@ -48,7 +48,7 @@
         <button type="button" role="tab" data-ptab="rel">{{ _("Relazioni") }} <span class="bpa-pcount" data-pcount="rel"></span></button>
       </div>
       <div id="bpa-panel-body" class="bpa-panel-body"></div>
-    </aside>
+    </aside>{% endif %}
   </div>
   <p class="tiny muted bpa-help">{{ _("Trascina gli elementi dalla tavolozza a sinistra; clic su un elemento per i comandi (aggiungi, collega, cambia tipo, elimina); doppio clic per rinominare. Le lane si aggiungono dal menu della pool o di una lane. Salvando, l'altra lingua prende le stesse modifiche con i nomi tradotti.") }}</p>
 </div>
@@ -60,7 +60,7 @@
   window.BPA_MODELER = initBpaEditor({
     id: {{ model.id|tojson }}, ws: {{ workspace_id|tojson }}, uiLang: {{ current_lang()|tojson }}, lang: {{ current_lang()|tojson }},
     fileName: {{ (file_name if file_name is defined else ("variante-" ~ (model.stats.rank or "x")))|tojson }}, focus: {{ focus|tojson }},
-    {% if repo_title is defined %}base: "/bpa/m", params: {},{% endif %}
+    {% if repo_title is defined %}base: "/bpa/m", params: {}, archive: true,{% endif %}
     T: {
       loading: {{ _("Caricamento del modello…")|tojson }},
       loadError: {{ _("Il modello non si è aperto.")|tojson }},
