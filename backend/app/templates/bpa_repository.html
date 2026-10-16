@@ -197,7 +197,7 @@
         caret.type = "button"; caret.tabIndex = -1; caret.setAttribute("aria-hidden", "true");
         if (has) caret.addEventListener("click", function (e) { e.stopPropagation(); open[n.id] = !open[n.id]; saveOpen(); draw(); });
         row.appendChild(caret);
-        row.appendChild(el("span", "tax-icon", has ? (isOpen ? "📂" : "📁") : "📄"));
+        row.appendChild(procIcon(has));
         row.appendChild(el("span", "tax-name", n.name));
         if (n.models) row.appendChild(el("span", "tax-badge", String(n.models)));
         row.addEventListener("click", function () { select(n.id); });
@@ -217,6 +217,15 @@
       });
     }
     add(ul, kids[""] || [], 0);
+  }
+  // icona del processo: la freccia a gallone della catena del valore (piena se ha sottoprocessi, vuota se no)
+  function procIcon(has) {
+    var NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"), path = document.createElementNS(NS, "path");
+    svg.setAttribute("viewBox", "0 0 22 16"); svg.setAttribute("class", "tax-icon" + (has ? " parent" : ""));
+    svg.setAttribute("aria-hidden", "true");
+    path.setAttribute("d", "M1.5 2 H14.5 L20.5 8 L14.5 14 H1.5 L7 8 Z");
+    svg.appendChild(path);
+    return svg;
   }
   function focusRow(id) { var r = document.querySelector('.tax-row[data-id="' + id + '"]'); if (r) r.focus(); }
   $("tax-search").addEventListener("input", draw);

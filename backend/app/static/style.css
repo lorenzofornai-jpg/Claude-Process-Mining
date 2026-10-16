@@ -1463,7 +1463,10 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .tax-row.drop, .tax-root-drop.drop { outline: 2px dashed var(--brand); outline-offset: -2px; }
 .tax-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 .tax-caret { width: 16px; border: 0; background: none; padding: 0; color: var(--muted); cursor: pointer; font-size: 0.8rem; }
-.tax-icon { font-size: 0.95rem; }
+.tax-icon { width: 22px; height: 16px; flex: none; }
+.tax-icon path { fill: var(--card-bg); stroke: var(--brand); stroke-width: 1.5; stroke-linejoin: round; }
+.tax-icon.parent path { fill: var(--brand-soft); }
+.tax-row.selected .tax-icon path { fill: var(--brand); stroke: var(--brand); }
 .tax-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tax-badge { font-size: 0.72rem; background: var(--card-bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; color: var(--muted); }
 .tax-root-drop { border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
