@@ -52,6 +52,9 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # lingua dell'interfaccia scelta dall'utente ("it" | "en"); None = non ancora scelta
     language: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    # ruolo nel repository BPA (unico per l'azienda, non per processo): "architect" (Process Architect, modifica) |
+    # "viewer" (Process Viewer, sola lettura) | None (nessun accesso)
+    bpa_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     assignments: Mapped[list["ProcessAssignment"]] = relationship(back_populates="user")
@@ -443,14 +446,17 @@ class AnalysisView(Base):
 
 
 class BpaModel(Base):
-    """BPA (Business Process Analysis): una variante della Process Overview (oggetto guida con gli oggetti
-    collegati) inviata alla BPA, con il suo modello BPMN 2.0 in italiano e in inglese (stessa struttura, nomi
-    tradotti). La revoca dalla Process Overview la toglie."""
+    """Modello BPMN 2.0 in italiano e in inglese (stessa struttura, nomi tradotti).
+    - Staging (stage None): una variante della Process Overview (oggetto guida con gli oggetti collegati) inviata alla
+      BPA; la revoca dalla Process Overview la toglie.
+    - Repository BPA (stage "repository"): modello importato dalla staging (copia: la variante resta in staging) o
+      creato nel repository, assegnato a un processo della tassonomia (BpaProcess). Non e' di un dataset
+      (ingestion_config_id None): la provenienza e' in source_model_id / source_config_id."""
 
     __tablename__ = "bpa_model"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    ingestion_config_id: Mapped[str] = mapped_column(ForeignKey("ingestion_config.id"))
+    ingestion_config_id: Mapped[str | None] = mapped_column(ForeignKey("ingestion_config.id"), nullable=True)
     lead_type: Mapped[str] = mapped_column(String(200))
     variant_key: Mapped[str] = mapped_column(Text)        # oggetto guida + attivita' della variante (JSON)
     steps: Mapped[list] = mapped_column(JSON, default=list)
@@ -465,6 +471,29 @@ class BpaModel(Base):
     overlay_reference: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # riferimento del Process Overlay (uno per dataset)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)   # None = staging | "repository"
+    process_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)   # BpaProcess (repository)
+    source_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # modello di staging importato
+    source_config_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # suo dataset
+    title: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # {"it", "en"} nome del modello nel repository
+
+
+class BpaProcess(Base):
+    """Processo della tassonomia del repository BPA (unica per l'azienda): albero di processi (distinti dalle attivita'
+    dei BPMN), ognuno con codice, nome e descrizione in italiano e in inglese e i modelli BPMN assegnati."""
+
+    __tablename__ = "bpa_process"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    code: Mapped[str] = mapped_column(String(40), unique=True)   # codice interno identificativo (es. PR-0001)
+    parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[dict] = mapped_column(JSON, default=dict)          # {"it", "en"}
+    description: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # {"it", "en"}
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)

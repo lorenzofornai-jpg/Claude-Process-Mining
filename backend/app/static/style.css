@@ -1448,3 +1448,51 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .rca-saved-res.ok { color: var(--error); font-weight: 600; }
 .rca-saved-acts { display: flex; gap: 6px; flex: none; align-items: center; }
 @media (max-width: 640px) { .rca-saved-row { flex-direction: column; align-items: stretch; } }
+
+/* ---------- Repository BPA: tassonomia dei processi (esplora risorse) ---------- */
+.tax { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; min-height: calc(100vh - 64px); }
+.tax-side { border-right: 1px solid var(--border); background: var(--card-bg); padding: 14px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tax-side-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 4px; }
+.tax-small { padding: 4px 10px; font-size: 0.85rem; }
+.tax-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; background: var(--card-bg); color: var(--text); }
+.tax-tree, .tax-tree ul { list-style: none; margin: 0; padding: 0; }
+.tax-tree { overflow: auto; flex: 1; }
+.tax-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: var(--radius-sm); cursor: pointer; user-select: none; }
+.tax-row:hover { background: var(--card-bg-soft); }
+.tax-row.selected { background: var(--brand-soft); color: var(--brand-dark); }
+.tax-row.drop, .tax-root-drop.drop { outline: 2px dashed var(--brand); outline-offset: -2px; }
+.tax-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.tax-caret { width: 16px; border: 0; background: none; padding: 0; color: var(--muted); cursor: pointer; font-size: 0.8rem; }
+.tax-icon { font-size: 0.95rem; }
+.tax-code { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tax-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tax-badge { font-size: 0.72rem; background: var(--card-bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; color: var(--muted); }
+.tax-root-drop { border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
+.tax-main { padding: 18px 24px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.tax-main .card { margin: 0; max-width: none; }
+.tax-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.tax-detail-head h1, .tax-detail-head h2 { margin: 0 0 10px; }
+.tax-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tax-form { display: grid; grid-template-columns: 160px 1fr; gap: 12px 16px; }
+.tax-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; color: var(--muted); }
+.tax-form input, .tax-form textarea, .tax-form select { font: inherit; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); }
+.tax-form input[readonly], .tax-form textarea[readonly] { background: var(--card-bg-soft); }
+.tax-wide { grid-column: 1 / -1; }
+.tax-form .actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.tax-models { list-style: none; margin: 0; padding: 0; }
+.tax-model { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.tax-model:first-child { border-top: 0; }
+.tax-model-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tax-model-main a { font-weight: 600; }
+.tax-model-actions { display: flex; gap: 10px; align-items: center; }
+.tax-staging-dialog { width: min(1000px, 94vw); }
+.tax-ask { display: flex; flex-direction: column; gap: 6px; }
+.tax-ask-input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+@media (max-width: 760px) {
+  .tax { grid-template-columns: 1fr; }
+  .tax-side { border-right: 0; border-bottom: 1px solid var(--border); max-height: 45vh; }
+  .tax-main { padding: 14px 16px; }
+  .tax-form { grid-template-columns: 1fr; }
+}
+.inline-form { display: inline; margin: 0; }
+#tax-detail:not([hidden]) { display: flex; flex-direction: column; gap: 14px; }

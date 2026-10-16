@@ -199,6 +199,23 @@ def create_user(
     return RedirectResponse("/admin", status_code=303)
 
 
+@router.post("/users/{user_id}/bpa-role")
+def set_bpa_role(request: Request, user_id: str, bpa_role: str = Form("")):
+    """Ruolo nel repository BPA (unico per l'azienda): Process Architect, Process Viewer o nessuno."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        u = db.get(User, user_id)
+        if u is not None and not u.is_admin:
+            u.bpa_role = bpa_role if bpa_role in ("architect", "viewer") else None
+            db.commit()
+    finally:
+        db.close()
+    return RedirectResponse("/admin#users", status_code=303)
+
+
 @router.post("/processes/{workspace_id}/assign")
 def assign_role(request: Request, workspace_id: str, user_id: str = Form(...), role: str = Form(...)):
     user, denied = _require_admin(request)

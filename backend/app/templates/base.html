@@ -31,6 +31,7 @@
       <a href="/admin" class="nav-link">{{ _("Amministrazione") }}</a>
       {% else %}
       <a href="/ingestion/dashboard" class="nav-link">{{ _("I miei processi") }}</a>
+      {% if user.bpa_role in ("architect", "viewer") %}<a href="/bpa" class="nav-link">{{ _("Repository BPA") }}</a>{% endif %}
       {% endif %}
       <span class="user-name">{{ user.name }}{{ ' (admin)' if user.is_admin else '' }}</span>
       <form method="post" action="/logout" style="display:inline">

@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{# ogni modello si apre in una scheda sua: il titolo dice variante, oggetto guida e processo #}
-{% block title %}{{ _("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante") }} · {{ model.lead }} · {{ process_name }} (BPMN){% endblock %}
+{# ogni modello si apre in una scheda sua: il titolo dice variante, oggetto guida e processo (o il nome del modello del
+   repository BPA e il suo processo della tassonomia) #}
+{% block title %}{{ repo_title if repo_title is defined else ((_("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante")) ~ " · " ~ model.lead) }} · {{ process_name }} (BPMN){% endblock %}
 {% block main_class %}bpa-full{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/vendor/bpmn-js/assets/diagram-js.css?v={{ static_version }}">
 <link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-js.css?v={{ static_version }}">
 <link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-font/css/bpmn.css?v={{ static_version }}">
-{% set title = (_("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante")) ~ " · " ~ model.lead %}
+{% set title = repo_title if repo_title is defined else ((_("Variante {n}", n=model.stats.rank) if model.stats.rank else _("Variante")) ~ " · " ~ model.lead) %}
 <div class="bpa-editor">
   <div class="bpa-bar">
     <div class="bpa-title">
       <strong>{{ title }}</strong>
-      <span class="tiny muted">{{ process_name }} · BPMN 2.0</span>
+      <span class="tiny muted">{% if repo_title is defined %}<a href="/bpa?process={{ process_id }}">{{ _("Repository BPA") }}</a> · {% endif %}{{ process_name }} · BPMN 2.0</span>
     </div>
     <div class="bpa-tools">
       <button type="button" class="secondary bpa-icon" id="bpa-undo" title="{{ _("Annulla l'ultima modifica") }}" aria-label="{{ _("Annulla l'ultima modifica") }}">↶</button>
@@ -27,7 +28,7 @@
         <div class="bpa-menu">
           <button type="button" class="link-btn" id="bpa-dl-bpmn">{{ _("Scarica .bpmn") }}</button>
           <button type="button" class="link-btn" id="bpa-dl-svg">{{ _("Scarica l'immagine (.svg)") }}</button>
-          <button type="button" class="link-btn danger" id="bpa-reset">{{ _("Rifai dalla variante") }}</button>
+          {% if repo_title is not defined %}<button type="button" class="link-btn danger" id="bpa-reset">{{ _("Rifai dalla variante") }}</button>{% endif %}
         </div>
       </details>
       <button type="button" class="primary" id="bpa-save">{{ _("Salva") }}</button>
@@ -58,7 +59,8 @@
 <script>
   window.BPA_MODELER = initBpaEditor({
     id: {{ model.id|tojson }}, ws: {{ workspace_id|tojson }}, uiLang: {{ current_lang()|tojson }}, lang: {{ current_lang()|tojson }},
-    fileName: {{ ("variante-" ~ (model.stats.rank or "x"))|tojson }}, focus: {{ focus|tojson }},
+    fileName: {{ (file_name if file_name is defined else ("variante-" ~ (model.stats.rank or "x")))|tojson }}, focus: {{ focus|tojson }},
+    {% if repo_title is defined %}base: "/bpa/m", params: {},{% endif %}
     T: {
       loading: {{ _("Caricamento del modello…")|tojson }},
       loadError: {{ _("Il modello non si è aperto.")|tojson }},

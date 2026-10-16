@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{# modello del repository BPA in sola lettura (Process Viewer): diagramma e pannello delle proprietà #}
+{% block title %}{{ repo_title }} · {{ process_name }} (BPMN){% endblock %}
+{% block main_class %}bpa-full{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/diagram-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-js.css?v={{ static_version }}">
+<link rel="stylesheet" href="/static/vendor/bpmn-js/assets/bpmn-font/css/bpmn.css?v={{ static_version }}">
+<div class="bpa-editor">
+  <div class="bpa-bar">
+    <div class="bpa-title">
+      <strong>{{ repo_title }}</strong>
+      <span class="tiny muted"><a href="/bpa?process={{ process_id }}">{{ _("Repository BPA") }}</a> · {{ process_name }} · BPMN 2.0 · {{ _("sola lettura") }}</span>
+    </div>
+    <div class="bpa-tools">
+      <button type="button" class="secondary bpa-icon" id="bpa-zoom-out" title="{{ _("Riduci") }}" aria-label="{{ _("Riduci") }}">−</button>
+      <button type="button" class="secondary bpa-icon" id="bpa-zoom-in" title="{{ _("Ingrandisci") }}" aria-label="{{ _("Ingrandisci") }}">+</button>
+      <button type="button" class="secondary" id="bpa-fit">{{ _("Adatta") }}</button>
+      <button type="button" class="secondary" id="bpa-dl-bpmn">{{ _("Scarica .bpmn") }}</button>
+      <button type="button" class="secondary" id="bpa-dl-svg">{{ _("Scarica l'immagine (.svg)") }}</button>
+      {% if can_edit %}<a class="primary button-link" href="/bpa/models/{{ model.id }}/edit">{{ _("Modifica") }}</a>{% endif %}
+    </div>
+  </div>
+  <p id="bpa-status" class="bpa-status" aria-live="polite"></p>
+  <div class="bpa-work">
+    <div id="bpa-canvas" class="bpa-canvas"></div>
+    <aside id="bpa-panel" class="bpa-panel" hidden aria-label="{{ _("Proprietà dell'oggetto") }}">
+      <div class="bpa-panel-head">
+        <div><span id="bpa-panel-type" class="tiny muted"></span><strong id="bpa-panel-name"></strong></div>
+        <button type="button" class="link-btn" id="bpa-panel-close" aria-label="{{ _("Chiudi") }}" title="{{ _("Chiudi") }}">✕</button>
+      </div>
+      <div class="bpa-ptabs" role="tablist">
+        <button type="button" role="tab" data-ptab="attrs" class="active">{{ _("Attributi") }}</button>
+        <button type="button" role="tab" data-ptab="occ">{{ _("Occorrenze") }} <span class="bpa-pcount" data-pcount="occ"></span></button>
+        <button type="button" role="tab" data-ptab="rel">{{ _("Relazioni") }} <span class="bpa-pcount" data-pcount="rel"></span></button>
+      </div>
+      <div id="bpa-panel-body" class="bpa-panel-body"></div>
+    </aside>
+  </div>
+</div>
+<script src="/static/vendor/bpmn-js/bpmn-navigated-viewer.production.min.js?v={{ static_version }}"></script>
+<script src="/static/bpa_panel.js?v={{ static_version }}"></script>
+<script>
+(function () {
+  var ID = {{ model.id|tojson }}, LANG = {{ current_lang()|tojson }}, FILE = {{ file_name|tojson }}, FOCUS = {{ focus|tojson }};
+  var T = {
+    loadError: {{ _("Il modello non si è aperto.")|tojson }},
+    noAttrs: {{ _("Nessun altro attributo definito per questo tipo di oggetto (li definisce l'Amministratore).")|tojson }},
+    noSymbol: {{ _("Elemento senza oggetto dell'archivio.")|tojson }},
+    otherName: {{ _("In {l}: {n}")|tojson }},
+    thisModel: {{ _("Questo BPMN")|tojson }}, timesIn: {{ _("{n} volte")|tojson }},
+    hiddenModels: {{ _("{n} BPMN di processi a cui non hai accesso")|tojson }},
+    noRelations: {{ _("Nessuna relazione.")|tojson }}, noOccurrences: {{ _("Nessuna occorrenza.")|tojson }},
+    lastChange: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
+    yes: {{ _("Sì")|tojson }}, no: {{ _("No")|tojson }}
+  };
+  var el = BpaPanel.el, fmt = BpaPanel.fmt;
+  var viewer = new BpmnJS({ container: "#bpa-canvas" }), map = {}, detail = null, tab = "attrs";
+  var panel = document.getElementById("bpa-panel"), status = document.getElementById("bpa-status");
+  function getJSON(url) { return fetch(url, { credentials: "same-origin" }).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); }); }
+  function fit() { viewer.get("canvas").zoom("fit-viewport", "auto"); }
+  var box = document.querySelector(".bpa-editor");
+  function size() { box.style.height = Math.max(420, window.innerHeight - (box.getBoundingClientRect().top + window.scrollY)) + "px"; }
+  size(); window.addEventListener("resize", size);
+
+  fetch("/bpa/m/" + encodeURIComponent(ID) + "/xml?lang=" + LANG, { credentials: "same-origin" })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function (xml) { return viewer.importXML(xml); })
+    .then(function () {
+      fit();
+      return getJSON("/bpa/m/" + encodeURIComponent(ID) + "/symbols").then(function (j) { map = j.elements || {}; });
+    })
+    .then(function () { if (FOCUS) { var e = viewer.get("elementRegistry").get(FOCUS); if (e) show(e); } })
+    .catch(function (e) { status.textContent = T.loadError + " (" + (e.message || e) + ")"; status.className = "bpa-status bad"; });
+
+  function show(e) {
+    e = e.labelTarget || e;
+    var m = map[e.id];
+    if (!m) { panel.hidden = true; return; }
+    getJSON("/bpa/m/symbols/" + encodeURIComponent(m.symbol) + "?lang=" + LANG + "&model_id=" + encodeURIComponent(ID))
+      .then(function (d) { detail = d; panel.hidden = false; draw(); })
+      .catch(function () { panel.hidden = true; });
+  }
+  viewer.on("element.click", function (ev) { show(ev.element); });
+  function draw() {
+    if (!detail) return;
+    panel.querySelectorAll("[data-ptab]").forEach(function (b) { b.classList.toggle("active", b.dataset.ptab === tab); });
+    panel.querySelector("[data-pcount=occ]").textContent = detail.occurrences.reduce(function (a, o) { return a + o.elements.length; }, 0);
+    panel.querySelector("[data-pcount=rel]").textContent = detail.relations.length;
+    var s = detail.symbol;
+    document.getElementById("bpa-panel-type").textContent = s.type_label + (s.subtypes.length ? " · " + s.subtypes.join(", ") : "");
+    document.getElementById("bpa-panel-name").textContent = s.display;
+    var body = document.getElementById("bpa-panel-body"); body.textContent = "";
+    if (tab === "attrs") {
+      if (!s.anonymous && s.name_other) body.appendChild(el("p", "tiny muted", fmt(T.otherName, { l: LANG === "it" ? "EN" : "IT", n: s.name_other })));
+      if (!detail.attributes.length) body.appendChild(el("p", "tiny muted", T.noAttrs));
+      BpaPanel.attrs(body, detail.attributes, { lang: LANG, T: T, postUrl: null });
+      if (detail.updated_by) body.appendChild(el("p", "tiny muted", fmt(T.lastChange, { u: detail.updated_by, d: window.pmLocalTime(detail.updated_at) })));
+    } else if (tab === "occ") BpaPanel.occurrences(body, detail, { T: T, links: true });
+    else BpaPanel.relations(body, detail, { T: T, modelId: ID });
+  }
+  panel.querySelectorAll("[data-ptab]").forEach(function (b) { b.addEventListener("click", function () { tab = b.dataset.ptab; draw(); }); });
+  document.getElementById("bpa-panel-close").addEventListener("click", function () { panel.hidden = true; });
+  document.getElementById("bpa-fit").addEventListener("click", fit);
+  document.getElementById("bpa-zoom-in").addEventListener("click", function () { viewer.get("zoomScroll").stepZoom(1); });
+  document.getElementById("bpa-zoom-out").addEventListener("click", function () { viewer.get("zoomScroll").stepZoom(-1); });
+  function download(name, data, type) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  document.getElementById("bpa-dl-bpmn").addEventListener("click", function () {
+    viewer.saveXML({ format: true }).then(function (r) { download(FILE + "-" + LANG + ".bpmn", r.xml, "application/xml"); });
+  });
+  document.getElementById("bpa-dl-svg").addEventListener("click", function () {
+    viewer.saveSVG().then(function (r) { download(FILE + "-" + LANG + ".svg", r.svg, "image/svg+xml"); });
+  });
+})();
+</script>
+{% endblock %}

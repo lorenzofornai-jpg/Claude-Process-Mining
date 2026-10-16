@@ -513,3 +513,28 @@ aggiornati) il testo si riusa e l'LLM si chiama solo per i fattori nuovi.
   ogni tabella, le sue colonne o i suoi codici (max ~2.500 caratteri per
   tabella) e solo quelli arrivano a Claude. In revisione si vede quanti brani
   e da quali documenti. Immagini e disegni restano esclusi (nessun testo).
+
+## Repository BPA — tassonomia dei processi (16 ottobre 2026)
+Il repository BPA è autonomo dai dataset: il «digital twin» dei processi dell'azienda. Si parte dalla tassonomia dei
+processi; poi altri cataloghi e oggetti.
+- ✅ **Ruoli** (unici per l'azienda, in Amministrazione > Utenti): **Process Architect** (modifica tassonomia e modelli,
+  importa dalla staging area) e **Process Viewer** (sola lettura). L'Amministratore non entra nel repository. Nel menu:
+  «Repository BPA».
+- ✅ **Staging area**: tutti i BPMN generati dalle varianti (Process Overview > «Invia alla BPA») restano dove sono.
+  L'import è una **copia** nel repository, assegnata a un processo; la variante resta in staging (e per il Process
+  Overlay). La staging area mostra processo, dataset, casi e dove un modello è già stato importato.
+- ✅ **Tassonomia** (`bpa_process`, `services/bpa_taxonomy.py`): albero di processi distinti dalle attività dei BPMN;
+  codice interno automatico (PR-0001…), nome e descrizione in italiano e in inglese (si scrive nella lingua attiva,
+  l'altra si traduce con l'LLM se non era stata scritta a parte).
+- ✅ **Pagina «Repository BPA»** (`/bpa`) come un esplora risorse: albero a sinistra (apri/chiudi, ricerca, frecce da
+  tastiera, trascina un processo su un altro per spostarlo, o nella fascia in fondo per portarlo al primo livello), a
+  destra gli attributi del processo (codice, nome, descrizione, «Dentro a») e sotto i modelli BPMN assegnati: Apri,
+  Rinomina, Togli; «+ Nuovo BPMN» (pool con il nome del processo) e «Dalla staging area».
+- ✅ I modelli del repository (`bpa_model` con `stage = "repository"`, senza dataset: provenienza in
+  `source_model_id` / `source_config_id`) si aprono nello stesso editor delle varianti (Process Architect) o in una
+  vista in sola lettura con il pannello delle proprietà (Process Viewer). Nel repository i nomi degli oggetti sono unici
+  per tipo in tutto il repository; all'import un elemento con lo stesso nome inglese di un oggetto già nel repository
+  diventa un'occorrenza di quello, altrimenti resta l'oggetto della variante.
+- Da fare: BPMN del repository come riferimento del Process Overlay (l'analista deve essere anche Process Viewer, il
+  modello resta nel repository e non si modifica dall'analisi); spostare un modello su un altro processo; altri
+  cataloghi e oggetti; attributi dei processi definiti dall'Amministratore.

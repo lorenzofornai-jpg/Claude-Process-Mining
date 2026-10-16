@@ -72,7 +72,7 @@ var BpaPanel = (function () {
       var li = el("li", oc.current ? "current" : "");
       var t = el("div", "bpa-pmain");
       if (oc.current) t.appendChild(el("strong", "", o.T.thisModel));
-      else if (o.links && oc.url) { var a = el("a", "", oc.label); a.href = oc.url + "&focus=" + encodeURIComponent(oc.elements[0]); a.target = "_blank"; a.rel = "noopener"; t.appendChild(a); }
+      else if (o.links && oc.url) { var a = el("a", "", oc.label); a.href = oc.url + (oc.url.indexOf("?") >= 0 ? "&" : "?") + "focus=" + encodeURIComponent(oc.elements[0]); a.target = "_blank"; a.rel = "noopener"; t.appendChild(a); }
       else t.appendChild(el("strong", "", oc.label));
       t.appendChild(el("span", "tiny muted", oc.process + (oc.elements.length > 1 ? " · " + fmt(o.T.timesIn, { n: oc.elements.length }) : "")));
       li.appendChild(t);

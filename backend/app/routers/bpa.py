@@ -228,19 +228,24 @@ def bpa_xml(request: Request, model_id: str, workspace_id: str, lang: str = "it"
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(get_lang(request), "Accesso negato.")}, status_code=403)
+    return model_xml(lambda db: _model(db, model_id, workspace_id), get_lang(request), lang, download)
+
+
+def model_xml(get, ui: str, lang: str, download: int = 0):
+    """XML del modello nella lingua chiesta (get(db) -> modello accessibile o None)."""
     lang = lang if lang in bpmn.LANGS else "it"
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
+        m = get(db)
         if m is None:
-            return JSONResponse({"error": t(get_lang(request), "Modello non trovato.")}, status_code=404)
+            return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
         xml = m.xml_it if lang == "it" else m.xml_en
         rank = (m.stats or {}).get("rank")
     finally:
         db.close()
     headers = {"X-Loaded-At": _now().isoformat()}
     if download:
-        name = f"variante-{rank}" if rank else "variante"
+        name = f"variante-{rank}" if rank else "bpmn"
         headers["Content-Disposition"] = f'attachment; filename="{name}-{lang}.bpmn"'
     return Response(xml, media_type="application/xml; charset=utf-8", headers=headers)
 
@@ -257,6 +262,11 @@ async def bpa_save(request: Request, model_id: str):
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
+    return await save_model(lambda db: _model(db, model_id, workspace_id), body, ui, user)
+
+
+async def save_model(get, body: dict, ui: str, user):
+    """Salvataggio dall'editor (staging o repository): vedi bpa_save. get(db) -> modello accessibile o None."""
     lang = body.get("lang") if body.get("lang") in bpmn.LANGS else "it"
     other = "en" if lang == "it" else "it"
     xml = body.get("xml")
@@ -271,7 +281,7 @@ async def bpa_save(request: Request, model_id: str):
         return JSONResponse({"error": t(ui, "Il modello non è un BPMN 2.0 valido: non salvato.") + f" ({exc})"}, status_code=400)
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
+        m = get(db)
         if m is None:
             return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
         if not m.registered:
@@ -299,7 +309,7 @@ async def bpa_save(request: Request, model_id: str):
     other_xml, todo = await run_in_threadpool(bpmn.sync_languages, xml, old_same, old_other, tr)
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
+        m = get(db)
         if m is None:
             return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
         res = bpa_repo.apply(db, m, lang, xml, other_xml, plan, user.name)
@@ -372,17 +382,31 @@ def _workspace_of(db, m: BpaModel) -> str | None:
 
 
 def _model_label(db, m: BpaModel, lang: str, user=None, cache: dict | None = None) -> dict:
-    """Come si chiama un modello BPMN nelle occorrenze: processo · Variante n · oggetto guida (+ link se accessibile)."""
+    """Come si chiama un modello BPMN nelle occorrenze: processo · Variante n · oggetto guida (+ link se accessibile);
+    per un modello del repository BPA: processo della tassonomia · nome del modello."""
     if cache is not None and m.id in cache:
         return cache[m.id]
-    ws_id = _workspace_of(db, m)
-    ws = db.get(ProcessWorkspace, ws_id) if ws_id else None
-    rank = (m.stats or {}).get("rank")
-    variant = t(lang, "Variante {n}", n=rank) if rank else t(lang, "Variante")
     admin = bool(user and user.is_admin)   # l'Amministratore vede tutti i BPMN (senza aprirli: non lavora sulle analisi)
-    ok = admin or bool(user and ws_id and has_process_access(user, ws_id, required_role="data_analyst"))
-    out = {"id": m.id, "process": ws.process_name if ws else "—", "label": f"{variant} · {m.lead_type}",
-           "url": f"/analysis/bpa/{m.id}/edit?workspace_id={ws_id}" if ok and not admin else None, "visible": ok}
+    role = getattr(user, "bpa_role", None) if user and not admin else None
+    if m.stage == "repository":
+        from app.models import BpaProcess
+        from app.services import bpa_taxonomy
+        p = db.get(BpaProcess, m.process_id) if m.process_id else None
+        ok = admin or role in ("architect", "viewer")
+        url = None
+        if ok and not admin:
+            url = f"/bpa/models/{m.id}/" + ("edit" if role == "architect" else "view")
+        out = {"id": m.id, "process": (t(lang, "Repository BPA") + " · " + (f"{p.code} {bpa_taxonomy.text_of(p.name, lang)}" if p else "—")),
+               "label": bpa_taxonomy.text_of(m.title, lang) or "BPMN", "url": url, "visible": ok}
+    else:
+        ws_id = _workspace_of(db, m)
+        ws = db.get(ProcessWorkspace, ws_id) if ws_id else None
+        rank = (m.stats or {}).get("rank")
+        variant = t(lang, "Variante {n}", n=rank) if rank else t(lang, "Variante")
+        analyst = bool(user and ws_id and not admin and has_process_access(user, ws_id, required_role="data_analyst"))
+        ok = admin or analyst or role == "architect"   # il Process Architect vede la staging area
+        out = {"id": m.id, "process": ws.process_name if ws else "—", "label": f"{variant} · {m.lead_type}",
+               "url": f"/analysis/bpa/{m.id}/edit?workspace_id={ws_id}" if analyst else None, "visible": ok}
     if cache is not None:
         cache[m.id] = out
     return out
@@ -425,6 +449,10 @@ def bpa_meta(request: Request, workspace_id: str):
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    return meta(lang)
+
+
+def meta(lang: str):
     db = SessionLocal()
     try:
         defs = db.query(BpaAttributeDef).order_by(BpaAttributeDef.position).all()
@@ -444,9 +472,13 @@ def bpa_model_symbols(request: Request, model_id: str, workspace_id: str):
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(lang, "Accesso negato.")}, status_code=403)
+    return model_symbols(lambda db: _model(db, model_id, workspace_id), lang, user)
+
+
+def model_symbols(get, lang: str, user):
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
+        m = get(db)
         if m is None:
             return JSONResponse({"error": t(lang, "Modello non trovato.")}, status_code=404)
         if not m.registered:
@@ -473,15 +505,19 @@ def bpa_symbol_lookup(request: Request, workspace_id: str, model_id: str, type: 
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
+    return symbol_lookup(lambda db: _model(db, model_id, workspace_id), type, name, lang, exclude, ui, user)
+
+
+def symbol_lookup(get, type: str, name: str, lang: str, exclude: str, ui: str, user):
     lang = lang if lang in bpmn.LANGS else "it"
     if type not in bpa_repo.SYMBOL_TYPES or not bpa_repo.norm(name):
         return JSONResponse({"symbol": None})
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
+        m = get(db)
         if m is None:
             return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
-        scope = {m.ingestion_config_id} | (bpa_repo.symbol_configs(db, exclude) if exclude else set())
+        scope = {bpa_repo.scope_of(m)} | (bpa_repo.symbol_configs(db, exclude) if exclude else set())
         s = bpa_repo.find_by_name(db, type, name, lang, exclude=exclude or None, configs=scope)
         return JSONResponse({"symbol": _symbol_brief(db, s.id, ui, user) if s else None})
     finally:

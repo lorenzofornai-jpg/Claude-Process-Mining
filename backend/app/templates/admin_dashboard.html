@@ -66,21 +66,31 @@
     </tbody>
   </table>
 
-  <h2>{{ _("Utenti") }}</h2>
+  <h2 id="users">{{ _("Utenti") }}</h2>
   <p class="tiny muted">
     {{ _("Gli amministratori gestiscono solo utenti, processi e assegnazioni: non lavorano su dati e analisi e non compaiono nelle assegnazioni sopra. Gli altri non hanno un ruolo fisso: quello assegnato sopra vale per processo.") }}
   </p>
+  <p class="tiny muted">{{ _("Repository BPA: il Process Architect modifica la tassonomia dei processi e i modelli BPMN; il Process Viewer li consulta in sola lettura.") }}</p>
   <table class="admin-table">
-    <thead><tr><th>{{ _("Nome") }}</th><th>Email</th><th></th></tr></thead>
+    <thead><tr><th>{{ _("Nome") }}</th><th>Email</th><th>{{ _("Repository BPA") }}</th><th></th></tr></thead>
     <tbody>
       {% for u in all_users %}
       <tr>
         <td>{{ u.name }}</td>
         <td>{{ u.email }}</td>
+        <td>{% if not u.is_admin %}
+          <form method="post" action="/admin/users/{{ u.id }}/bpa-role" class="inline-form">
+            <select name="bpa_role" aria-label="{{ _("Ruolo nel repository BPA di {n}", n=u.name) }}" onchange="this.form.submit()">
+              <option value="" {{ 'selected' if not u.bpa_role }}>{{ _("Nessun accesso") }}</option>
+              <option value="architect" {{ 'selected' if u.bpa_role == 'architect' }}>Process Architect</option>
+              <option value="viewer" {{ 'selected' if u.bpa_role == 'viewer' }}>Process Viewer</option>
+            </select>
+            <noscript><button type="submit" class="link-btn">{{ _("Salva") }}</button></noscript>
+          </form>{% endif %}</td>
         <td>{% if u.is_admin %}<span class="badge badge-overridden">{{ _("amministratore") }}</span>{% endif %}</td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="muted">{{ _("Nessun utente ancora creato.") }}</td></tr>
+      <tr><td colspan="4" class="muted">{{ _("Nessun utente ancora creato.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

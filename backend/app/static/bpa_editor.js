@@ -154,7 +154,10 @@ function initBpaEditor(o) {
     }]
   };
   var modeler = new BpmnJS({ container: "#bpa-canvas", additionalModules: [translate] });
-  var api = function (path) { return "/analysis/bpa/" + encodeURIComponent(o.id) + path; };
+  // indirizzi: staging (Analisi, con il processo) o repository BPA (o.base = "/bpa/m", senza processo)
+  var base = o.base || "/analysis/bpa", params = o.params || { workspace_id: o.ws };
+  var api = function (path) { return base + "/" + encodeURIComponent(o.id) + path; };
+  function qs(extra) { return new URLSearchParams(Object.assign({}, params, extra || {})).toString(); }
   var loadedAt = null, focusId = o.focus || null;
   // «Adatta»: tutto il modello visibile, a destra della tavolozza (che non lo copre)
   function fit() {
@@ -169,14 +172,14 @@ function initBpaEditor(o) {
   }
   // archivio dei simboli: nomi gia' usati, pannello delle proprieta', copia/incolla (bpa_repo.js)
   var repo = initBpaRepo({
-    modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id,
+    modeler: modeler, T: o.T.repo, ws: o.ws, modelId: o.id, base: base, params: params,
     lang: function () { return lang; }, isLoading: function () { return loading; }, say: function (t, c) { say(t, c); },
     changed: function () { dirty = true; storeDraftSoon(); if (!busy) say(T.unsaved, "warn"); }
   });
 
   function load(l) {
     busy = true; loading = true; say(T.loading);
-    return fetch(api("/xml?workspace_id=" + encodeURIComponent(o.ws) + "&lang=" + l), { credentials: "same-origin" })
+    return fetch(api("/xml?" + qs({ lang: l })), { credentials: "same-origin" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); loadedAt = r.headers.get("X-Loaded-At"); return r.text(); })
       .then(function (xml) { return modeler.importXML(xml); })
       .then(function (res) {
@@ -215,7 +218,7 @@ function initBpaEditor(o) {
     busy = true; dirty = false; say(T.saving);
     return modeler.saveXML({ format: true }).then(function (r) {
       return fetch(api("/save"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: o.ws, lang: lang, xml: r.xml, links: repo.links(), loaded_at: loadedAt }) });
+        body: JSON.stringify(Object.assign({}, params, { lang: lang, xml: r.xml, links: repo.links(), loaded_at: loadedAt })) });
     }).then(function (r) {
       return r.json().then(function (j) {
         if (r.status === 409 && j.conflicts) return { conflicts: j.conflicts };
@@ -270,13 +273,14 @@ function initBpaEditor(o) {
   document.getElementById("bpa-dl-svg").addEventListener("click", function () {
     modeler.saveSVG().then(function (r) { download(o.fileName + "-" + lang + ".svg", r.svg, "image/svg+xml"); });
   });
-  document.getElementById("bpa-reset").addEventListener("click", function () {
+  var resetBtn = document.getElementById("bpa-reset");
+  if (resetBtn) resetBtn.addEventListener("click", function () {
     var menu = document.querySelector(".bpa-more"); if (menu) menu.open = false;
     pmConfirm(T.resetConfirm, { title: T.resetTitle, ok: T.resetOk }).then(function (yes) {
       if (!yes) return;
       busy = true; say(T.resetting);
       fetch(api("/reset"), { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_id: o.ws }) })
+        body: JSON.stringify(params) })
         .then(function (r) { if (!r.ok) throw new Error(r.status); busy = false; dirty = false; clearDraft(); return load(lang); })
         .catch(function (e) { busy = false; say(T.saveError + " " + (e.message || e), "bad"); });
     });

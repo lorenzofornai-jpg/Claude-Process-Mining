@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Repository BPA") }}{% endblock %}
+{% block main_class %}bpa-full{% endblock %}
+{% block content %}
+<div class="tax">
+  <aside class="tax-side" aria-label="{{ _("Tassonomia dei processi") }}">
+    <div class="tax-side-head">
+      <strong>{{ _("Tassonomia dei processi") }}</strong>
+      {% if can_edit %}<button type="button" class="secondary tax-small" id="tax-new-root" title="{{ _("Nuovo processo al primo livello") }}">+ {{ _("Processo") }}</button>{% endif %}
+    </div>
+    <input type="search" id="tax-search" class="tax-search" placeholder="{{ _("Cerca un processo") }}" aria-label="{{ _("Cerca un processo") }}">
+    <ul id="tax-tree" class="tax-tree" role="tree"></ul>
+    <p id="tax-empty" class="tiny muted" hidden>{{ _("La tassonomia è vuota.") }}{% if can_edit %} {{ _("Crea il primo processo con «+ Processo».") }}{% endif %}</p>
+    {% if can_edit %}<div id="tax-root-drop" class="tax-root-drop tiny muted">{{ _("Trascina qui un processo per portarlo al primo livello") }}</div>{% endif %}
+  </aside>
+
+  <section class="tax-main">
+    <p class="eyebrow">{{ _("Repository BPA") }} · {{ "Process Architect" if can_edit else "Process Viewer" }}</p>
+    <div id="tax-none" class="card">
+      <p class="muted">{{ _("Scegli un processo nella tassonomia a sinistra per vederne gli attributi e i modelli BPMN.") }}</p>
+    </div>
+    <div id="tax-detail" hidden>
+      <div class="card">
+        <div class="tax-detail-head">
+          <h1 id="tax-title"></h1>
+          {% if can_edit %}
+          <div class="tax-actions">
+            <button type="button" class="secondary" id="tax-new-child">+ {{ _("Sottoprocesso") }}</button>
+            <button type="button" class="link-btn ct-danger" id="tax-delete">{{ _("Elimina") }}</button>
+          </div>
+          {% endif %}
+        </div>
+        <form id="tax-form" class="tax-form">
+          <label>{{ _("Codice") }}<input type="text" id="tax-code" readonly></label>
+          <label>{{ _("Nome") }} ({{ current_lang()|upper }})<input type="text" id="tax-name" maxlength="300" required {{ 'readonly' if not can_edit }}>
+            <span class="tiny muted" id="tax-name-other"></span></label>
+          <label class="tax-wide">{{ _("Descrizione") }} ({{ current_lang()|upper }})<textarea id="tax-desc" rows="5" maxlength="20000" {{ 'readonly' if not can_edit }}></textarea></label>
+          {% if can_edit %}
+          <label class="tax-wide">{{ _("Dentro a") }}<select id="tax-parent"></select></label>
+          <div class="actions tax-wide">
+            <span class="tiny muted" id="tax-saved"></span>
+            <button type="submit" class="primary" id="tax-save">{{ _("Salva") }}</button>
+          </div>
+          {% endif %}
+        </form>
+        <p class="tiny muted" id="tax-meta"></p>
+      </div>
+
+      <div class="card">
+        <div class="tax-detail-head">
+          <h2>{{ _("Modelli BPMN") }} <span class="muted tiny" id="tax-model-count"></span></h2>
+          {% if can_edit %}
+          <div class="tax-actions">
+            <button type="button" class="secondary" id="tax-from-staging">{{ _("Dalla staging area") }}</button>
+            <button type="button" class="primary" id="tax-new-model">+ {{ _("Nuovo BPMN") }}</button>
+          </div>
+          {% endif %}
+        </div>
+        <ul id="tax-models" class="tax-models"></ul>
+        <p id="tax-no-models" class="tiny muted" hidden>{{ _("Nessun modello BPMN assegnato a questo processo.") }}</p>
+      </div>
+    </div>
+    <p id="tax-status" class="tiny" aria-live="polite"></p>
+  </section>
+</div>
+
+{% if can_edit %}
+<dialog id="tax-staging" class="confirm-dialog tax-staging-dialog">
+  <h2>{{ _("Staging area") }}</h2>
+  <p class="tiny muted">{{ _("I BPMN generati dalle varianti nella Process Overview. Importarne uno lo copia nel repository e lo assegna al processo scelto; la variante resta nella staging area.") }}</p>
+  <input type="search" id="tax-staging-search" class="tax-search" placeholder="{{ _("Cerca") }}" aria-label="{{ _("Cerca") }}">
+  <div class="table-scroll">
+    <table class="admin-table">
+      <thead><tr><th>{{ _("Modello") }}</th><th>{{ _("Processo") }}</th><th>{{ _("Dataset") }}</th><th class="num">{{ _("Casi") }}</th><th>{{ _("Già importato in") }}</th><th></th></tr></thead>
+      <tbody id="tax-staging-rows"></tbody>
+    </table>
+  </div>
+  <p id="tax-staging-empty" class="tiny muted" hidden>{{ _("La staging area è vuota: invia una variante alla BPA dalla Process Overview.") }}</p>
+  <div class="confirm-actions"><button type="button" class="secondary" id="tax-staging-close">{{ _("Chiudi") }}</button></div>
+</dialog>
+{% endif %}
+
+<script>
+(function () {
+  var CAN_EDIT = {{ can_edit|tojson }}, SELECTED = {{ selected|tojson }};
+  var T = {
+    newProcess: {{ _("Nome del nuovo processo")|tojson }}, newChild: {{ _("Nome del sottoprocesso di «{n}»")|tojson }},
+    createTitle: {{ _("Nuovo processo")|tojson }}, create: {{ _("Crea")|tojson }},
+    root: {{ _("— primo livello —")|tojson }},
+    saved: {{ _("Salvato.")|tojson }}, saving: {{ _("Salvataggio…")|tojson }},
+    deleteAsk: {{ _("Eliminare il processo «{n}»?")|tojson }}, deleteTitle: {{ _("Elimina il processo")|tojson }}, del: {{ _("Elimina")|tojson }},
+    otherName: {{ _("In {l}: {n}")|tojson }},
+    created: {{ _("Creato da {u} il {d}.")|tojson }}, changed: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
+    open: {{ _("Apri")|tojson }}, view: {{ _("Visualizza")|tojson }}, rename: {{ _("Rinomina")|tojson }},
+    renameAsk: {{ _("Nuovo nome del modello")|tojson }},
+    delModelAsk: {{ _("Togliere il modello «{n}» dal repository? Le modifiche fatte qui si perdono; se viene dalla staging area, lì la variante resta.")|tojson }},
+    delModelTitle: {{ _("Togli il modello")|tojson }}, remove: {{ _("Togli")|tojson }},
+    fromStaging: {{ _("dalla staging area · dataset {d}")|tojson }}, createdHere: {{ _("creato nel repository")|tojson }},
+    modelChanged: {{ _("modificato da {u} il {d}")|tojson }},
+    importBtn: {{ _("Importa")|tojson }}, imported: {{ _("Modello importato in «{n}».")|tojson }},
+    importing: {{ _("Importazione…")|tojson }}, edited: {{ _("modificato")|tojson }},
+    newModelDone: {{ _("Nuovo BPMN creato: si apre nell'editor.")|tojson }},
+    moveSelf: {{ _("Un processo non si sposta dentro se stesso o un suo sottoprocesso.")|tojson }}
+  };
+  var LANG = {{ current_lang()|tojson }};
+  var nodes = [], byId = {}, kids = {}, current = null, detail = null;
+  var OPEN_KEY = "pm-bpa-tax-open";
+  var open = {};
+  try { open = JSON.parse(localStorage.getItem(OPEN_KEY) || "{}") || {}; } catch (e) { open = {}; }
+  function saveOpen() { try { localStorage.setItem(OPEN_KEY, JSON.stringify(open)); } catch (e) {} }
+  function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; }
+  function $(id) { return document.getElementById(id); }
+  function req(url, body) {
+    var o = { credentials: "same-origin" };
+    if (body !== undefined) { o.method = "POST"; o.headers = { "Content-Type": "application/json" }; o.body = JSON.stringify(body); }
+    return fetch(url, o).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
+  }
+  function say(text, cls) { var s = $("tax-status"); s.textContent = text || ""; s.className = "tiny " + (cls || ""); }
+  function when(iso) { return iso ? window.pmLocalTime(iso) : ""; }
+  function ask(label, title, ok, value) {
+    // una casella di testo nella finestra di conferma dell'app
+    var text = $("confirm-text");
+    var input = el("input", "tax-ask-input"); input.type = "text"; input.maxLength = 300; input.value = value || "";
+    var lab = el("label", "tax-ask", label); lab.appendChild(input);
+    var p = pmConfirm("", { title: title, ok: ok, safe: true });
+    text.appendChild(lab);
+    setTimeout(function () { input.focus(); input.select(); }, 30);
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("confirm-ok").click(); } });
+    return p.then(function (yes) { return yes ? input.value.trim() : null; });
+  }
+
+  // ---------- albero ----------
+  function load(selectId) {
+    return req("/bpa/api/tree").then(function (j) {
+      nodes = j.nodes; byId = {}; kids = {};
+      nodes.forEach(function (n) { byId[n.id] = n; (kids[n.parent || ""] = kids[n.parent || ""] || []).push(n); });
+      Object.keys(kids).forEach(function (k) { kids[k].sort(function (a, b) { return a.position - b.position; }); });
+      var sel = selectId || (current && byId[current] ? current : null);
+      if (sel) { var p = byId[sel] && byId[sel].parent; while (p && byId[p]) { open[p] = true; p = byId[p].parent; } }
+      draw();
+      if (sel && byId[sel]) select(sel, true); else if (!byId[current]) { current = null; showDetail(null); }
+    }).catch(function (e) { say(e.message, "bad"); });
+  }
+  function draw() {
+    var ul = $("tax-tree"), q = $("tax-search").value.trim().toLowerCase();
+    ul.textContent = "";
+    $("tax-empty").hidden = nodes.length > 0;
+    var match = null;
+    if (q) {   // ricerca: i processi che corrispondono con i loro antenati
+      match = {};
+      nodes.forEach(function (n) {
+        if ((n.code + " " + n.name).toLowerCase().indexOf(q) >= 0) { var x = n; while (x) { match[x.id] = true; x = byId[x.parent]; } }
+      });
+    }
+    function add(parentUl, list, depth) {
+      list.forEach(function (n) {
+        if (match && !match[n.id]) return;
+        var has = (kids[n.id] || []).length > 0, isOpen = !!(match || open[n.id]);
+        var li = el("li"); li.setAttribute("role", "treeitem"); if (has) li.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        var row = el("div", "tax-row" + (n.id === current ? " selected" : ""));
+        row.style.paddingLeft = (6 + depth * 16) + "px";
+        row.dataset.id = n.id; row.tabIndex = 0;
+        var caret = el("button", "tax-caret", has ? (isOpen ? "▾" : "▸") : "");
+        caret.type = "button"; caret.tabIndex = -1; caret.setAttribute("aria-hidden", "true");
+        if (has) caret.addEventListener("click", function (e) { e.stopPropagation(); open[n.id] = !open[n.id]; saveOpen(); draw(); });
+        row.appendChild(caret);
+        row.appendChild(el("span", "tax-icon", has ? (isOpen ? "📂" : "📁") : "📄"));
+        row.appendChild(el("span", "tax-code", n.code));
+        row.appendChild(el("span", "tax-name", n.name));
+        if (n.models) row.appendChild(el("span", "tax-badge", String(n.models)));
+        row.addEventListener("click", function () { select(n.id); });
+        row.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") select(n.id);
+          else if (e.key === "ArrowRight" && has && !open[n.id]) { open[n.id] = true; saveOpen(); draw(); focusRow(n.id); }
+          else if (e.key === "ArrowLeft" && has && open[n.id]) { open[n.id] = false; saveOpen(); draw(); focusRow(n.id); }
+          else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            var rows = Array.prototype.slice.call(document.querySelectorAll(".tax-row")), i = rows.indexOf(row);
+            var nx = rows[i + (e.key === "ArrowDown" ? 1 : -1)]; if (nx) { e.preventDefault(); nx.focus(); }
+          }
+        });
+        if (CAN_EDIT) dragAndDrop(row, n);
+        li.appendChild(row);
+        if (has && isOpen) { var sub = el("ul"); sub.setAttribute("role", "group"); add(sub, kids[n.id], depth + 1); li.appendChild(sub); }
+        parentUl.appendChild(li);
+      });
+    }
+    add(ul, kids[""] || [], 0);
+  }
+  function focusRow(id) { var r = document.querySelector('.tax-row[data-id="' + id + '"]'); if (r) r.focus(); }
+  $("tax-search").addEventListener("input", draw);
+
+  // trascina un processo su un altro: diventa suo sottoprocesso (in fondo); sulla fascia in basso: primo livello
+  var dragging = null;
+  function dragAndDrop(row, n) {
+    row.draggable = true;
+    row.addEventListener("dragstart", function (e) { dragging = n.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", n.id); } catch (x) {} });
+    row.addEventListener("dragend", function () { dragging = null; document.querySelectorAll(".tax-row.drop").forEach(function (r) { r.classList.remove("drop"); }); });
+    row.addEventListener("dragover", function (e) { if (dragging && dragging !== n.id) { e.preventDefault(); row.classList.add("drop"); } });
+    row.addEventListener("dragleave", function () { row.classList.remove("drop"); });
+    row.addEventListener("drop", function (e) { e.preventDefault(); row.classList.remove("drop"); if (dragging) move(dragging, n.id); });
+  }
+  var rootDrop = $("tax-root-drop");
+  if (rootDrop) {
+    rootDrop.addEventListener("dragover", function (e) { if (dragging) { e.preventDefault(); rootDrop.classList.add("drop"); } });
+    rootDrop.addEventListener("dragleave", function () { rootDrop.classList.remove("drop"); });
+    rootDrop.addEventListener("drop", function (e) { e.preventDefault(); rootDrop.classList.remove("drop"); if (dragging) move(dragging, null); });
+  }
+  function isInside(id, parentId) { var x = byId[parentId]; while (x) { if (x.id === id) return true; x = byId[x.parent]; } return false; }
+  function move(id, parentId) {
+    if (parentId && isInside(id, parentId)) { say(T.moveSelf, "bad"); return; }
+    if ((byId[id].parent || null) === (parentId || null)) return;
+    req("/bpa/api/processes/" + encodeURIComponent(id) + "/move", { parent_id: parentId, position: 1e6 })
+      .then(function () { if (parentId) { open[parentId] = true; saveOpen(); } return load(id); })
+      .catch(function (e) { say(e.message, "bad"); });
+  }
+
+  // ---------- dettaglio ----------
+  function select(id, keepScroll) {
+    current = id;
+    document.querySelectorAll(".tax-row").forEach(function (r) { r.classList.toggle("selected", r.dataset.id === id); });
+    try { history.replaceState(null, "", "/bpa?process=" + encodeURIComponent(id)); } catch (e) {}
+    return req("/bpa/api/processes/" + encodeURIComponent(id)).then(function (j) { showDetail(j.process); })
+      .catch(function (e) { say(e.message, "bad"); });
+  }
+  function showDetail(p) {
+    detail = p;
+    $("tax-none").hidden = !!p; $("tax-detail").hidden = !p;
+    if (!p) return;
+    $("tax-title").textContent = p.code + " · " + p.name;
+    $("tax-code").value = p.code;
+    $("tax-name").value = p.name;
+    $("tax-desc").value = p.description || "";
+    $("tax-name-other").textContent = p.name_other && p.name_other !== p.name ? fmt(T.otherName, { l: LANG === "it" ? "EN" : "IT", n: p.name_other }) : "";
+    var meta = [];
+    if (p.created_by) meta.push(fmt(T.created, { u: p.created_by, d: when(p.created_at) }));
+    if (p.updated_by) meta.push(fmt(T.changed, { u: p.updated_by, d: when(p.updated_at) }));
+    $("tax-meta").textContent = meta.join(" ");
+    if ($("tax-saved")) $("tax-saved").textContent = "";
+    if (CAN_EDIT) fillParents(p);
+    drawModels(p);
+  }
+  function fillParents(p) {
+    var sel = $("tax-parent"); sel.textContent = "";
+    var o = el("option", "", T.root); o.value = ""; sel.appendChild(o);
+    function add(list, depth) {
+      list.forEach(function (n) {
+        if (n.id === p.id) return;   // ne' se stesso ne' i suoi sottoprocessi
+        var x = el("option", "", "  ".repeat(depth) + n.code + " " + n.name); x.value = n.id;
+        if (n.id === p.parent) x.selected = true;
+        sel.appendChild(x);
+        add(kids[n.id] || [], depth + 1);
+      });
+    }
+    add(kids[""] || [], 0);
+  }
+  function drawModels(p) {
+    var ul = $("tax-models"); ul.textContent = "";
+    $("tax-no-models").hidden = p.models.length > 0;
+    $("tax-model-count").textContent = p.models.length ? String(p.models.length) : "";
+    p.models.forEach(function (m) {
+      var li = el("li", "tax-model");
+      var main = el("div", "tax-model-main");
+      var a = el("a", "", m.title); a.href = "/bpa/models/" + encodeURIComponent(m.id) + (CAN_EDIT ? "/edit" : "/view"); a.target = "_blank"; a.rel = "noopener";
+      main.appendChild(a);
+      var info = [m.from_staging ? fmt(T.fromStaging, { d: m.source || "—" }) : T.createdHere];
+      if (m.updated_by) info.push(fmt(T.modelChanged, { u: m.updated_by, d: when(m.updated_at) }));
+      main.appendChild(el("span", "tiny muted", info.join(" · ")));
+      li.appendChild(main);
+      var act = el("div", "tax-model-actions");
+      var openA = el("a", "secondary button-link", CAN_EDIT ? T.open : T.view); openA.href = a.href; openA.target = "_blank"; openA.rel = "noopener";
+      act.appendChild(openA);
+      if (CAN_EDIT) {
+        var rn = el("button", "link-btn", T.rename); rn.type = "button";
+        rn.addEventListener("click", function () {
+          ask(T.renameAsk, T.rename, T.rename, m.title).then(function (v) {
+            if (!v || v === m.title) return;
+            req("/bpa/api/models/" + encodeURIComponent(m.id) + "/rename", { title: v }).then(function () { return select(p.id); })
+              .catch(function (e) { say(e.message, "bad"); });
+          });
+        });
+        var del = el("button", "link-btn ct-danger", T.remove); del.type = "button";
+        del.addEventListener("click", function () {
+          pmConfirm(fmt(T.delModelAsk, { n: m.title }), { title: T.delModelTitle, ok: T.remove }).then(function (yes) {
+            if (!yes) return;
+            req("/bpa/api/models/" + encodeURIComponent(m.id) + "/delete", {}).then(function () { return load(p.id); })
+              .catch(function (e) { say(e.message, "bad"); });
+          });
+        });
+        act.appendChild(rn); act.appendChild(del);
+      }
+      li.appendChild(act);
+      ul.appendChild(li);
+    });
+  }
+
+  if (CAN_EDIT) {
+    $("tax-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!detail) return;
+      var id = detail.id, parent = $("tax-parent").value || null;
+      $("tax-saved").textContent = T.saving;
+      req("/bpa/api/processes/" + encodeURIComponent(id), { name: $("tax-name").value, description: $("tax-desc").value })
+        .then(function () {
+          if ((detail.parent || null) !== parent) return req("/bpa/api/processes/" + encodeURIComponent(id) + "/move", { parent_id: parent, position: 1e6 });
+        })
+        .then(function () { if (parent) { open[parent] = true; saveOpen(); } return load(id); })
+        .then(function () { $("tax-saved").textContent = "✓ " + T.saved; })
+        .catch(function (e) { $("tax-saved").textContent = ""; say(e.message, "bad"); });
+    });
+    function create(parentId) {
+      var label = parentId ? fmt(T.newChild, { n: byId[parentId].name }) : T.newProcess;
+      ask(label, T.createTitle, T.create).then(function (name) {
+        if (!name) return;
+        req("/bpa/api/processes", { parent_id: parentId, name: name }).then(function (j) {
+          if (parentId) { open[parentId] = true; saveOpen(); }
+          return load(j.process.id);
+        }).catch(function (e) { say(e.message, "bad"); });
+      });
+    }
+    $("tax-new-root").addEventListener("click", function () { create(null); });
+    $("tax-new-child").addEventListener("click", function () { if (detail) create(detail.id); });
+    $("tax-delete").addEventListener("click", function () {
+      if (!detail) return;
+      var id = detail.id, parent = detail.parent;
+      pmConfirm(fmt(T.deleteAsk, { n: detail.code + " " + detail.name }), { title: T.deleteTitle, ok: T.del }).then(function (yes) {
+        if (!yes) return;
+        req("/bpa/api/processes/" + encodeURIComponent(id) + "/delete", {}).then(function () {
+          current = null;
+          return load(parent || null).then(function () { if (!parent) showDetail(null); });
+        }).catch(function (e) { say(e.message, "bad"); });
+      });
+    });
+    $("tax-new-model").addEventListener("click", function () {
+      if (!detail) return;
+      var id = detail.id;
+      var win = window.open("about:blank", "_blank");   // aperta subito (al clic), poi va all'editor
+      req("/bpa/api/processes/" + encodeURIComponent(id) + "/models/new", {}).then(function (j) {
+        var url = "/bpa/models/" + encodeURIComponent(j.model.id) + "/edit";
+        if (win) win.location = url; else say(T.newModelDone, "ok");
+        return load(id);
+      }).catch(function (e) { if (win) win.close(); say(e.message, "bad"); });
+    });
+
+    // staging area: i BPMN delle varianti da importare nel processo scelto
+    var dlg = $("tax-staging"), staging = [];
+    function drawStaging() {
+      var body = $("tax-staging-rows"), q = $("tax-staging-search").value.trim().toLowerCase();
+      body.textContent = "";
+      $("tax-staging-empty").hidden = staging.length > 0;
+      staging.forEach(function (m) {
+        var text = [m.title, m.process, m.dataset].join(" ").toLowerCase();
+        if (q && text.indexOf(q) < 0) return;
+        var tr = el("tr");
+        var t1 = el("td"); t1.appendChild(el("strong", "", m.title)); if (m.edited) t1.appendChild(el("span", "tiny bpa-tag", T.edited));
+        tr.appendChild(t1);
+        tr.appendChild(el("td", "", m.process));
+        tr.appendChild(el("td", "tiny", m.dataset));
+        tr.appendChild(el("td", "num", m.stats && m.stats.count !== undefined ? String(m.stats.count) : "—"));
+        tr.appendChild(el("td", "tiny muted", m.imported.join(", ")));
+        var td = el("td"), b = el("button", "secondary", T.importBtn); b.type = "button";
+        b.addEventListener("click", function () {
+          if (!detail) return;
+          b.disabled = true; b.textContent = T.importing;
+          var id = detail.id;
+          req("/bpa/api/processes/" + encodeURIComponent(id) + "/import", { model_id: m.id }).then(function () {
+            dlg.close(); say(fmt(T.imported, { n: detail.code + " " + detail.name }), "ok"); return load(id);
+          }).catch(function (e) { b.disabled = false; b.textContent = T.importBtn; say(e.message, "bad"); });
+        });
+        td.appendChild(b); tr.appendChild(td);
+        body.appendChild(tr);
+      });
+    }
+    $("tax-from-staging").addEventListener("click", function () {
+      req("/bpa/api/staging").then(function (j) { staging = j.models; drawStaging(); dlg.showModal(); })
+        .catch(function (e) { say(e.message, "bad"); });
+    });
+    $("tax-staging-search").addEventListener("input", drawStaging);
+    $("tax-staging-close").addEventListener("click", function () { dlg.close(); });
+  }
+
+  load(SELECTED);
+})();
+</script>
+{% endblock %}

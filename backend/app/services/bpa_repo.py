@@ -286,28 +286,49 @@ def set_name(s, lang: str, name: str) -> None:
         s.name_en, s.key_en = name, norm(name)
 
 
+REPO_SCOPE = "@repo"   # ambito dei nomi dei modelli del repository BPA (gli altri: il dataset del modello di staging)
+
+
+def scope_of(model) -> str:
+    """Ambito in cui i nomi devono essere unici: il dataset del modello di staging, o tutto il repository BPA."""
+    return REPO_SCOPE if getattr(model, "stage", None) == "repository" else model.ingestion_config_id
+
+
+def _scope_filter(BpaModel, scopes: set[str]):
+    from sqlalchemy import or_
+    conds = []
+    cfgs = sorted(x for x in scopes if x and x != REPO_SCOPE)
+    if cfgs:
+        conds.append(BpaModel.ingestion_config_id.in_(cfgs))
+    if REPO_SCOPE in scopes:
+        conds.append(BpaModel.stage == "repository")
+    return or_(*conds) if conds else None
+
+
 def find_by_name(db, symbol_type: str, name: str, lang: str, exclude: str | None = None,
                  configs: set[str] | None = None):
-    """Simbolo con questo tipo e nome. configs: solo tra i simboli che compaiono in un BPMN di questi dataset."""
+    """Simbolo con questo tipo e nome. configs: solo tra i simboli che compaiono in un BPMN di questi ambiti
+    (dataset, o REPO_SCOPE per il repository BPA)."""
     from app.models import BpaModel, BpaOccurrence, BpaSymbol
     col = BpaSymbol.key_it if lang == "it" else BpaSymbol.key_en
     q = db.query(BpaSymbol).filter(BpaSymbol.symbol_type == symbol_type, col == norm(name))
     if exclude:
         q = q.filter(BpaSymbol.id != exclude)
     if configs is not None:
-        if not configs:
+        cond = _scope_filter(BpaModel, configs)
+        if cond is None:
             return None
         q = q.filter(BpaSymbol.id.in_(
-            db.query(BpaOccurrence.symbol_id).join(BpaModel, BpaModel.id == BpaOccurrence.model_id)
-            .filter(BpaModel.ingestion_config_id.in_(sorted(configs)))))
+            db.query(BpaOccurrence.symbol_id).join(BpaModel, BpaModel.id == BpaOccurrence.model_id).filter(cond)))
     return q.first()
 
 
 def symbol_configs(db, symbol_id: str) -> set[str]:
-    """I dataset (ingestion config) dei BPMN in cui compare il simbolo."""
+    """Gli ambiti (dataset, REPO_SCOPE) dei BPMN in cui compare il simbolo."""
     from app.models import BpaModel, BpaOccurrence
-    return {c for (c,) in db.query(BpaModel.ingestion_config_id).join(BpaOccurrence, BpaOccurrence.model_id == BpaModel.id)
-            .filter(BpaOccurrence.symbol_id == symbol_id).distinct()}
+    rows = (db.query(BpaModel.ingestion_config_id, BpaModel.stage).join(BpaOccurrence, BpaOccurrence.model_id == BpaModel.id)
+            .filter(BpaOccurrence.symbol_id == symbol_id).distinct())
+    return {REPO_SCOPE if st == "repository" else c for c, st in rows}
 
 
 def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | None = None,
@@ -354,7 +375,7 @@ def resolve(db, model, lang: str, xml: str, links: dict, loaded_at: datetime | N
                 s = None   # l'elemento ha cambiato tipo (es. attivita' -> evento): e' un altro simbolo
         if s is not None and s.anonymous and link.get("symbol") == s.id:
             s = None   # un simbolo senza nome non si condivide
-        scope = {model.ingestion_config_id}
+        scope = {scope_of(model)}
         if s is not None and not s.anonymous:
             scope |= symbol_configs(db, s.id)   # un nome cambiato vale in tutti i BPMN del simbolo
         same = find_by_name(db, e["type"], e["name"], lang, exclude=s.id if s else None, configs=scope)

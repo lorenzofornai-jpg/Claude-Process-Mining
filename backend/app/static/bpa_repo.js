@@ -7,6 +7,8 @@
  *   o crearne di nuovi. */
 function initBpaRepo(c) {
   var modeler = c.modeler, T = c.T, ws = c.ws;
+  var base = c.base || "/analysis/bpa", params = c.params || { workspace_id: ws };
+  function qp(extra) { return q(Object.assign({}, params, extra || {})); }
   var meta = null, map = {}, links = {}, suppress = 0, queue = Promise.resolve();
   var CLIP = "pm-bpa-clipboard";
   function fmt(s, p) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return p[k] !== undefined ? p[k] : "{" + k + "}"; }); }
@@ -49,8 +51,8 @@ function initBpaRepo(c) {
 
   function reload() {
     return Promise.all([
-      meta ? Promise.resolve(meta) : getJSON("/analysis/bpa/meta?" + q({ workspace_id: ws })).then(function (j) { meta = j; return j; }),
-      getJSON("/analysis/bpa/" + encodeURIComponent(c.modelId) + "/symbols?" + q({ workspace_id: ws }))
+      meta ? Promise.resolve(meta) : getJSON(base + "/meta?" + qp()).then(function (j) { meta = j; return j; }),
+      getJSON(base + "/" + encodeURIComponent(c.modelId) + "/symbols?" + qp())
     ]).then(function (r) { map = r[1].elements || {}; refreshPanel(); }).catch(function () {});
   }
 
@@ -72,7 +74,7 @@ function initBpaRepo(c) {
     });
   }
   function askRenameEverywhere(e, sid) {
-    return getJSON("/analysis/bpa/symbols/" + encodeURIComponent(sid) + "?" + q({ workspace_id: ws, lang: c.lang(), model_id: c.modelId }))
+    return getJSON(base + "/symbols/" + encodeURIComponent(sid) + "?" + qp({ lang: c.lang(), model_id: c.modelId }))
       .then(function (d) {
         var others = d.occurrences.filter(function (o) { return !o.current; });
         if (!others.length && !d.hidden_occurrences) return true;
@@ -94,7 +96,7 @@ function initBpaRepo(c) {
     var type = typeOf(e), name = nameOf(e);
     if (!type || generic(name)) return Promise.resolve();
     var sid = symbolOf(e);
-    return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, model_id: c.modelId, type: type, name: name, lang: c.lang(), exclude: sid || "" }))
+    return getJSON(base + "/symbols/lookup?" + qp({ model_id: c.modelId, type: type, name: name, lang: c.lang(), exclude: sid || "" }))
       .then(function (j) {
         if (j.symbol) return askDuplicate(e, j.symbol);
         var m = map[e.id];
@@ -167,7 +169,7 @@ function initBpaRepo(c) {
     if (!reg().get(current.id)) { current = null; openPanel(false); return; }
     var sid = symbolOf(current), seq = ++loadSeq;
     if (!sid) { detail = null; draw(); return; }
-    getJSON("/analysis/bpa/symbols/" + encodeURIComponent(sid) + "?" + q({ workspace_id: ws, lang: c.lang(), model_id: c.modelId }))
+    getJSON(base + "/symbols/" + encodeURIComponent(sid) + "?" + qp({ lang: c.lang(), model_id: c.modelId }))
       .then(function (d) { if (seq === loadSeq) { detail = d; draw(); } })
       .catch(function () { if (seq === loadSeq) { detail = null; draw(); } });
   }
@@ -207,8 +209,8 @@ function initBpaRepo(c) {
     var values = {};
     (detail && detail.attributes || []).forEach(function (a) { values[a.key] = a.value; });
     BpaPanel.attrs(body, defs.map(function (d) { return Object.assign({}, d, { value: values[d.key] }); }), {
-      lang: c.lang(), T: T, body: { workspace_id: ws },
-      postUrl: sid ? "/analysis/bpa/symbols/" + encodeURIComponent(sid) + "/attrs" : null,
+      lang: c.lang(), T: T, body: params,
+      postUrl: sid ? base + "/symbols/" + encodeURIComponent(sid) + "/attrs" : null,
       onSaved: function (key, vals) { if (detail) detail.attributes.forEach(function (a) { if (a.key === key) a.value = vals[key]; }); }
     });
     if (sid && detail && detail.updated_by) body.appendChild(el("p", "tiny muted", fmt(T.lastChange, { u: detail.updated_by, d: window.pmLocalTime(detail.updated_at) })));
@@ -257,7 +259,7 @@ function initBpaRepo(c) {
     var base = name.replace(/\s*\(\d+\)$/, ""), n = 2;
     function next() {
       var cand = base + " (" + n + ")";
-      return getJSON("/analysis/bpa/symbols/lookup?" + q({ workspace_id: ws, model_id: c.modelId, type: type, name: cand, lang: c.lang() }))
+      return getJSON(base + "/symbols/lookup?" + qp({ model_id: c.modelId, type: type, name: cand, lang: c.lang() }))
         .then(function (j) {
           var local = reg().filter(function (e) { return typeOf(e) === type && norm(nameOf(e)) === norm(cand); }).length;
           if (!j.symbol && !local) return cand;
@@ -314,7 +316,7 @@ function initBpaRepo(c) {
               if (same) {
                 links[x.shape.id] = { symbol: x.item.symbol };
                 if (clip.lang !== c.lang())   // incollato in un modello aperto nell'altra lingua: il nome del simbolo in questa
-                  return getJSON("/analysis/bpa/symbols/" + encodeURIComponent(x.item.symbol) + "?" + q({ workspace_id: ws, lang: c.lang() }))
+                  return getJSON(base + "/symbols/" + encodeURIComponent(x.item.symbol) + "?" + qp({ lang: c.lang() }))
                     .then(function (d) { if (d.symbol.name) setLabel(x.shape, d.symbol.name); }).catch(function () {});
                 return;
               }

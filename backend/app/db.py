@@ -17,6 +17,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
+    _relax_not_null("bpa_model", "ingestion_config_id")   # modelli creati nel repository BPA, senza dataset
 
 
 def _add_missing_columns() -> None:
@@ -39,6 +40,31 @@ def _add_missing_columns() -> None:
                     continue
                 col_type = column.type.compile(dialect=engine.dialect)
                 conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}'))
+
+
+def _relax_not_null(table: str, column: str) -> None:
+    """Toglie NOT NULL da una colonna di una tabella SQLite gia' esistente (SQLite non ha ALTER COLUMN): si crea la
+    tabella nuova con la stessa definizione senza il vincolo, si copiano i dati, si sostituisce la vecchia."""
+    import re
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as conn:
+        cols = conn.execute(text(f'PRAGMA table_info("{table}")')).fetchall()
+        if not any(c[1] == column and c[3] for c in cols):
+            return
+        sql = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name=:n"), {"n": table}).scalar()
+        new_sql = re.sub(rf'(\b{column}\b\s+[A-Z]+(?:\(\d+\))?)\s+NOT NULL', r"\1", sql, count=1)
+        if new_sql == sql:
+            return
+        tmp = f"{table}__new"
+        new_sql = new_sql.replace(f"CREATE TABLE {table}", f'CREATE TABLE "{tmp}"', 1).replace(
+            f'CREATE TABLE "{table}"', f'CREATE TABLE "{tmp}"', 1)
+        names = ", ".join(f'"{c[1]}"' for c in cols)
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        conn.execute(text(new_sql))
+        conn.execute(text(f'INSERT INTO "{tmp}" ({names}) SELECT {names} FROM "{table}"'))
+        conn.execute(text(f'DROP TABLE "{table}"'))
+        conn.execute(text(f'ALTER TABLE "{tmp}" RENAME TO "{table}"'))
 
 
 def get_db():
