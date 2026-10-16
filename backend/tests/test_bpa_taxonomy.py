@@ -61,8 +61,14 @@ def test_taxonomy_codes_move_and_delete(db):
     assert tax.delete_process(db, p2p)   # ha un sottoprocesso: motivo
     tax.new_model(db, pay, "arch")
     assert tax.delete_process(db, pay)   # ha un modello: motivo
-    tree = {n["code"]: n for n in tax.tree(db, "it")}
-    assert tree["PR-0003"]["models"] == 1 and tree["PR-0003"]["parent"] == p2p.id
+    tree = {n["id"]: n for n in tax.tree(db, "it")}   # il codice interno non si mostra
+    assert "code" not in tree[pay.id] and tree[pay.id]["models"] == 1 and tree[pay.id]["parent"] == p2p.id
+    assert tax.path_name(db, pay, "it") == "Procure to Pay › Payments"
+    # riordino tra fratelli: Purchasing torna sotto Procure to Pay e va al primo posto
+    assert tax.move_process(db, buy, p2p.id, 0)
+    assert [x.id for x in tax.children(db, p2p.id)] == [buy.id, pay.id]
+    assert tax.move_process(db, buy, p2p.id, 1)
+    assert [x.id for x in tax.children(db, p2p.id)] == [pay.id, buy.id]
 
 
 def test_names_in_both_languages():

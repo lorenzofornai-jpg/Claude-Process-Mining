@@ -41,16 +41,20 @@ def _repo_symbol_ids(db) -> set[str]:
             .filter(BpaModel.stage == "repository").distinct()}
 
 
-def _bpa_processes(db) -> dict[str, set[str]]:
-    """{id oggetto: codici dei processi della tassonomia ai cui BPMN appartiene}."""
+def _bpa_processes(db, lang: str) -> dict[str, set[str]]:
+    """{id oggetto: processi della tassonomia (con gli antenati) ai cui BPMN appartiene}."""
     from app.models import BpaModel, BpaOccurrence, BpaProcess
+    from app.services import bpa_taxonomy
     out: dict[str, set[str]] = {}
-    q = (db.query(BpaOccurrence.symbol_id, BpaProcess.code)
+    names: dict[str, str] = {}
+    q = (db.query(BpaOccurrence.symbol_id, BpaModel.process_id)
          .join(BpaModel, BpaModel.id == BpaOccurrence.model_id)
-         .join(BpaProcess, BpaProcess.id == BpaModel.process_id)
-         .filter(BpaModel.stage == "repository").distinct())
-    for sid, code in q.all():
-        out.setdefault(sid, set()).add(code)
+         .filter(BpaModel.stage == "repository", BpaModel.process_id.isnot(None)).distinct())
+    for sid, pid in q.all():
+        if pid not in names:
+            p = db.get(BpaProcess, pid)
+            names[pid] = bpa_taxonomy.path_name(db, p, lang) if p else "—"
+        out.setdefault(sid, set()).add(names[pid])
     return out
 
 
@@ -72,7 +76,7 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
     occ_count = {}
     for (sid,) in db.query(BpaOccurrence.symbol_id).all():
         occ_count[sid] = occ_count.get(sid, 0) + 1
-    processes = _bpa_processes(db)
+    processes = _bpa_processes(db, lang)
     rows = []
     if symbol_type != bpa_repo.PROCESS_TYPE:
         for s in db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all():
@@ -81,7 +85,7 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
             rows.append({"id": s.id, "name": bpa_repo.display_name(db, s, lang), "anonymous": bool(s.anonymous),
                          "other": "" if s.anonymous else bpa_repo.name_of(s, "en" if lang == "it" else "it"),
                          "subtypes": ", ".join(bpa_repo.subtypes(db, s, lang)), "occ": occ_count.get(s.id, 0),
-                         "processes": ", ".join(sorted(processes.get(s.id, ()))),
+                         "processes": "; ".join(sorted(processes.get(s.id, ()), key=str.casefold)),
                          "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
     rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
     return {"request": request, "types": bpa_repo.ATTR_TYPES, "symbol_type": symbol_type, "defs": defs,
@@ -96,14 +100,14 @@ def _bpa_merge_context(db, request, symbol_type: str, ids: list[str], master: st
     from app.services import bpa_repo
     lang = get_lang(request)
     defs = db.query(BpaAttributeDef).filter_by(symbol_type=symbol_type).order_by(BpaAttributeDef.position).all()
-    processes, repo = _bpa_processes(db), _repo_symbol_ids(db)
+    processes, repo = _bpa_processes(db, lang), _repo_symbol_ids(db)
     items = []
     for sid in dict.fromkeys(ids):
         s = db.get(BpaSymbol, sid)
         if s is None or s.symbol_type != symbol_type or s.anonymous or s.id not in repo:
             continue
         items.append({"id": s.id, "name_it": s.name_it, "name_en": s.name_en,
-                      "processes": ", ".join(sorted(processes.get(s.id, ()))),
+                      "processes": "; ".join(sorted(processes.get(s.id, ()), key=str.casefold)),
                       "occ": db.query(BpaOccurrence).filter_by(symbol_id=s.id).count(),
                       "created_by": s.created_by,
                       "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
@@ -163,9 +167,8 @@ async def bpa_attributes_attr_save(request: Request):
         errors.append(msg("Dai il nome dell'attributo in italiano e in inglese."))
     if name_it.casefold() in ("nome", "identificativo", "name", "id") or name_en.casefold() in ("name", "id", "identifier"):
         errors.append(msg("«Nome» e «Identificativo» sono attributi di sistema: scegli un altro nome."))
-    if symbol_type == bpa_repo.PROCESS_TYPE and (name_it.casefold() in ("codice", "descrizione")
-                                                 or name_en.casefold() in ("code", "description")):
-        errors.append(msg("«Codice», «Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome."))
+    if symbol_type == bpa_repo.PROCESS_TYPE and (name_it.casefold() == "descrizione" or name_en.casefold() == "description"):
+        errors.append(msg("«Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome."))
     db = SessionLocal()
     try:
         d = db.query(BpaAttributeDef).filter_by(key=key).first() if key else None

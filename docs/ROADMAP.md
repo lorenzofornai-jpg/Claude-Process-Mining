@@ -573,3 +573,10 @@ processi; poi altri cataloghi e oggetti.
   un ruolo nel repository BPA, sul Repository BPA.
 - ✅ Nell'intestazione «Repository PM | Repository BPA» come «IT | EN»: quello in cui si è (pagine `/bpa…` = BPA, le
   altre = PM) è in nero, l'altro è un link.
+
+## Repository BPA — codice interno nascosto e ordine dei processi (16 ottobre 2026)
+- ✅ Il codice interno dei processi (PR-0001…) non si mostra più: nell'albero, nel dettaglio, nella staging area, nel
+  Process Overlay e nelle occorrenze il processo si indica con il nome (fuori dall'albero con il percorso, es.
+  «Gestione › Acquisti»). Se serve un codice modificabile, il Process Architect lo crea come attributo dei processi.
+- ✅ Ordine dei processi dello stesso livello: pulsanti ↑ ↓ nel dettaglio (anche su iPad) e trascinamento nell'albero
+  (parte alta di un processo = prima, parte bassa = dopo, centro = dentro come sottoprocesso).

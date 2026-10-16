@@ -1464,7 +1464,6 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .tax-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 .tax-caret { width: 16px; border: 0; background: none; padding: 0; color: var(--muted); cursor: pointer; font-size: 0.8rem; }
 .tax-icon { font-size: 0.95rem; }
-.tax-code { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tax-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tax-badge { font-size: 0.72rem; background: var(--card-bg-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; color: var(--muted); }
 .tax-root-drop { border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
@@ -1506,3 +1505,6 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .repo-switch a:hover { text-decoration: underline; }
 .repo-switch a.repo-current { color: var(--text); }
 .repo-switch .lang-sep { color: var(--border); }
+.tax-row.drop-before { box-shadow: inset 0 2px 0 var(--brand); }
+.tax-row.drop-after { box-shadow: inset 0 -2px 0 var(--brand); }
+.tax-order { display: inline-flex; gap: 4px; }

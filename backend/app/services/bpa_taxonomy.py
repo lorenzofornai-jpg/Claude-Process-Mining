@@ -65,6 +65,18 @@ def next_code(db) -> str:
     return f"PR-{n + 1:04d}"
 
 
+def path_name(db, p, lang: str) -> str:
+    """Il processo con i suoi antenati («Gestione › Acquisti › Ordini»): i nomi possono ripetersi nella tassonomia e
+    il codice interno non si mostra."""
+    from app.models import BpaProcess
+    names, seen, x = [], set(), p
+    while x is not None and x.id not in seen:
+        seen.add(x.id)
+        names.append(text_of(x.name, lang))
+        x = db.get(BpaProcess, x.parent_id) if x.parent_id else None
+    return " › ".join(reversed(names))
+
+
 def children(db, parent_id: str | None) -> list:
     from app.models import BpaProcess
     return db.query(BpaProcess).filter(BpaProcess.parent_id.is_(None) if parent_id is None
@@ -135,7 +147,7 @@ def tree(db, lang: str) -> list[dict]:
     for (pid,) in db.query(BpaModel.process_id).filter(BpaModel.stage == "repository").all():
         if pid:
             counts[pid] = counts.get(pid, 0) + 1
-    return [{"id": p.id, "code": p.code, "parent": p.parent_id, "position": p.position,
+    return [{"id": p.id, "parent": p.parent_id, "position": p.position,
              "name": text_of(p.name, lang), "models": counts.get(p.id, 0)}
             for p in db.query(BpaProcess).order_by(BpaProcess.position).all()]
 

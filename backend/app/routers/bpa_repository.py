@@ -48,6 +48,11 @@ def _access(request: Request, edit: bool = False, json: bool = True):
     return user, None
 
 
+def _slug(text: str) -> str:
+    import re
+    return re.sub(r"[^0-9A-Za-z]+", "-", text or "").strip("-").lower()[:60] or "bpmn"
+
+
 def _repo_model(db, model_id: str):
     m = db.get(BpaModel, model_id)
     return m if m is not None and m.stage == "repository" else None
@@ -86,7 +91,7 @@ def _model_json(db, m: BpaModel, lang: str, cache: dict) -> dict:
 
 def _process_json(db, p: BpaProcess, lang: str) -> dict:
     cache: dict = {}
-    return {"id": p.id, "code": p.code, "parent": p.parent_id,
+    return {"id": p.id, "path": tax.path_name(db, p, lang), "parent": p.parent_id,
             "name": tax.text_of(p.name, lang), "description": tax.text_of(p.description, lang),
             "name_other": tax.text_of(p.name, "en" if lang == "it" else "it"),
             "created_by": p.created_by, "created_at": utc_iso(p.created_at),
@@ -310,7 +315,7 @@ def api_staging(request: Request):
         imported: dict[str, list] = {}
         for m in db.query(BpaModel).filter(BpaModel.stage == "repository", BpaModel.source_model_id.isnot(None)).all():
             p = db.get(BpaProcess, m.process_id) if m.process_id else None
-            imported.setdefault(m.source_model_id, []).append(f"{p.code} {tax.text_of(p.name, lang)}" if p else "—")
+            imported.setdefault(m.source_model_id, []).append(tax.path_name(db, p, lang) if p else "—")
         configs, workspaces, rows = {}, {}, []
         for m in db.query(BpaModel).filter(BpaModel.stage.is_(None)).order_by(BpaModel.created_at.desc()).all():
             if m.ingestion_config_id not in configs:
@@ -457,8 +462,8 @@ def _page_model(request: Request, model_id: str, edit: bool):
         p = db.get(BpaProcess, m.process_id) if m.process_id else None
         lang = get_lang(request)
         info = {"model": staging._json(m), "repo_title": tax.text_of(m.title, lang) or "BPMN",
-                "process_name": f"{p.code} {tax.text_of(p.name, lang)}" if p else "—", "process_id": p.id if p else "",
-                "file_name": (p.code if p else "bpmn")}
+                "process_name": tax.path_name(db, p, lang) if p else "—", "process_id": p.id if p else "",
+                "file_name": _slug(tax.text_of(p.name, lang)) if p else "bpmn"}
     finally:
         db.close()
     return user, info, None

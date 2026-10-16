@@ -30,14 +30,17 @@
           <h1 id="tax-title"></h1>
           {% if can_edit %}
           <div class="tax-actions">
+            <span class="tax-order" role="group" aria-label="{{ _("Ordine tra i processi dello stesso livello") }}">
+              <button type="button" class="secondary bpa-icon" id="tax-up" title="{{ _("Sposta su") }}" aria-label="{{ _("Sposta su") }}">↑</button>
+              <button type="button" class="secondary bpa-icon" id="tax-down" title="{{ _("Sposta giù") }}" aria-label="{{ _("Sposta giù") }}">↓</button>
+            </span>
             <button type="button" class="secondary" id="tax-new-child">+ {{ _("Sottoprocesso") }}</button>
             <button type="button" class="link-btn ct-danger" id="tax-delete">{{ _("Elimina") }}</button>
           </div>
           {% endif %}
         </div>
         <form id="tax-form" class="tax-form">
-          <label>{{ _("Codice") }}<input type="text" id="tax-code" readonly></label>
-          <label>{{ _("Nome") }} ({{ current_lang()|upper }})<input type="text" id="tax-name" maxlength="300" required {{ 'readonly' if not can_edit }}>
+          <label class="tax-wide">{{ _("Nome") }} ({{ current_lang()|upper }})<input type="text" id="tax-name" maxlength="300" required {{ 'readonly' if not can_edit }}>
             <span class="tiny muted" id="tax-name-other"></span></label>
           <label class="tax-wide">{{ _("Descrizione") }} ({{ current_lang()|upper }})<textarea id="tax-desc" rows="5" maxlength="20000" {{ 'readonly' if not can_edit }}></textarea></label>
           <div id="tax-attrs" class="tax-wide tax-attrs"></div>
@@ -148,7 +151,7 @@
     var text = $("confirm-text"), sel = el("select", "tax-ask-input");
     (function add(list, depth) {
       list.forEach(function (n) {
-        var o = el("option", "", "\u00a0\u00a0".repeat(depth) + n.code + " " + n.name); o.value = n.id;
+        var o = el("option", "", "\u00a0\u00a0".repeat(depth) + n.name); o.value = n.id;
         if (n.id === current) o.selected = true;
         sel.appendChild(o); add(kids[n.id] || [], depth + 1);
       });
@@ -179,7 +182,7 @@
     if (q) {   // ricerca: i processi che corrispondono con i loro antenati
       match = {};
       nodes.forEach(function (n) {
-        if ((n.code + " " + n.name).toLowerCase().indexOf(q) >= 0) { var x = n; while (x) { match[x.id] = true; x = byId[x.parent]; } }
+        if (n.name.toLowerCase().indexOf(q) >= 0) { var x = n; while (x) { match[x.id] = true; x = byId[x.parent]; } }
       });
     }
     function add(parentUl, list, depth) {
@@ -195,7 +198,6 @@
         if (has) caret.addEventListener("click", function (e) { e.stopPropagation(); open[n.id] = !open[n.id]; saveOpen(); draw(); });
         row.appendChild(caret);
         row.appendChild(el("span", "tax-icon", has ? (isOpen ? "📂" : "📁") : "📄"));
-        row.appendChild(el("span", "tax-code", n.code));
         row.appendChild(el("span", "tax-name", n.name));
         if (n.models) row.appendChild(el("span", "tax-badge", String(n.models)));
         row.addEventListener("click", function () { select(n.id); });
@@ -219,29 +221,62 @@
   function focusRow(id) { var r = document.querySelector('.tax-row[data-id="' + id + '"]'); if (r) r.focus(); }
   $("tax-search").addEventListener("input", draw);
 
-  // trascina un processo su un altro: diventa suo sottoprocesso (in fondo); sulla fascia in basso: primo livello
+  // trascina un processo: sulla parte alta di un altro va prima di lui, sulla parte bassa dopo (stesso livello), al
+  // centro diventa suo sottoprocesso (in fondo); sulla fascia in basso va in fondo al primo livello
   var dragging = null;
+  function zone(row, e) {
+    var r = row.getBoundingClientRect(), y = (e.clientY - r.top) / (r.height || 1);
+    return y < 0.3 ? "before" : y > 0.7 ? "after" : "inside";
+  }
+  function clearDrop() { document.querySelectorAll(".tax-row.drop, .tax-row.drop-before, .tax-row.drop-after").forEach(function (r) { r.classList.remove("drop", "drop-before", "drop-after"); }); }
   function dragAndDrop(row, n) {
     row.draggable = true;
     row.addEventListener("dragstart", function (e) { dragging = n.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", n.id); } catch (x) {} });
-    row.addEventListener("dragend", function () { dragging = null; document.querySelectorAll(".tax-row.drop").forEach(function (r) { r.classList.remove("drop"); }); });
-    row.addEventListener("dragover", function (e) { if (dragging && dragging !== n.id) { e.preventDefault(); row.classList.add("drop"); } });
-    row.addEventListener("dragleave", function () { row.classList.remove("drop"); });
-    row.addEventListener("drop", function (e) { e.preventDefault(); row.classList.remove("drop"); if (dragging) move(dragging, n.id); });
+    row.addEventListener("dragend", function () { dragging = null; clearDrop(); });
+    row.addEventListener("dragover", function (e) {
+      if (!dragging || dragging === n.id) return;
+      e.preventDefault(); clearDrop();
+      var z = zone(row, e); row.classList.add(z === "inside" ? "drop" : "drop-" + z);
+    });
+    row.addEventListener("dragleave", function () { row.classList.remove("drop", "drop-before", "drop-after"); });
+    row.addEventListener("drop", function (e) {
+      e.preventDefault(); var z = zone(row, e); clearDrop();
+      if (!dragging) return;
+      if (z === "inside") { move(dragging, n.id, 1e6); return; }
+      var sibs = (kids[n.parent || ""] || []).filter(function (x) { return x.id !== dragging; });
+      var i = sibs.indexOf(n) + (z === "after" ? 1 : 0);
+      move(dragging, n.parent || null, i);
+    });
   }
   var rootDrop = $("tax-root-drop");
   if (rootDrop) {
     rootDrop.addEventListener("dragover", function (e) { if (dragging) { e.preventDefault(); rootDrop.classList.add("drop"); } });
     rootDrop.addEventListener("dragleave", function () { rootDrop.classList.remove("drop"); });
-    rootDrop.addEventListener("drop", function (e) { e.preventDefault(); rootDrop.classList.remove("drop"); if (dragging) move(dragging, null); });
+    rootDrop.addEventListener("drop", function (e) { e.preventDefault(); rootDrop.classList.remove("drop"); if (dragging) move(dragging, null, 1e6); });
   }
   function isInside(id, parentId) { var x = byId[parentId]; while (x) { if (x.id === id) return true; x = byId[x.parent]; } return false; }
-  function move(id, parentId) {
+  function move(id, parentId, position) {
     if (parentId && isInside(id, parentId)) { say(T.moveSelf, "bad"); return; }
-    if ((byId[id].parent || null) === (parentId || null)) return;
-    req("/bpa/api/processes/" + encodeURIComponent(id) + "/move", { parent_id: parentId, position: 1e6 })
+    req("/bpa/api/processes/" + encodeURIComponent(id) + "/move", { parent_id: parentId, position: position })
       .then(function () { if (parentId) { open[parentId] = true; saveOpen(); } return load(id); })
       .catch(function (e) { say(e.message, "bad"); });
+  }
+  // ↑ ↓: un posto prima o dopo tra i processi dello stesso livello (anche al tocco, su iPad)
+  function siblingsOf(p) { return (kids[p.parent || ""] || []).map(function (x) { return x.id; }); }
+  function moveBy(delta) {
+    if (!detail) return;
+    var i = siblingsOf(detail).indexOf(detail.id), n = siblingsOf(detail).length;
+    if (i < 0 || i + delta < 0 || i + delta >= n) return;
+    move(detail.id, detail.parent || null, i + delta);
+  }
+  function syncOrder() {
+    if (!$("tax-up") || !detail) return;
+    var sibs = siblingsOf(detail), i = sibs.indexOf(detail.id);
+    $("tax-up").disabled = i <= 0; $("tax-down").disabled = i < 0 || i >= sibs.length - 1;
+  }
+  if ($("tax-up")) {
+    $("tax-up").addEventListener("click", function () { moveBy(-1); });
+    $("tax-down").addEventListener("click", function () { moveBy(1); });
   }
 
   // ---------- dettaglio ----------
@@ -256,8 +291,8 @@
     detail = p;
     $("tax-none").hidden = !!p; $("tax-detail").hidden = !p;
     if (!p) return;
-    $("tax-title").textContent = p.code + " · " + p.name;
-    $("tax-code").value = p.code;
+    $("tax-title").textContent = p.name;
+    $("tax-title").title = p.path;
     $("tax-name").value = p.name;
     $("tax-desc").value = p.description || "";
     $("tax-name-other").textContent = p.name_other && p.name_other !== p.name ? fmt(T.otherName, { l: LANG === "it" ? "EN" : "IT", n: p.name_other }) : "";
@@ -266,7 +301,7 @@
     if (p.updated_by) meta.push(fmt(T.changed, { u: p.updated_by, d: when(p.updated_at) }));
     $("tax-meta").textContent = meta.join(" ");
     if ($("tax-saved")) $("tax-saved").textContent = "";
-    if (CAN_EDIT) fillParents(p);
+    if (CAN_EDIT) { fillParents(p); syncOrder(); }
     var box = $("tax-attrs"); box.textContent = "";
     BpaPanel.attrs(box, p.attributes || [], { lang: LANG, T: T,
       postUrl: CAN_EDIT ? "/bpa/api/processes/" + encodeURIComponent(p.id) + "/attrs" : null });
@@ -278,7 +313,7 @@
     function add(list, depth) {
       list.forEach(function (n) {
         if (n.id === p.id) return;   // ne' se stesso ne' i suoi sottoprocessi
-        var x = el("option", "", "  ".repeat(depth) + n.code + " " + n.name); x.value = n.id;
+        var x = el("option", "", "\u00a0\u00a0".repeat(depth) + n.name); x.value = n.id;
         if (n.id === p.parent) x.selected = true;
         sel.appendChild(x);
         add(kids[n.id] || [], depth + 1);
@@ -317,7 +352,7 @@
           askProcess(fmt(T.moveModelAsk, { n: m.title }), T.moveModelTitle, T.move, p.id).then(function (pid) {
             if (!pid || pid === p.id) return;
             req("/bpa/api/models/" + encodeURIComponent(m.id) + "/move", { process_id: pid }).then(function () {
-              say(fmt(T.movedModel, { n: byId[pid].code + " " + byId[pid].name }), "ok");
+              say(fmt(T.movedModel, { n: byId[pid].name }), "ok");
               return load(p.id);
             }).catch(function (e) { say(e.message, "bad"); });
           });
@@ -368,7 +403,7 @@
     $("tax-delete").addEventListener("click", function () {
       if (!detail) return;
       var id = detail.id, parent = detail.parent;
-      pmConfirm(fmt(T.deleteAsk, { n: detail.code + " " + detail.name }), { title: T.deleteTitle, ok: T.del }).then(function (yes) {
+      pmConfirm(fmt(T.deleteAsk, { n: detail.name }), { title: T.deleteTitle, ok: T.del }).then(function (yes) {
         if (!yes) return;
         req("/bpa/api/processes/" + encodeURIComponent(id) + "/delete", {}).then(function () {
           current = null;
@@ -409,7 +444,7 @@
           b.disabled = true; b.textContent = T.importing;
           var id = detail.id;
           req("/bpa/api/processes/" + encodeURIComponent(id) + "/import", { model_id: m.id }).then(function () {
-            dlg.close(); say(fmt(T.imported, { n: detail.code + " " + detail.name }), "ok"); return load(id);
+            dlg.close(); say(fmt(T.imported, { n: detail.name }), "ok"); return load(id);
           }).catch(function (e) { b.disabled = false; b.textContent = T.importBtn; say(e.message, "bad"); });
         });
         td.appendChild(b); tr.appendChild(td);

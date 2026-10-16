@@ -400,7 +400,7 @@ def _model_label(db, m: BpaModel, lang: str, user=None, cache: dict | None = Non
         url = None
         if ok and not admin:
             url = f"/bpa/models/{m.id}/" + ("edit" if role == "architect" else "view")
-        out = {"id": m.id, "process": (t(lang, "Repository BPA") + " · " + (f"{p.code} {bpa_taxonomy.text_of(p.name, lang)}" if p else "—")),
+        out = {"id": m.id, "process": (t(lang, "Repository BPA") + " · " + (bpa_taxonomy.path_name(db, p, lang) if p else "—")),
                "label": bpa_taxonomy.text_of(m.title, lang) or "BPMN", "url": url, "visible": ok}
     else:
         ws_id = _workspace_of(db, m)
@@ -619,7 +619,7 @@ def _repo_choice(db, m: BpaModel, lang: str) -> dict:
     from app.services import bpa_taxonomy
     p = db.get(BpaProcess, m.process_id) if m.process_id else None
     return {"id": m.id, "title": bpa_taxonomy.text_of(m.title, lang) or "BPMN", "lead": m.lead_type or "",
-            "process": f"{p.code} {bpa_taxonomy.text_of(p.name, lang)}" if p else "—"}
+            "process": bpa_taxonomy.path_name(db, p, lang) if p else "—"}
 
 
 def _can_use_repository(user) -> bool:
