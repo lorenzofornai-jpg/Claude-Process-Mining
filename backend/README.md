@@ -125,7 +125,7 @@ come amministratore" nel form nuovo utente — pensato per sostituire subito
 il superuser di bootstrap con utenze reali), utenti Data Engineer/Data
 Analyst, e nuovi processi, assegnando poi i ruoli per processo dalla stessa
 pagina. Poi accedi come quell'utente (l'admin non ha accesso ai moduli)
-e da **I miei processi** apri il Modulo 1: Dati sorgente → Revisione
+e da **Repository PM** apri il Modulo 1: Dati sorgente → Revisione
 mapping → Risultato.
 
 L'unico modo di acquisire dati è caricare file CSV/TXT (nessuna scorciatoia
@@ -141,7 +141,7 @@ membro come guardia contro zip bomb).
 
 - **Admin**: crea utenti, crea ed elimina processi, assegna **Data
   Engineer**/**Data Analyst** per processo (`/admin`). **Non** accede ai
-  moduli (niente strutture né analisi) né a "I miei processi": dopo il
+  moduli (niente strutture né analisi) né a "Repository PM": dopo il
   login atterra direttamente su Amministrazione. Eliminare un processo
   rimuove assegnazioni, run/file OCEL e tutte le strutture del processo;
   quelle aggiunte al catalogo spariscono anche dal catalogo (che è solo il
@@ -186,7 +186,7 @@ membro come guardia contro zip bomb).
   (es. Data Engineer *e* Data Analyst sul P2P): non è un attributo fisso
   sull'utente, sono righe distinte in `ProcessAssignment` — `has_process_
   access(user, workspace_id, required_role=...)` in `auth.py` controlla un
-  ruolo alla volta, `/ingestion/dashboard` ("I miei processi") mostra per
+  ruolo alla volta, `/ingestion/dashboard` ("Repository PM") mostra per
   ogni processo solo i link ai moduli per cui l'utente ha il ruolo giusto.
   Verificato end-to-end: Data Engineer non accede a `/analysis/...` (403) e
   viceversa, entrambi assegnati alla stessa persona sullo stesso processo →
@@ -402,7 +402,7 @@ senza doverlo incrementare a mano. Impostato sia in `base.html` sia in
 **Le pagine dinamiche non vanno mai in cache** (`Cache-Control: no-store`,
 middleware in `app/main.py`, applicato a tutto tranne `/static/*`): stessa
 famiglia di bug della cache su `style.css` sopra, stavolta sul logout —
-l'utente segnalava che "Esci" non funzionava, restando su "I miei processi".
+l'utente segnalava che "Esci" non funzionava, restando su "Repository PM".
 Verificato via richieste dirette che lato server il logout è corretto (il
 cookie di sessione viene cancellato, `/ingestion/dashboard` dopo il logout
 redirige a `/login`, che mostra davvero il form): il sospetto è quindi che

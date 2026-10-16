@@ -113,7 +113,7 @@ def generate(process_name: str, steps: list[dict], names: dict[str, str], lanes:
     w = out.write
     w('<?xml version="1.0" encoding="UTF-8"?>\n')
     w('<bpmn:definitions xmlns:bpmn="%s" xmlns:bpmndi="%s" xmlns:dc="%s" xmlns:di="%s" '
-      'id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="AI Process Mining" exporterVersion="1">\n'
+      'id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="AI Process Intelligence" exporterVersion="1">\n'
       % (NS["bpmn"], NS["bpmndi"], NS["dc"], NS["di"]))
     w('  <bpmn:collaboration id="Collaboration_1">\n')
     w('    <bpmn:participant id="Participant_1" name="%s" processRef="Process_1" />\n' % escape(process_name, {'"': "&quot;"}))

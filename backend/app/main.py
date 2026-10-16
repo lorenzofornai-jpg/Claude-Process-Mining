@@ -11,7 +11,7 @@ from app.routers import admin, analysis, assessment, bpa, bpa_attributes, bpa_re
 
 APP_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="AI Process Mining - Modulo 1: Ingestion (prototipo)")
+app = FastAPI(title="AI Process Intelligence")
 # max_age=None: cookie di sessione del browser (sparisce alla chiusura), invece
 # dei 14 giorni di default di Starlette che facevano rientrare senza login.
 # La scadenza per inattivita' e' in auth.current_user().

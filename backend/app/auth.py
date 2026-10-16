@@ -79,6 +79,17 @@ def has_process_access(user: User, workspace_id: str, required_role: str = "data
         db.close()
 
 
+def has_processes(user) -> bool:
+    """True se l'utente ha almeno un ruolo su un processo (Repository PM: Data Engineer o Data Analyst)."""
+    if user is None or getattr(user, "is_admin", False):
+        return False
+    db = SessionLocal()
+    try:
+        return db.query(ProcessAssignment).filter_by(user_id=user.id).first() is not None
+    finally:
+        db.close()
+
+
 def seed_default_admin() -> None:
     """Se non esiste ancora NESSUN amministratore nel database, crea l'unico
     utente di bootstrap superuser/superuser.

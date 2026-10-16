@@ -564,3 +564,10 @@ processi; poi altri cataloghi e oggetti.
   della tassonomia; la tabella degli oggetti mostra solo quelli del repository, con i processi (codici) in cui compaiono.
 - Sostituisce le decisioni «Oggetti per dataset e consolidamento» del 16 ottobre per la parte staging.
 - La pagina si chiama ora **«Oggetti e attributi BPA»** (EN «BPA objects and attributes»).
+
+## Nome dell'app e menu (16 ottobre 2026)
+- ✅ L'app si chiama **AI Process Intelligence** (in italiano e in inglese).
+- ✅ «I miei processi» diventa **Repository PM** (EN «PM repository»). Nel menu ognuno vede solo i repository dei suoi
+  profili: Repository PM con almeno un ruolo su un processo (Data Engineer o Data Analyst), Repository BPA con il ruolo
+  Process Architect o Process Viewer, oppure tutti e due. Dopo l'accesso si arriva sul Repository PM o, per chi ha solo
+  un ruolo nel repository BPA, sul Repository BPA.

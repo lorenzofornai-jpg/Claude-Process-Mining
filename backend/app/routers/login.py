@@ -34,9 +34,14 @@ def _cache_bust() -> str:
 
 
 def _home_url(user: User) -> str:
-    """L'admin atterra su Amministrazione (non ha accesso ai moduli), gli
-    altri utenti su "I miei processi"."""
-    return "/admin" if user.is_admin else "/ingestion/dashboard"
+    """L'admin atterra su Amministrazione (non ha accesso ai moduli); gli altri sul Repository PM (i processi a cui
+    sono assegnati) o, se hanno solo un ruolo nel repository BPA, sul Repository BPA."""
+    from app.auth import has_processes
+    if user.is_admin:
+        return "/admin"
+    if not has_processes(user) and user.bpa_role in ("architect", "viewer"):
+        return "/bpa"
+    return "/ingestion/dashboard"
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -95,7 +100,7 @@ def switch_language(request: Request, code: str):
                 db.close()
     # Si torna alla pagina da cui si e' cliccato: il selettore la passa in ?next=. Il Referer resta
     # solo come riserva: dietro l'inoltro porte di Codespaces l'host cambia (e Safari puo' ometterlo),
-    # e l'utente finiva su «I miei processi» invece di restare sulla revisione. Si tiene solo il
+    # e l'utente finiva su «Repository PM» invece di restare sulla revisione. Si tiene solo il
     # percorso (mai l'host): il redirect non puo' portare fuori dall'app.
     candidate = request.query_params.get("next") or ""
     if not candidate:
@@ -118,7 +123,7 @@ def logout(request: Request):
     # avere DUE Set-Cookie per lo stesso nome cookie in una risposta e' un caso limite
     # che un proxy che traduce HTTP/2<->HTTP/1.1 (come l'inoltro porte di Codespaces)
     # puo' gestire in modo incoerente - bug reale visto in test: il logout tornava a
-    # "I miei processi" in modo incostante invece che al login, perche' il cookie non
+    # "Repository PM" in modo incostante invece che al login, perche' il cookie non
     # veniva davvero cancellato lato client prima della richiesta successiva.
     # ?logged_out=1 dice a login_form() di non rimbalzare alla dashboard anche
     # se, per lo stesso motivo di timing, current_user() vedesse ancora un

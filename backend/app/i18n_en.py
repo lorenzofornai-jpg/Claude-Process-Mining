@@ -10,7 +10,7 @@ EN: dict[str, str] = {
     "Revisione mapping": "Mapping review",
     "Risultato": "Result",
     "Amministrazione": "Administration",
-    "I miei processi": "My processes",
+    "Repository PM": "PM repository",
     "Esci": "Log out",
     "Annulla": "Cancel",
     "Conferma": "Confirm",
@@ -245,7 +245,7 @@ EN: dict[str, str] = {
     "{o} oggetti, {e} eventi": "{o} objects, {e} events",
     "Scarica OCEL": "Download OCEL",
     "Nessun dataset disponibile ancora per questo processo (il Data Engineer deve prima prepararne uno).": "No dataset available for this process yet (the Data Engineer must prepare one first).",
-    "Torna a «I miei processi»": "Back to “My processes”",
+    "Torna a «Repository PM»": "Back to “PM repository”",
     # ------------------------------------------------------------- revisione del mapping
     "Revisione del mapping": "Mapping review",
     "Processo: {p}": "Process: {p}",

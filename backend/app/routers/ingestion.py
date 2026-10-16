@@ -223,7 +223,7 @@ def ingestion_dashboard(request: Request):
         return RedirectResponse("/login", status_code=303)
 
     # L'admin non lavora sui moduli (niente strutture ne' analisi): la sua
-    # "home" e' Amministrazione, "I miei processi" non ha senso per lui.
+    # "home" e' Amministrazione, "Repository PM" non ha senso per lui.
     if user.is_admin:
         return RedirectResponse("/admin", status_code=303)
 

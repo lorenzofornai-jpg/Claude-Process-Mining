@@ -178,6 +178,8 @@ def setup_templates(templates) -> None:
     templates.env.globals["money"] = money
     templates.env.globals["strong"] = strong
     templates.env.globals["_"] = gettext
+    from app.auth import has_processes   # menu: Repository PM solo per chi ha un ruolo su un processo
+    templates.env.globals["has_processes"] = has_processes
     templates.env.globals["current_lang"] = current_lang
     templates.env.globals["languages"] = LANGS
     templates.env.filters["tr"] = translate

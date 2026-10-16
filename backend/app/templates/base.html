@@ -2,7 +2,7 @@
 <html lang="{{ current_lang() }}">
 <head>
   <meta charset="UTF-8">
-  <title>{% block title %}AI Process Mining{% endblock %}</title>
+  <title>{% block title %}AI Process Intelligence{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
   <script>
     // date e ore salvate in UTC: mostrate nel fuso del dispositivo («2026-10-10 14:33»)
@@ -15,7 +15,7 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">AI Process Mining</div>
+    <div class="brand">AI Process Intelligence</div>
     {% if step %}
     <div class="steps">
       {% set nav = wizard_nav(user, workspace_id) if wizard_nav is defined else {} %}
@@ -30,7 +30,7 @@
       {% if user.is_admin %}
       <a href="/admin" class="nav-link">{{ _("Amministrazione") }}</a>
       {% else %}
-      <a href="/ingestion/dashboard" class="nav-link">{{ _("I miei processi") }}</a>
+      {% if has_processes(user) %}<a href="/ingestion/dashboard" class="nav-link">{{ _("Repository PM") }}</a>{% endif %}
       {% if user.bpa_role in ("architect", "viewer") %}<a href="/bpa" class="nav-link">{{ _("Repository BPA") }}</a>{% endif %}
       {% endif %}
       <span class="user-name">{{ user.name }}{{ ' (admin)' if user.is_admin else '' }}</span>
