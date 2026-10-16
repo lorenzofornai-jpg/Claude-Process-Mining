@@ -46,6 +46,10 @@ SYMBOL_TYPES = {
     "data_store": {"it": "Archivio dati", "en": "Data store", "tags": ["dataStoreReference"]},
 }
 TAG_TYPE = {tag: t for t, v in SYMBOL_TYPES.items() for tag in v["tags"]}
+# tipi con attributi definiti dall'Amministratore: i simboli dei BPMN e i processi della tassonomia del repository BPA
+PROCESS_TYPE = "process"
+ATTR_TYPES = {**{k: {"it": v["it"], "en": v["en"]} for k, v in SYMBOL_TYPES.items()},
+              PROCESS_TYPE: {"it": "Processo (tassonomia)", "en": "Process (taxonomy)"}}
 FLOW_TYPES = {"activity", "subprocess", "event", "gateway"}
 
 # relazioni: lettura dal simbolo di partenza (forward) e da quello di arrivo (inverse)

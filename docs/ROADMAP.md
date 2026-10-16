@@ -542,5 +542,10 @@ processi; poi altri cataloghi e oggetti.
   variante) o per nome, anche tradotto con i nomi dei BPMN del dataset. Il riferimento è ora nella tabella
   `bpa_overlay_ref` (uno per dataset: modello e oggetto guida); quelli scelti prima si copiano all'avvio. Chi non ha un
   ruolo nel repository vede il confronto scelto da un collega ma non apre il modello né lo sceglie.
-- Da fare: spostare un modello su un altro processo; nel repository, vedere in quali Process Overlay è usato un modello;
-  altri cataloghi e oggetti; attributi dei processi definiti dall'Amministratore.
+- ✅ **Attributi dei processi** definiti dall'Amministratore (Amministrazione > Attributi degli oggetti BPMN, scheda
+  «Processo (tassonomia)», stessi tipi di dato dei simboli; Codice, Nome e Descrizione sono di sistema). Nel repository
+  compaiono sotto nome e descrizione e si salvano subito (Process Architect); in sola lettura per il Process Viewer.
+- ✅ **Sposta** un modello su un altro processo della tassonomia.
+- ✅ Nel repository ogni modello dice in quali **Process Overlay** è il BPMN di riferimento (dataset · processo);
+  togliendolo dal repository lo si avvisa e quei riferimenti si tolgono.
+- Parcheggiato: altri cataloghi e oggetti del digital twin.

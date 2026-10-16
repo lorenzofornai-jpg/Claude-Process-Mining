@@ -1496,3 +1496,5 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 }
 .inline-form { display: inline; margin: 0; }
 #tax-detail:not([hidden]) { display: flex; flex-direction: column; gap: 14px; }
+.tax-attrs .bpa-field { margin-bottom: 10px; }
+.tax-overlay { color: var(--brand-dark); }

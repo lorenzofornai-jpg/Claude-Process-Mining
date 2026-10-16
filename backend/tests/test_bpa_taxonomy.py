@@ -143,3 +143,21 @@ def test_overlay_reference_from_staging_or_repository(db):
     tax.delete_model(db, m)
     db.commit()
     assert reference_of(db, "c1") == (None, None)
+
+
+def test_removing_a_model_clears_its_overlay_references(db):
+    from app.models import BpaOverlayRef
+    from app.routers.bpa import set_reference
+    p = tax.create_process(db, None, _name("Purchasing"), "arch")
+    q = tax.create_process(db, None, _name("Payments"), "arch")
+    m = tax.new_model(db, p, "arch")
+    set_reference(db, "c1", m, "Order", "analyst")
+    db.commit()
+    from app.routers.bpa_repository import overlay_uses
+    assert overlay_uses(db, m.id, {}) == []   # dataset c1 non esiste piu': non si mostra
+    m.process_id = q.id   # spostato su un altro processo
+    db.commit()
+    assert [x.id for x in tax.repository_models(db, q.id)] == [m.id] and not tax.repository_models(db, p.id)
+    tax.delete_model(db, m)
+    db.commit()
+    assert db.query(BpaOverlayRef).count() == 0

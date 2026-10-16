@@ -1,6 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ _("Repository BPA") }}{% endblock %}
-{% block main_class %}bpa-full{% endblock %}
+{% block title %}{{ _("Repository BPA") }}
+{% endblock %}
+{% block main_class %}bpa-full
+{% endblock %}
 {% block content %}
 <div class="tax">
   <aside class="tax-side" aria-label="{{ _("Tassonomia dei processi") }}">
@@ -35,6 +37,7 @@
           <label>{{ _("Nome") }} ({{ current_lang()|upper }})<input type="text" id="tax-name" maxlength="300" required {{ 'readonly' if not can_edit }}>
             <span class="tiny muted" id="tax-name-other"></span></label>
           <label class="tax-wide">{{ _("Descrizione") }} ({{ current_lang()|upper }})<textarea id="tax-desc" rows="5" maxlength="20000" {{ 'readonly' if not can_edit }}></textarea></label>
+          <div id="tax-attrs" class="tax-wide tax-attrs"></div>
           {% if can_edit %}
           <label class="tax-wide">{{ _("Dentro a") }}<select id="tax-parent"></select></label>
           <div class="actions tax-wide">
@@ -80,6 +83,7 @@
 </dialog>
 {% endif %}
 
+<script src="/static/bpa_panel.js?v={{ static_version }}"></script>
 <script>
 (function () {
   var CAN_EDIT = {{ can_edit|tojson }}, SELECTED = {{ selected|tojson }};
@@ -100,7 +104,13 @@
     importBtn: {{ _("Importa")|tojson }}, imported: {{ _("Modello importato in «{n}».")|tojson }},
     importing: {{ _("Importazione…")|tojson }}, edited: {{ _("modificato")|tojson }},
     newModelDone: {{ _("Nuovo BPMN creato: si apre nell'editor.")|tojson }},
-    moveSelf: {{ _("Un processo non si sposta dentro se stesso o un suo sottoprocesso.")|tojson }}
+    moveSelf: {{ _("Un processo non si sposta dentro se stesso o un suo sottoprocesso.")|tojson }},
+    move: {{ _("Sposta")|tojson }}, moveModelTitle: {{ _("Sposta il modello")|tojson }},
+    moveModelAsk: {{ _("Processo a cui assegnare «{n}»")|tojson }}, movedModel: {{ _("Modello spostato in «{n}».")|tojson }},
+    overlayUse: {{ _("Riferimento del Process Overlay: {d}")|tojson }},
+    delModelOverlay: {{ _("È il BPMN di riferimento del Process Overlay di: {d}. Togliendolo, quei confronti restano senza riferimento.")|tojson }},
+    attrSaving: {{ _("Salvataggio…")|tojson }}, attrSaved: {{ _("salvato")|tojson }},
+    yes: {{ _("Sì")|tojson }}, no: {{ _("No")|tojson }}
   };
   var LANG = {{ current_lang()|tojson }};
   var nodes = [], byId = {}, kids = {}, current = null, detail = null;
@@ -128,6 +138,22 @@
     setTimeout(function () { input.focus(); input.select(); }, 30);
     input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); $("confirm-ok").click(); } });
     return p.then(function (yes) { return yes ? input.value.trim() : null; });
+  }
+
+  function askProcess(label, title, ok, current) {
+    // una tendina con i processi della tassonomia (rientrati per livello) nella finestra di conferma
+    var text = $("confirm-text"), sel = el("select", "tax-ask-input");
+    (function add(list, depth) {
+      list.forEach(function (n) {
+        var o = el("option", "", "\u00a0\u00a0".repeat(depth) + n.code + " " + n.name); o.value = n.id;
+        if (n.id === current) o.selected = true;
+        sel.appendChild(o); add(kids[n.id] || [], depth + 1);
+      });
+    })(kids[""] || [], 0);
+    var lab = el("label", "tax-ask", label); lab.appendChild(sel);
+    var pr = pmConfirm("", { title: title, ok: ok, safe: true });
+    text.appendChild(lab);
+    return pr.then(function (yes) { return yes ? sel.value : null; });
   }
 
   // ---------- albero ----------
@@ -238,6 +264,9 @@
     $("tax-meta").textContent = meta.join(" ");
     if ($("tax-saved")) $("tax-saved").textContent = "";
     if (CAN_EDIT) fillParents(p);
+    var box = $("tax-attrs"); box.textContent = "";
+    BpaPanel.attrs(box, p.attributes || [], { lang: LANG, T: T,
+      postUrl: CAN_EDIT ? "/bpa/api/processes/" + encodeURIComponent(p.id) + "/attrs" : null });
     drawModels(p);
   }
   function fillParents(p) {
@@ -266,6 +295,7 @@
       var info = [m.from_staging ? fmt(T.fromStaging, { d: m.source || "—" }) : T.createdHere];
       if (m.updated_by) info.push(fmt(T.modelChanged, { u: m.updated_by, d: when(m.updated_at) }));
       main.appendChild(el("span", "tiny muted", info.join(" · ")));
+      if (m.overlay && m.overlay.length) main.appendChild(el("span", "tiny tax-overlay", fmt(T.overlayUse, { d: m.overlay.join("; ") })));
       li.appendChild(main);
       var act = el("div", "tax-model-actions");
       var openA = el("a", "secondary button-link", CAN_EDIT ? T.open : T.view); openA.href = a.href; openA.target = "_blank"; openA.rel = "noopener";
@@ -279,9 +309,21 @@
               .catch(function (e) { say(e.message, "bad"); });
           });
         });
+        var mv = el("button", "link-btn", T.move); mv.type = "button";
+        mv.addEventListener("click", function () {
+          askProcess(fmt(T.moveModelAsk, { n: m.title }), T.moveModelTitle, T.move, p.id).then(function (pid) {
+            if (!pid || pid === p.id) return;
+            req("/bpa/api/models/" + encodeURIComponent(m.id) + "/move", { process_id: pid }).then(function () {
+              say(fmt(T.movedModel, { n: byId[pid].code + " " + byId[pid].name }), "ok");
+              return load(p.id);
+            }).catch(function (e) { say(e.message, "bad"); });
+          });
+        });
+        act.appendChild(mv);
         var del = el("button", "link-btn ct-danger", T.remove); del.type = "button";
         del.addEventListener("click", function () {
-          pmConfirm(fmt(T.delModelAsk, { n: m.title }), { title: T.delModelTitle, ok: T.remove }).then(function (yes) {
+          var q = fmt(T.delModelAsk, { n: m.title }) + (m.overlay && m.overlay.length ? " " + fmt(T.delModelOverlay, { d: m.overlay.join("; ") }) : "");
+          pmConfirm(q, { title: T.delModelTitle, ok: T.remove }).then(function (yes) {
             if (!yes) return;
             req("/bpa/api/models/" + encodeURIComponent(m.id) + "/delete", {}).then(function () { return load(p.id); })
               .catch(function (e) { say(e.message, "bad"); });
@@ -382,4 +424,5 @@
   load(SELECTED);
 })();
 </script>
+
 {% endblock %}

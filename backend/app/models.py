@@ -509,6 +509,7 @@ class BpaProcess(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     name: Mapped[dict] = mapped_column(JSON, default=dict)          # {"it", "en"}
     description: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # {"it", "en"}
+    attrs: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # attributi definiti dall'Amministratore
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -220,8 +220,10 @@ def import_model(db, src, process, user_name: str | None, user_id: str | None = 
 
 
 def delete_model(db, m) -> None:
-    """Toglie un modello dal repository (la variante d'origine resta nella staging)."""
-    from app.models import BpaOccurrence, BpaRelation
+    """Toglie un modello dal repository (la variante d'origine resta nella staging; i Process Overlay che lo usavano
+    restano senza BPMN di riferimento)."""
+    from app.models import BpaOccurrence, BpaOverlayRef, BpaRelation
+    db.query(BpaOverlayRef).filter_by(model_id=m.id).delete(synchronize_session=False)
     db.query(BpaOccurrence).filter_by(model_id=m.id).delete(synchronize_session=False)
     db.query(BpaRelation).filter_by(model_id=m.id).delete(synchronize_session=False)
     db.flush()

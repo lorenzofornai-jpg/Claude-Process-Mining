@@ -421,7 +421,10 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
                      "datasets": ", ".join(sorted(datasets.get(s.id, ()), key=str.casefold)),
                      "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
     rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
-    return {"request": request, "types": bpa_repo.SYMBOL_TYPES, "symbol_type": symbol_type, "defs": defs,
+    if symbol_type == bpa_repo.PROCESS_TYPE:
+        from app.models import BpaProcess
+        counts[symbol_type] = db.query(BpaProcess).count()
+    return {"request": request, "types": bpa_repo.ATTR_TYPES, "symbol_type": symbol_type, "defs": defs,
             "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
             "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
             "errors": errors or [], "form": form, "rows": rows}
@@ -486,7 +489,7 @@ def admin_bpa(request: Request, type: str = "activity", edit: str = "", saved: i
     user, denied = _require_admin(request)
     if denied:
         return denied
-    symbol_type = type if type in bpa_repo.SYMBOL_TYPES else "activity"
+    symbol_type = type if type in bpa_repo.ATTR_TYPES else "activity"
     db = SessionLocal()
     try:
         ctx = _bpa_context(db, request, symbol_type, edit or None)
@@ -503,7 +506,7 @@ async def admin_bpa_attr_save(request: Request):
     if denied:
         return denied
     form = await request.form()
-    symbol_type = form.get("symbol_type") if form.get("symbol_type") in bpa_repo.SYMBOL_TYPES else "activity"
+    symbol_type = form.get("symbol_type") if form.get("symbol_type") in bpa_repo.ATTR_TYPES else "activity"
     key = str(form.get("key") or "")
     name_it, name_en = str(form.get("name_it") or "").strip()[:200], str(form.get("name_en") or "").strip()[:200]
     data_type = str(form.get("data_type") or "")
@@ -512,6 +515,9 @@ async def admin_bpa_attr_save(request: Request):
         errors.append(msg("Dai il nome dell'attributo in italiano e in inglese."))
     if name_it.casefold() in ("nome", "identificativo", "name", "id") or name_en.casefold() in ("name", "id", "identifier"):
         errors.append(msg("«Nome» e «Identificativo» sono attributi di sistema: scegli un altro nome."))
+    if symbol_type == bpa_repo.PROCESS_TYPE and (name_it.casefold() in ("codice", "descrizione")
+                                                 or name_en.casefold() in ("code", "description")):
+        errors.append(msg("«Codice», «Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome."))
     db = SessionLocal()
     try:
         d = db.query(BpaAttributeDef).filter_by(key=key).first() if key else None
@@ -588,7 +594,12 @@ def admin_bpa_attr_delete(request: Request, key: str):
         if d is None:
             return RedirectResponse("/admin/bpa", status_code=303)
         symbol_type = d.symbol_type
-        for s in db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all():
+        if symbol_type == bpa_repo.PROCESS_TYPE:
+            from app.models import BpaProcess
+            holders = db.query(BpaProcess).all()
+        else:
+            holders = db.query(BpaSymbol).filter_by(symbol_type=symbol_type).all()
+        for s in holders:
             if key in (s.attrs or {}):
                 s.attrs = {k: v for k, v in s.attrs.items() if k != key}
                 db.add(s)

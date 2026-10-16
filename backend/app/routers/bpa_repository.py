@@ -19,7 +19,8 @@ from app.auth import current_user
 from app.config import STATIC_VERSION
 from app.db import SessionLocal
 from app.i18n import get_lang, render, setup_templates, t, utc_iso
-from app.models import BpaModel, BpaProcess, IngestionConfig, ProcessWorkspace
+from app.models import BpaAttributeDef, BpaModel, BpaOverlayRef, BpaProcess, IngestionConfig, ProcessWorkspace
+from app.services import bpa_repo
 from app.routers import bpa as staging
 from app.services import bpa_taxonomy as tax
 
@@ -52,14 +53,33 @@ def _repo_model(db, model_id: str):
     return m if m is not None and m.stage == "repository" else None
 
 
+def _config_name(db, config_id: str | None, cache: dict) -> str | None:
+    if not config_id:
+        return None
+    if config_id not in cache:
+        c = db.get(IngestionConfig, config_id)
+        cache[config_id] = c.name if c else None
+    return cache[config_id]
+
+
+def overlay_uses(db, model_id: str, cache: dict) -> list[str]:
+    """Dataset il cui Process Overlay usa il modello come BPMN di riferimento (nome del dataset · processo)."""
+    from app.models import ExtractionRun
+    out = []
+    for r in db.query(BpaOverlayRef).filter_by(model_id=model_id).all():
+        name = _config_name(db, r.ingestion_config_id, cache)
+        if name is None:
+            continue
+        run = db.query(ExtractionRun).filter_by(ingestion_config_id=r.ingestion_config_id).first()
+        ws = db.get(ProcessWorkspace, run.workspace_id) if run else None
+        out.append(f"{name} · {ws.process_name}" if ws else name)
+    return sorted(out, key=str.casefold)
+
+
 def _model_json(db, m: BpaModel, lang: str, cache: dict) -> dict:
-    src = None
-    if m.source_config_id:
-        if m.source_config_id not in cache:
-            c = db.get(IngestionConfig, m.source_config_id)
-            cache[m.source_config_id] = c.name if c else None
-        src = cache[m.source_config_id]
+    src = _config_name(db, m.source_config_id, cache)
     return {"id": m.id, "title": tax.text_of(m.title, lang) or "BPMN", "source": src,
+            "overlay": overlay_uses(db, m.id, cache),
             "from_staging": bool(m.source_model_id), "created_by": m.created_by, "created_at": utc_iso(m.created_at),
             "updated_by": m.updated_by, "updated_at": utc_iso(m.updated_at) if m.updated_at else None}
 
@@ -71,7 +91,13 @@ def _process_json(db, p: BpaProcess, lang: str) -> dict:
             "name_other": tax.text_of(p.name, "en" if lang == "it" else "it"),
             "created_by": p.created_by, "created_at": utc_iso(p.created_at),
             "updated_by": p.updated_by, "updated_at": utc_iso(p.updated_at) if p.updated_at else None,
+            "attributes": [{**staging._def_json(d, lang), "value": (p.attrs or {}).get(d.key)} for d in _process_defs(db)],
             "models": [_model_json(db, m, lang, cache) for m in tax.repository_models(db, p.id)]}
+
+
+def _process_defs(db) -> list:
+    return (db.query(BpaAttributeDef).filter_by(symbol_type=bpa_repo.PROCESS_TYPE)
+            .order_by(BpaAttributeDef.position).all())
 
 
 # ---------- pagina ----------
@@ -182,6 +208,44 @@ async def api_update(request: Request, process_id: str):
         db.add(p)
         db.commit()
         return JSONResponse({"process": _process_json(db, p, lang)})
+    finally:
+        db.close()
+
+
+@router.post("/bpa/api/processes/{process_id}/attrs")
+async def api_process_attrs(request: Request, process_id: str):
+    """Valori degli attributi del processo definiti dall'Amministratore (i testi: nella lingua dell'interfaccia)."""
+    user, denied = _access(request, edit=True)
+    if denied:
+        return denied
+    body = await request.json()
+    ui = get_lang(request)
+    lang = body.get("lang") if body.get("lang") in ("it", "en") else ui
+    values = body.get("values") if isinstance(body.get("values"), dict) else {}
+    db = SessionLocal()
+    try:
+        p = db.get(BpaProcess, process_id)
+        if p is None:
+            return JSONResponse({"error": t(ui, "Processo non trovato.")}, status_code=404)
+        defs = {d.key: d for d in _process_defs(db)}
+        attrs, errors = dict(p.attrs or {}), {}
+        for k, v in values.items():
+            d = defs.get(k)
+            if d is None:
+                continue
+            val, err = bpa_repo.clean_value(d, v, lang, attrs.get(k))
+            if err:
+                errors[k] = t(ui, "Valore non valido.")
+            elif val is None:
+                attrs.pop(k, None)
+            else:
+                attrs[k] = val
+        p.attrs = attrs or None
+        p.updated_by, p.updated_at = user.name, tax._now()
+        db.add(p)
+        db.commit()
+        return JSONResponse({"saved": not errors, "errors": errors, "values": attrs,
+                             "updated_by": p.updated_by, "updated_at": utc_iso(p.updated_at)})
     finally:
         db.close()
 
@@ -332,6 +396,31 @@ async def api_rename_model(request: Request, model_id: str):
         db.add(m)
         db.commit()
         return JSONResponse({"model": _model_json(db, m, lang, {})})
+    finally:
+        db.close()
+
+
+@router.post("/bpa/api/models/{model_id}/move")
+async def api_move_model(request: Request, model_id: str):
+    """Assegna il modello a un altro processo della tassonomia."""
+    user, denied = _access(request, edit=True)
+    if denied:
+        return denied
+    body = await request.json()
+    lang = get_lang(request)
+    db = SessionLocal()
+    try:
+        m = _repo_model(db, model_id)
+        p = db.get(BpaProcess, str(body.get("process_id") or ""))
+        if m is None:
+            return JSONResponse({"error": t(lang, "Modello non trovato.")}, status_code=404)
+        if p is None:
+            return JSONResponse({"error": t(lang, "Processo non trovato.")}, status_code=404)
+        m.process_id = p.id
+        m.updated_by, m.updated_at = user.name, tax._now()
+        db.add(m)
+        db.commit()
+        return JSONResponse({"model": _model_json(db, m, lang, {}), "process": p.id})
     finally:
         db.close()
 

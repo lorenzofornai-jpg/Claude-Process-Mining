@@ -27,11 +27,29 @@
   <table class="admin-table bpa-attrs">
     <thead><tr><th></th><th>{{ _("Nome") }}</th><th>{{ _("Tipo di dato") }}</th><th>{{ _("Obbligatorio") }}</th><th>{{ _("Identificativo") }}</th><th></th></tr></thead>
     <tbody>
+      {% if symbol_type == 'process' %}
+      <tr class="bpa-system">
+        <td>🔒</td><td><strong>{{ _("Codice") }}</strong></td>
+        <td>{{ _("Automatico") }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">code</td>
+        <td class="tiny muted">{{ _("Di sistema: PR-0001, PR-0002…") }}</td>
+      </tr>
+      <tr class="bpa-system">
+        <td>🔒</td><td><strong>{{ _("Nome") }}</strong> <span class="tiny muted">{{ _("(italiano e inglese)") }}</span></td>
+        <td>{{ data_types.short_text[lang] }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">name</td>
+        <td class="tiny muted">{{ _("Di sistema: si cambia nel repository BPA.") }}</td>
+      </tr>
+      <tr class="bpa-system">
+        <td>🔒</td><td><strong>{{ _("Descrizione") }}</strong> <span class="tiny muted">{{ _("(italiano e inglese)") }}</span></td>
+        <td>{{ data_types.long_text[lang] }}</td><td>{{ _("No") }}</td><td class="tiny muted">description</td>
+        <td class="tiny muted">{{ _("Di sistema: si cambia nel repository BPA.") }}</td>
+      </tr>
+      {% else %}
       <tr class="bpa-system">
         <td>🔒</td><td><strong>{{ _("Nome") }}</strong> <span class="tiny muted">{{ _("(italiano e inglese)") }}</span></td>
         <td>{{ data_types.short_text[lang] }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">name</td>
         <td class="tiny muted">{{ _("Di sistema: unico per tipo nel dataset, si cambia nel diagramma.") }}</td>
       </tr>
+      {% endif %}
       <tr class="bpa-system">
         <td>🔒</td><td><strong>{{ _("Identificativo") }}</strong></td>
         <td>{{ _("Automatico") }}</td><td>{{ _("Sì") }}</td><td class="tiny muted">id</td>
@@ -61,7 +79,7 @@
     </tbody>
   </table>
   </div>
-  {% if not defs %}<p class="tiny muted">{{ _("Nessun attributo ancora per questo tipo: oltre a Nome e Identificativo aggiungi quelli che servono (es. responsabile, sistema, durata, descrizione).") }}</p>{% endif %}
+  {% if not defs %}<p class="tiny muted">{% if symbol_type == 'process' %}{{ _("Nessun attributo ancora per i processi: oltre a Codice, Nome e Descrizione aggiungi quelli che servono (es. process owner, livello, stato, KPI).") }}{% else %}{{ _("Nessun attributo ancora per questo tipo: oltre a Nome e Identificativo aggiungi quelli che servono (es. responsabile, sistema, durata, descrizione).") }}{% endif %}</p>{% endif %}
 
   {% set e = edit %}
   <h2 id="attr-form">{% if e %}{{ _("Modifica l'attributo") }}{% else %}{{ _("Nuovo attributo") }}{% endif %}</h2>
@@ -93,6 +111,9 @@
     </div>
   </form>
 
+  {% if symbol_type == 'process' %}
+  <p class="tiny muted">{{ _("I processi della tassonomia si creano e si compilano nel repository BPA (Process Architect): questi attributi compaiono sotto nome e descrizione.") }}</p>
+  {% else %}
   <h2 id="unused">{{ _("Oggetti senza occorrenze") }}</h2>
   <p class="tiny muted">{{ _("Oggetti che non compaiono più in nessun BPMN: restano nell'archivio con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
   {% if unused %}
@@ -151,6 +172,7 @@
   </table>
   </div>
   {% else %}<p class="tiny muted">{{ _("Nessun oggetto di questo tipo nell'archivio.") }}</p>{% endif %}
+  {% endif %}
 
   <p class="tiny muted" style="margin-top:16px">
     {{ _("Per consultare l'archivio come tabelle: nel database ci sono le viste bpa_view_activity, bpa_view_lane, bpa_view_event… (una per tipo, una colonna per attributo) e bpa_view_relations.") }}
