@@ -1,4 +1,4 @@
-"""Repository BPA > «Attributi della BPA» (Process Architect): attributi degli oggetti dei BPMN del repository e dei
+"""Repository BPA > «Oggetti e attributi BPA» (Process Architect): attributi degli oggetti dei BPMN del repository e dei
 processi della tassonomia, oggetti senza occorrenze, consolidamento di piu' oggetti in uno, tabella degli oggetti del
 repository con il pannello delle proprieta'. I BPMN delle varianti (staging) non sono nell'archivio degli oggetti."""
 from __future__ import annotations

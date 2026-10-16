@@ -563,3 +563,4 @@ processi; poi altri cataloghi e oggetti.
   BPA», `/bpa/attributes`, `routers/bpa_attributes.py`): attributi degli oggetti dei BPMN del repository e dei processi
   della tassonomia; la tabella degli oggetti mostra solo quelli del repository, con i processi (codici) in cui compaiono.
 - Sostituisce le decisioni «Oggetti per dataset e consolidamento» del 16 ottobre per la parte staging.
+- La pagina si chiama ora **«Oggetti e attributi BPA»** (EN «BPA objects and attributes»).
