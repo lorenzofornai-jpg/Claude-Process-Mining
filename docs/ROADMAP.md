@@ -571,3 +571,5 @@ processi; poi altri cataloghi e oggetti.
   profili: Repository PM con almeno un ruolo su un processo (Data Engineer o Data Analyst), Repository BPA con il ruolo
   Process Architect o Process Viewer, oppure tutti e due. Dopo l'accesso si arriva sul Repository PM o, per chi ha solo
   un ruolo nel repository BPA, sul Repository BPA.
+- ✅ Nell'intestazione «Repository PM | Repository BPA» come «IT | EN»: quello in cui si è (pagine `/bpa…` = BPA, le
+  altre = PM) è in nero, l'altro è un link.

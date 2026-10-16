@@ -30,8 +30,18 @@
       {% if user.is_admin %}
       <a href="/admin" class="nav-link">{{ _("Amministrazione") }}</a>
       {% else %}
-      {% if has_processes(user) %}<a href="/ingestion/dashboard" class="nav-link">{{ _("Repository PM") }}</a>{% endif %}
-      {% if user.bpa_role in ("architect", "viewer") %}<a href="/bpa" class="nav-link">{{ _("Repository BPA") }}</a>{% endif %}
+      {# repository dei profili dell'utente; quello in cui si e' e' in nero (come IT | EN): resta un link alla sua pagina #}
+      {% set in_bpa = request.url.path.startswith("/bpa") %}
+      {% set repos = [] %}
+      {% if has_processes(user) %}{% if repos.append(("/ingestion/dashboard", _("Repository PM"), not in_bpa)) %}{% endif %}{% endif %}
+      {% if user.bpa_role in ("architect", "viewer") %}{% if repos.append(("/bpa", _("Repository BPA"), in_bpa)) %}{% endif %}{% endif %}
+      {% if repos %}
+      <nav class="repo-switch" aria-label="{{ _("Repository") }}">
+        {% for href, label, current in repos %}
+        {% if current %}<a href="{{ href }}" class="repo-current" aria-current="page">{{ label }}</a>{% else %}<a href="{{ href }}">{{ label }}</a>{% endif %}{% if not loop.last %}<span class="lang-sep">|</span>{% endif %}
+        {% endfor %}
+      </nav>
+      {% endif %}
       {% endif %}
       <span class="user-name">{{ user.name }}{{ ' (admin)' if user.is_admin else '' }}</span>
       <form method="post" action="/logout" style="display:inline">

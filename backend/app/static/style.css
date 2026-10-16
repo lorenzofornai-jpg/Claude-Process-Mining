@@ -1500,3 +1500,9 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .tax-overlay { color: var(--brand-dark); }
 .tax-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .tax-top .eyebrow { margin: 0; }
+/* Repository PM | Repository BPA nell'intestazione: quello in cui si e' in nero (come IT | EN) */
+.repo-switch { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.repo-switch a { color: var(--brand); text-decoration: none; }
+.repo-switch a:hover { text-decoration: underline; }
+.repo-switch a.repo-current { color: var(--text); }
+.repo-switch .lang-sep { color: var(--border); }

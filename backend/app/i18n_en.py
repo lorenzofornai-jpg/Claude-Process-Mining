@@ -1961,4 +1961,5 @@ EN: dict[str, str] = {
     'Processi della tassonomia: si compilano sotto nome e descrizione del processo.': 'Taxonomy processes: they are filled below the process name and description.',
     'Di sistema: unico per tipo nel repository, si cambia nel diagramma.': 'System: unique per type in the repository, changed in the diagram.',
     'Spunta due o più oggetti che sono la stessa cosa (es. la stessa lane con due nomi diversi) e scegli quale tenere.': 'Tick two or more objects that are the same thing (e.g. the same lane with two different names) and choose which one to keep.',
+    'Repository': 'Repository',
 }
