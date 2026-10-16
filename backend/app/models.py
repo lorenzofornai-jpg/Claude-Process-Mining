@@ -468,7 +468,7 @@ class BpaModel(Base):
     edited: Mapped[bool] = mapped_column(Boolean, default=False)
     registered: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # simboli gia' nell'archivio (bpa_repo)
     workspace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # processo da cui e' stata inviata
-    overlay_reference: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # riferimento del Process Overlay (uno per dataset)
+    overlay_reference: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # vecchio flag: ora BpaOverlayRef
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     created_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -480,6 +480,21 @@ class BpaModel(Base):
     source_model_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # modello di staging importato
     source_config_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # suo dataset
     title: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # {"it", "en"} nome del modello nel repository
+
+
+class BpaOverlayRef(Base):
+    """BPMN di riferimento del Process Overlay di un dataset (uno per dataset): un modello della staging del dataset o
+    un modello del repository BPA (in sola lettura dall'analisi), con l'oggetto guida dei casi (None = quello del
+    modello)."""
+
+    __tablename__ = "bpa_overlay_ref"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ingestion_config_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    model_id: Mapped[str] = mapped_column(String(32))
+    lead_type: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    set_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    set_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class BpaProcess(Base):

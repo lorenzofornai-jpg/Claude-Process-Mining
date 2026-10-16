@@ -186,20 +186,24 @@ def _aliases(user_id: str, config_id: str) -> dict:
 
 def _overlay_view(config_id: str, model, view: dict, lang: str, focus: str | None) -> dict:
     """Process Overlay per l'assistente: il confronto che l'utente vede (BPMN di riferimento, varianti spuntate)."""
-    from app.routers.bpa import _json, _reference
+    from app.routers.bpa import _json, _known_labels_with, _repo_choice, reference_of
     from app.services import overlay
     db = SessionLocal()
     try:
-        m = _reference(db, config_id)
+        m, lead = reference_of(db, config_id)
         if m is None:
             return analysis_assistant.overlay_view(None, None, None, focus)
-        ref = _json(m)
-        xml, steps, labels, lead = (m.xml_it if lang == "it" else m.xml_en), m.steps, m.labels or {}, m.lead_type
+        ref = _json(m, m.id)
+        repo = _repo_choice(db, m, lang) if m.stage == "repository" else None
+        xml, steps, labels = (m.xml_it if lang == "it" else m.xml_en), m.steps, _known_labels_with(db, config_id, m)
     finally:
         db.close()
     reference = {"lead_object": lead, "from_variant": (ref["stats"] or {}).get("rank"),
                  "variant_steps": [x["activity"] + (" ×" if x.get("repeated") else "") for x in steps or []],
                  "edited": ref["edited"]}
+    if repo:   # modello del repository BPA (la tassonomia dei processi), non una variante di questo dataset
+        reference.update({"from_bpa_repository": True, "repository_process": repo["process"],
+                          "model_name": repo["title"]})
     if lead not in model.sequences_by_type:
         return analysis_assistant.overlay_view(None, None, reference, focus)
     var = view.get("var")

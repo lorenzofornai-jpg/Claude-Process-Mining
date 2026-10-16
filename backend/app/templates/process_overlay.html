@@ -14,7 +14,7 @@
         {{ _("Dataset {d}, v{v}: {o} oggetti, {e} eventi.", d=strong(config.name), v=config.current_version, o=run.object_count, e=run.event_count) }}
       </p>
     </div>
-    {% if models %}
+    {% if models or repo_models %}
     <div class="explorer-head-tools">
       <button type="button" class="secondary as-open as-open-btn">✦ {{ _("Assistente") }}</button>
     </div>
@@ -22,7 +22,7 @@
   </div>
   <p class="muted">{{ _("Il BPMN di riferimento sovrapposto ai dati del dataset (stesso oggetto guida, con gli oggetti collegati): in blu le attività e i collegamenti del modello che i casi seguono, in grigio quelli che nei dati non compaiono, in rosso le attività e i passaggi dei dati che il modello non prevede.") }}</p>
 
-  {% if not models %}
+  {% if not models and not repo_models %}
   <div class="banner">{{ _("Nessun BPMN nella BPA per questo dataset: invia prima una variante dalla Process Overview («Invia alla BPA»).") }}
     <a href="/analysis/overview?workspace_id={{ workspace_id }}&config_id={{ config.id }}">{{ _("Vai alla Process Overview") }}</a></div>
   {% else %}
@@ -30,13 +30,28 @@
     <label class="ovl-ref-field">{{ _("BPMN di riferimento per il process overlay") }}
       <select id="ovl-ref">
         {% if not reference %}<option value="">{{ _("— scegli un BPMN —") }}</option>{% endif %}
+        {% if models %}<optgroup label="{{ _("BPA di questo dataset (varianti)") }}">
         {% for m in models %}
-        <option value="{{ m.id }}" {{ 'selected' if reference and reference.id == m.id }}>{% if m.stats.rank %}{{ _("Variante {n}", n=m.stats.rank) }}{% else %}{{ _("Variante") }}{% endif %} · {{ m.lead }}</option>
+        <option value="{{ m.id }}" data-lead="{{ m.lead }}" {{ 'selected' if reference and reference.id == m.id }}>{% if m.stats.rank %}{{ _("Variante {n}", n=m.stats.rank) }}{% else %}{{ _("Variante") }}{% endif %} · {{ m.lead }}</option>
         {% endfor %}
+        </optgroup>{% endif %}
+        {% if repo_models %}<optgroup label="{{ _("Repository BPA (sola lettura)") }}">
+        {% for m in repo_models %}
+        <option value="{{ m.id }}" data-repo="1" data-lead="{{ m.lead }}" {{ 'selected' if reference and reference.id == m.id }} {{ 'disabled' if not can_repo }}>{{ m.process }} · {{ m.title }}</option>
+        {% endfor %}
+        </optgroup>{% endif %}
       </select>
     </label>
-    <a id="ovl-open" class="secondary button-link" target="_blank" rel="noopener" {% if not reference %}hidden{% endif %}
-       href="{% if reference %}/analysis/bpa/{{ reference.id }}/edit?workspace_id={{ workspace_id }}{% endif %}">{{ _("Apri il BPMN") }} ↗</a>
+    <label class="ovl-ref-field" id="ovl-lead-field" {% if not (reference and reference.repository) %}hidden{% endif %}>{{ _("Oggetto guida dei casi") }}
+      <select id="ovl-lead" {{ 'disabled' if not can_repo }}>
+        <option value="">{{ _("— scegli —") }}</option>
+        {% for ty in lead_types %}<option value="{{ ty }}" {{ 'selected' if reference and reference.lead == ty }}>{{ plurals.get(ty, ty) }}</option>{% endfor %}
+      </select>
+    </label>
+    {% set ref_url = none %}
+    {% if reference %}{% set ref_url = ("/bpa/models/" ~ reference.id ~ "/view") if reference.repository else ("/analysis/bpa/" ~ reference.id ~ "/edit?workspace_id=" ~ workspace_id) %}{% endif %}
+    <a id="ovl-open" class="secondary button-link" target="_blank" rel="noopener" {% if not reference or (reference.repository and not can_repo) %}hidden{% endif %}
+       href="{{ ref_url or '' }}">{{ _("Apri il BPMN") }} ↗</a>
     <ul class="ovl-legend tiny">
       <li><span class="ovl-key ok"></span>{{ _("nel modello e nei dati") }}</li>
       <li><span class="ovl-key miss"></span>{{ _("nel modello, non nei dati") }}</li>
@@ -73,7 +88,7 @@
 
   <p class="tiny muted" style="margin-top:16px"><a href="/analysis/dashboard?workspace_id={{ workspace_id }}">← {{ _("Analisi") }}</a></p>
 </div>
-{% if models %}
+{% if models or repo_models %}
 {% set assistant_intro = _("Chiedimi come leggere il confronto tra il BPMN e i dati: perché un'attività o un passaggio è in rosso o in grigio, cosa significa un numero, o la differenza tra due varianti.") %}
 {% include "_assistant.html" %}
 <script src="/static/vendor/bpmn-js/bpmn-navigated-viewer.production.min.js?v={{ static_version }}"></script>
@@ -84,6 +99,7 @@
   var OVL = initOverlay({
     ws: {{ workspace_id|tojson }}, config: {{ config.id|tojson }}, lang: {{ current_lang()|tojson }}, CF: CF,
     T: {
+      chooseLead: {{ _("Scegli l'oggetto guida dei casi: i casi sono gli oggetti di quel tipo con gli eventi degli oggetti collegati.")|tojson }},
       loading: {{ _("Calcolo del confronto…")|tojson }},
       error: {{ _("Il confronto non è riuscito.")|tojson }},
       cases: {{ _("{n} casi")|tojson }}, case1: {{ _("1 caso")|tojson }},

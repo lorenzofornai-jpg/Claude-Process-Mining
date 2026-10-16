@@ -220,20 +220,35 @@ function initOverlay(o) {
   document.getElementById("ovl-zoom-out").addEventListener("click", function () { viewer.get("zoomScroll").stepZoom(-1); });
   if (typeof touchToMouse === "function") touchToMouse(document.getElementById("ovl-canvas"), viewer);
 
-  // BPMN di riferimento (uno solo per dataset)
+  // BPMN di riferimento (uno solo per dataset): una variante della BPA del dataset o un modello del repository BPA
+  // (sola lettura; serve l'oggetto guida dei casi, proposto quello del modello se il dataset lo ha)
   var sel = document.getElementById("ovl-ref"), open = document.getElementById("ovl-open");
-  sel.addEventListener("change", function () {
-    if (!sel.value) return;
+  var leadField = document.getElementById("ovl-lead-field"), leadSel = document.getElementById("ovl-lead");
+  function choose() {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var repo = opt.dataset.repo === "1";
+    leadField.hidden = !repo;
+    if (repo && !leadSel.value) {
+      var guess = opt.dataset.lead && leadSel.querySelector('option[value="' + CSS.escape(opt.dataset.lead) + '"]');
+      if (guess) leadSel.value = opt.dataset.lead;
+      else { status.textContent = T.chooseLead; leadSel.focus(); return; }
+    }
     fetch("/analysis/bpa/" + encodeURIComponent(sel.value) + "/reference", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace_id: o.ws })
-    }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: o.ws, config_id: o.config, lead: repo ? leadSel.value : "" })
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); })
       .then(function () {
-        open.href = "/analysis/bpa/" + encodeURIComponent(sel.value) + "/edit?workspace_id=" + encodeURIComponent(o.ws); open.hidden = false;
+        open.href = repo ? "/bpa/models/" + encodeURIComponent(sel.value) + "/view"
+                         : "/analysis/bpa/" + encodeURIComponent(sel.value) + "/edit?workspace_id=" + encodeURIComponent(o.ws);
+        open.hidden = false;
         var blank = sel.querySelector('option[value=""]'); if (blank) blank.remove();
         picked = null; firstFit = true; load();
       })
-      .catch(function (e) { alert(e.message); });
-  });
+      .catch(function (e) { status.textContent = e.message; });
+  }
+  sel.addEventListener("change", function () { leadSel.value = ""; choose(); });
+  leadSel.addEventListener("change", function () { if (leadSel.value) choose(); });
   load();
   return { picked: function () { return picked; }, data: function () { return data; } };
 }

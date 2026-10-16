@@ -47,9 +47,9 @@ def variant_key(lead: str, steps: list[dict]) -> str:
     return json.dumps([lead, [[s["activity"], s["repeated"]] for s in steps]], ensure_ascii=False, separators=(",", ":"))
 
 
-def _json(m: BpaModel) -> dict:
+def _json(m: BpaModel, reference_id: str | None = None) -> dict:
     return {"id": m.id, "lead": m.lead_type, "key": m.variant_key, "steps": m.steps, "stats": m.stats or {},
-            "reference": bool(m.overlay_reference),
+            "reference": m.id == reference_id if reference_id else False,
             "edited": bool(m.edited), "created_by": m.created_by, "created_at": utc_iso(m.created_at),
             "updated_by": m.updated_by, "updated_at": utc_iso(m.updated_at) if m.updated_at else None}
 
@@ -194,9 +194,10 @@ def bpa_page(request: Request, workspace_id: str, config_id: str | None = None):
         return denied
     db = SessionLocal()
     try:
+        ref, _ = reference_of(db, ctx["config"].id)
         rows = (db.query(BpaModel).filter_by(ingestion_config_id=ctx["config"].id)
                 .order_by(BpaModel.lead_type, BpaModel.created_at).all())
-        models = [_json(m) for m in rows]
+        models = [_json(m, ref.id if ref else None) for m in rows]
     finally:
         db.close()
     return templates.TemplateResponse("bpa.html", {**ctx, "models": models})
@@ -640,31 +641,94 @@ def save_symbol_attrs(db, symbol_id: str, values: dict, lang: str, ui: str, user
 
 # ---------- Process Overlay: il BPMN di riferimento confrontato con i dati ----------
 
+def reference_of(db, config_id: str) -> tuple[BpaModel | None, str | None]:
+    """(BPMN di riferimento del Process Overlay del dataset, oggetto guida dei casi): un modello della staging del
+    dataset o del repository BPA."""
+    from app.models import BpaOverlayRef
+    r = db.query(BpaOverlayRef).filter_by(ingestion_config_id=config_id).first()
+    m = db.get(BpaModel, r.model_id) if r else None
+    if m is None or (m.stage != "repository" and m.ingestion_config_id != config_id):
+        return None, None
+    return m, (r.lead_type or m.lead_type or None)
+
+
+def set_reference(db, config_id: str, m: BpaModel, lead: str | None, user_name: str | None) -> None:
+    from app.models import BpaOverlayRef
+    r = db.query(BpaOverlayRef).filter_by(ingestion_config_id=config_id).first()
+    if r is None:
+        r = BpaOverlayRef(ingestion_config_id=config_id, model_id=m.id)
+    r.model_id, r.lead_type, r.set_by, r.set_at = m.id, lead or None, user_name, _now()
+    db.add(r)
+
+
+def migrate_overlay_flags(db) -> int:
+    """Riferimenti scelti prima della tabella bpa_overlay_ref (flag sul modello della staging): si copiano."""
+    from app.models import BpaOverlayRef
+    n = 0
+    for m in db.query(BpaModel).filter(BpaModel.overlay_reference.is_(True), BpaModel.stage.is_(None)).all():
+        if m.ingestion_config_id and db.query(BpaOverlayRef).filter_by(ingestion_config_id=m.ingestion_config_id).first() is None:
+            db.add(BpaOverlayRef(ingestion_config_id=m.ingestion_config_id, model_id=m.id, set_by=m.updated_by or m.created_by))
+            db.flush()
+            n += 1
+        m.overlay_reference = None
+        db.add(m)
+    return n
+
+
+def _known_labels_with(db, config_id: str, m: BpaModel) -> dict:
+    """Nomi tradotti delle attivita' del dataset (dai suoi BPMN della staging) piu' quelli del modello: per legare i
+    task di un BPMN del repository alle attivita' dei dati anche per nome tradotto."""
+    return {**_known_labels(db, config_id), **(m.labels or {})}
+
+
+def _repo_choice(db, m: BpaModel, lang: str) -> dict:
+    from app.models import BpaProcess
+    from app.services import bpa_taxonomy
+    p = db.get(BpaProcess, m.process_id) if m.process_id else None
+    return {"id": m.id, "title": bpa_taxonomy.text_of(m.title, lang) or "BPMN", "lead": m.lead_type or "",
+            "process": f"{p.code} {bpa_taxonomy.text_of(p.name, lang)}" if p else "—"}
+
+
+def _can_use_repository(user) -> bool:
+    """Un BPMN del repository BPA si usa nell'analisi solo con un ruolo nel repository (Process Viewer o Architect)."""
+    return bool(user and not user.is_admin and user.bpa_role in ("viewer", "architect"))
+
+
 @router.post("/analysis/bpa/{model_id}/reference")
 async def bpa_reference(request: Request, model_id: str):
-    """Sceglie il BPMN di riferimento per il Process Overlay (uno solo per dataset)."""
+    """Sceglie il BPMN di riferimento per il Process Overlay (uno solo per dataset): un modello della staging del
+    dataset o, per chi e' anche Process Viewer, un modello del repository BPA (con l'oggetto guida dei casi)."""
     body = await request.json()
     workspace_id = str(body.get("workspace_id") or "")
     ui = get_lang(request)
     user, denied = _require_analyst_access(request, workspace_id)
     if denied:
         return JSONResponse({"error": t(ui, "Accesso negato.")}, status_code=403)
+    lead = str(body.get("lead") or "")[:200] or None
     db = SessionLocal()
     try:
-        m = _model(db, model_id, workspace_id)
-        if m is None:
-            return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
-        for x in db.query(BpaModel).filter_by(ingestion_config_id=m.ingestion_config_id).all():
-            x.overlay_reference = x.id == m.id
-            db.add(x)
+        m = db.get(BpaModel, model_id)
+        if m is not None and m.stage == "repository":
+            if not _can_use_repository(user):
+                return JSONResponse({"error": t(ui, "Per usare un BPMN del repository BPA serve il ruolo Process Viewer.")},
+                                    status_code=403)
+            config, run, _ = _explorer_dataset(workspace_id, str(body.get("config_id") or ""))
+            if config is None or run is None or not Path(run.ocel_file_path).exists():
+                return JSONResponse({"error": t(ui, "Dataset non disponibile per l'analisi.")}, status_code=404)
+            types = set(explorer.load_model(run.ocel_file_path).sequences_by_type)
+            lead = lead if lead in types else (m.lead_type if m.lead_type in types else None)
+            if lead is None:
+                return JSONResponse({"error": t(ui, "Scegli l'oggetto guida dei casi.")}, status_code=400)
+            set_reference(db, config.id, m, lead, user.name)
+        else:
+            m = _model(db, model_id, workspace_id)
+            if m is None:
+                return JSONResponse({"error": t(ui, "Modello non trovato.")}, status_code=404)
+            set_reference(db, m.ingestion_config_id, m, None, user.name)
         db.commit()
-        return JSONResponse({"reference": m.id})
+        return JSONResponse({"reference": m.id, "lead": lead or m.lead_type})
     finally:
         db.close()
-
-
-def _reference(db, config_id: str) -> BpaModel | None:
-    return db.query(BpaModel).filter_by(ingestion_config_id=config_id, overlay_reference=True).first()
 
 
 @router.get("/analysis/overlay", response_class=HTMLResponse)
@@ -673,18 +737,34 @@ def overlay_page(request: Request, workspace_id: str, config_id: str | None = No
     if denied:
         return denied
     from app.routers.analysis import _aliases, _plurals
+    lang = get_lang(request)
+    full = explorer.load_model(ctx["run"].ocel_file_path)
     db = SessionLocal()
     try:
+        ref, ref_lead = reference_of(db, ctx["config"].id)
         rows = (db.query(BpaModel).filter_by(ingestion_config_id=ctx["config"].id)
                 .order_by(BpaModel.lead_type, BpaModel.created_at).all())
-        models = [_json(m) for m in rows]
-        ref = next((m for m in models if m["reference"]), None)
+        models = [_json(m, ref.id if ref else None) for m in rows]
+        can_repo = _can_use_repository(ctx["user"])
+        repo_models = []
+        if can_repo:
+            repo = db.query(BpaModel).filter(BpaModel.stage == "repository").all()
+            repo_models = sorted((_repo_choice(db, m, lang) for m in repo), key=lambda x: (x["process"], x["title"]))
+        reference = None
+        if ref is not None:
+            reference = {**_json(ref, ref.id), "repository": ref.stage == "repository", "lead": ref_lead}
+            if ref.stage == "repository":
+                reference.update(_repo_choice(db, ref, lang))
+                reference["lead"] = ref_lead
+                if not can_repo:   # scelto da un altro analista: si vede il confronto, ma il BPMN non si apre
+                    repo_models = [_repo_choice(db, ref, lang)]
     finally:
         db.close()
-    full = explorer.load_model(ctx["run"].ocel_file_path)
+    types = sorted(full.sequences_by_type, key=str.casefold)
     return templates.TemplateResponse("process_overlay.html", {
-        **ctx, "models": models, "reference": ref,
-        "plurals": _plurals(get_lang(request), full.types, _aliases(ctx["user"].id, ctx["config"].id))})
+        **ctx, "models": models, "reference": reference, "repo_models": repo_models, "can_repo": can_repo,
+        "lead_types": types,
+        "plurals": _plurals(lang, full.types, _aliases(ctx["user"].id, ctx["config"].id))})
 
 
 @router.get("/analysis/overlay/data")
@@ -701,11 +781,11 @@ def overlay_data(request: Request, workspace_id: str, config_id: str, var: list[
         return JSONResponse({"error": t(lang, "Dataset non disponibile per l'analisi.")}, status_code=404)
     db = SessionLocal()
     try:
-        m = _reference(db, config.id)
+        m, lead = reference_of(db, config.id)
         if m is None:
             return JSONResponse({"reference": None})
-        ref = _json(m)
-        xml, steps, labels, lead = (m.xml_it if lang == "it" else m.xml_en), m.steps, m.labels or {}, m.lead_type
+        ref = {**_json(m, m.id), "repository": m.stage == "repository", "lead": lead}
+        xml, steps, labels = (m.xml_it if lang == "it" else m.xml_en), m.steps, _known_labels_with(db, config.id, m)
     finally:
         db.close()
     sel = _filters(filters)

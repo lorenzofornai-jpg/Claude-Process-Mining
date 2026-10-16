@@ -1940,4 +1940,11 @@ EN: dict[str, str] = {
     'modificato da {u} il {d}': 'changed by {u} on {d}',
     'sola lettura': 'read-only',
     '— primo livello —': '— top level —',
+    'BPA di questo dataset (varianti)': "This dataset's BPA (variants)",
+    'Oggetto guida dei casi': 'Lead object of the cases',
+    'Per usare un BPMN del repository BPA serve il ruolo Process Viewer.': 'To use a BPMN from the BPA repository you need the Process Viewer role.',
+    'Repository BPA (sola lettura)': 'BPA repository (read-only)',
+    "Scegli l'oggetto guida dei casi.": 'Choose the lead object of the cases.',
+    "Scegli l'oggetto guida dei casi: i casi sono gli oggetti di quel tipo con gli eventi degli oggetti collegati.": 'Choose the lead object of the cases: the cases are the objects of that type with the events of the related objects.',
+    '— scegli —': '— choose —',
 }

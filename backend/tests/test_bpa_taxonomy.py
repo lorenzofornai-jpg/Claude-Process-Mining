@@ -120,3 +120,26 @@ def test_repository_names_are_checked_in_the_repository(db):
     xml2 = xml2.replace('name="Role to be defined"', 'name="Clerk"')
     plan2 = bpa_repo.resolve(db, new, "en", xml2, {})
     assert not plan2["conflicts"]
+
+
+def test_overlay_reference_from_staging_or_repository(db):
+    from app.routers.bpa import migrate_overlay_flags, reference_of, set_reference
+    src = _staging(db, "c1")
+    src.overlay_reference = True   # riferimento scelto prima della tabella bpa_overlay_ref
+    db.commit()
+    assert migrate_overlay_flags(db) == 1 and src.overlay_reference is None
+    assert reference_of(db, "c1") == (src, "Order")
+    # un BPMN del repository: vale per qualunque dataset, con l'oggetto guida scelto dall'analista
+    p = tax.create_process(db, None, _name("Purchasing"), "arch")
+    m = tax.new_model(db, p, "arch")
+    set_reference(db, "c1", m, "Purchase Order", "analyst")
+    set_reference(db, "c2", m, "Invoice", "analyst")
+    db.commit()
+    assert reference_of(db, "c1") == (m, "Purchase Order") and reference_of(db, "c2") == (m, "Invoice")
+    # una variante di un altro dataset non vale come riferimento
+    set_reference(db, "c2", src, None, "analyst")
+    assert reference_of(db, "c2") == (None, None)
+    # modello tolto dal repository: nessun riferimento
+    tax.delete_model(db, m)
+    db.commit()
+    assert reference_of(db, "c1") == (None, None)

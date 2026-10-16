@@ -535,6 +535,12 @@ processi; poi altri cataloghi e oggetti.
   vista in sola lettura con il pannello delle proprietà (Process Viewer). Nel repository i nomi degli oggetti sono unici
   per tipo in tutto il repository; all'import un elemento con lo stesso nome inglese di un oggetto già nel repository
   diventa un'occorrenza di quello, altrimenti resta l'oggetto della variante.
-- Da fare: BPMN del repository come riferimento del Process Overlay (l'analista deve essere anche Process Viewer, il
-  modello resta nel repository e non si modifica dall'analisi); spostare un modello su un altro processo; altri
-  cataloghi e oggetti; attributi dei processi definiti dall'Amministratore.
+- ✅ **Process Overlay con un BPMN del repository**: nella scelta del BPMN di riferimento, accanto alle varianti della BPA
+  del dataset, i modelli del repository (per l'analista che è anche Process Viewer o Process Architect). Il modello resta
+  nel repository: dall'analisi si apre in sola lettura. Si sceglie l'oggetto guida dei casi (proposto quello del
+  modello, se il dataset lo ha). I task si legano alle attività dei dati per posizione (modelli importati da una
+  variante) o per nome, anche tradotto con i nomi dei BPMN del dataset. Il riferimento è ora nella tabella
+  `bpa_overlay_ref` (uno per dataset: modello e oggetto guida); quelli scelti prima si copiano all'avvio. Chi non ha un
+  ruolo nel repository vede il confronto scelto da un collega ma non apre il modello né lo sceglie.
+- Da fare: spostare un modello su un altro processo; nel repository, vedere in quali Process Overlay è usato un modello;
+  altri cataloghi e oggetti; attributi dei processi definiti dall'Amministratore.

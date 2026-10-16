@@ -72,6 +72,8 @@ def _startup() -> None:
         try:
             bpa_repo.backfill(db)   # modelli registrati prima degli eventi/gateway senza nome
             bpa_repo.text_attrs_in_both_languages(db)   # attributi di testo: sempre italiano e inglese
+            from app.routers.bpa import migrate_overlay_flags
+            migrate_overlay_flags(db)   # riferimenti del Process Overlay: dal flag sul modello alla tabella
             db.commit()
         finally:
             db.close()

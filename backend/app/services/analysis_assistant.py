@@ -52,7 +52,8 @@ Scheda «Varianti» (alternativa al filtro per attività): si sceglie un tipo di
 attività); il grafo mostra solo gli oggetti di quel tipo che seguono le varianti scelte ("variant_filter" nella vista).
 
 Process Overlay (page = overlay): il BPMN «di riferimento» (uno dei modelli della BPA, nato da una variante della
-Process Overview, "reference_bpmn") sovrapposto ai casi del dataset: ogni caso è un oggetto del tipo guida del BPMN
+Process Overview, oppure un modello del repository BPA, la tassonomia dei processi dell'azienda, con
+"from_bpa_repository": in quel caso l'oggetto guida l'ha scelto l'analista; "reference_bpmn") sovrapposto ai casi del dataset: ogni caso è un oggetto del tipo guida del BPMN
 con gli eventi degli oggetti collegati (esclusi i trasversali). In blu le attività e le frecce del modello che i casi
 seguono (con il numero di casi), in grigio quelle del modello che nei dati non compaiono, in rosso (sotto la pool) le
 attività dei dati che il modello non ha e i passaggi diretti tra attività che il modello non prevede. A destra le
