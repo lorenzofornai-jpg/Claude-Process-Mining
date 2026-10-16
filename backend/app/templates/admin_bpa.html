@@ -1,14 +1,18 @@
 {% extends "base.html" %}
-{% block title %}{{ _("Attributi degli oggetti BPMN") }}{% endblock %}
+{% block title %}{{ _("Attributi della BPA") }}{% endblock %}
 {% block content %}
 {% set lang = current_lang() %}
 {% set f = form or {} %}
 <div class="card wide">
   <p class="eyebrow">{{ _("Amministrazione") }} · BPA</p>
-  <h1>{{ _("Attributi degli oggetti BPMN") }}</h1>
+  <h1>{{ _("Attributi della BPA") }}</h1>
   <p class="muted">
-    {{ _("L'archivio degli oggetti dei BPMN è unico per l'azienda: ogni pool, lane, attività, evento, gateway... ha un identificativo univoco e un nome unico per tipo dentro un dataset, e compare in uno o più BPMN. Lo stesso nome in dataset diversi può essere di oggetti diversi: qui puoi consolidarli in uno. Definisci anche gli attributi di ogni tipo di oggetto: gli utenti li compilano nel pannello delle proprietà dell'editor.") }}
+    {{ _("Qui definisci gli attributi della BPA, di due famiglie:") }}
   </p>
+  <ul class="muted tight">
+    <li>{{ _("Oggetti dei BPMN (pool, lane, attività, evento, gateway…): valgono per tutti i BPMN, quelli della staging area generati dalle varianti e quelli del repository BPA. L'archivio degli oggetti è unico per l'azienda: ogni oggetto ha un identificativo univoco e un nome unico per tipo dentro un dataset (o nel repository) e compare in uno o più BPMN; un modello importato nel repository usa gli stessi oggetti della variante, con gli stessi valori. Lo stesso nome in dataset diversi può essere di oggetti diversi: qui puoi consolidarli in uno. Gli utenti compilano gli attributi nel pannello delle proprietà dell'editor.") }}</li>
+    <li>{{ _("Processi della tassonomia: solo nel repository BPA, dove il Process Architect li compila sotto nome e descrizione del processo.") }}</li>
+  </ul>
   {% if saved %}<div class="banner ok">{{ _("Modifiche salvate.") }}</div>{% endif %}
   {% if merged %}<div class="banner ok">{{ _("Oggetti consolidati: {n} uniti all'oggetto scelto.", n=merged) }}</div>{% endif %}
   {% if errors %}
