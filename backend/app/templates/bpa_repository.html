@@ -76,8 +76,19 @@
 {% if can_edit %}
 <dialog id="tax-staging" class="confirm-dialog tax-staging-dialog">
   <h2>{{ _("Staging area") }}</h2>
-  <p class="tiny muted">{{ _("I BPMN generati dalle varianti nella Process Overview. Importarne uno lo copia nel repository e lo assegna al processo scelto; la variante resta nella staging area.") }}</p>
   <input type="search" id="tax-staging-search" class="tax-search" placeholder="{{ _("Cerca") }}" aria-label="{{ _("Cerca") }}">
+  <div id="tax-unassigned-box" hidden>
+    <h3 class="tax-staging-h">{{ _("Modelli del repository senza processo") }}</h3>
+    <p class="tiny muted">{{ _("I modelli dei processi tolti dalla tassonomia. Assegnarne uno lo sposta nel processo scelto (non è una copia).") }}</p>
+    <div class="table-scroll">
+      <table class="admin-table">
+        <thead><tr><th>{{ _("Modello") }}</th><th>{{ _("Origine") }}</th><th>{{ _("Ultima modifica") }}</th><th></th></tr></thead>
+        <tbody id="tax-unassigned-rows"></tbody>
+      </table>
+    </div>
+    <h3 class="tax-staging-h">{{ _("BPMN delle varianti") }}</h3>
+  </div>
+  <p class="tiny muted">{{ _("I BPMN generati dalle varianti nella Process Overview. Importarne uno lo copia nel repository e lo assegna al processo scelto; la variante resta nella staging area.") }}</p>
   <div class="table-scroll">
     <table class="admin-table">
       <thead><tr><th>{{ _("Modello") }}</th><th>{{ _("Processo") }}</th><th>{{ _("Dataset") }}</th><th class="num">{{ _("Casi") }}</th><th>{{ _("Già importato in") }}</th><th></th></tr></thead>
@@ -98,15 +109,19 @@
     createTitle: {{ _("Nuovo processo")|tojson }}, create: {{ _("Crea")|tojson }},
     root: {{ _("— primo livello —")|tojson }},
     saved: {{ _("Salvato.")|tojson }}, saving: {{ _("Salvataggio…")|tojson }},
-    deleteAsk: {{ _("Togliere «{n}» dalla tassonomia? Resta nel repository, con attributi e modelli BPMN, tra gli oggetti senza occorrenze (Oggetti e attributi BPA): da lì si rimette nella tassonomia o si elimina.")|tojson }},
-    deleteAskSubs: {{ _("Attenzione: verranno tolti dalla tassonomia anche i {n} processi sotto «{p}» (sottoprocessi, e i loro sottoprocessi). Restano nel repository e tornano insieme a «{p}» se lo rimetti nella tassonomia.")|tojson }},
+    deleteAsk: {{ _("Togliere «{n}» dalla tassonomia? Resta nel repository, con i suoi attributi, tra gli oggetti senza occorrenze (Oggetti e attributi BPA): da lì si rimette nella tassonomia o si elimina. I suoi modelli BPMN vanno nella staging area, da dove si possono assegnare a un altro processo.")|tojson }},
+    deleteAskSubs: {{ _("Attenzione: verranno tolti dalla tassonomia anche i {n} processi sotto «{p}» (sottoprocessi, e i loro sottoprocessi). Restano nel repository e tornano insieme a «{p}» se lo rimetti nella tassonomia; i loro modelli BPMN vanno nella staging area.")|tojson }},
     deleteTitle: {{ _("Togli dalla tassonomia")|tojson }}, del: {{ _("Togli")|tojson }},
     otherName: {{ _("In {l}: {n}")|tojson }},
     created: {{ _("Creato da {u} il {d}.")|tojson }}, changed: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
     open: {{ _("Apri")|tojson }}, view: {{ _("Visualizza")|tojson }}, rename: {{ _("Rinomina")|tojson }},
     renameAsk: {{ _("Nuovo nome del modello")|tojson }},
     delModelAsk: {{ _("Togliere il modello «{n}» dal repository? Le modifiche fatte qui si perdono; se viene dalla staging area, lì la variante resta.")|tojson }},
-    delModelTitle: {{ _("Togli il modello")|tojson }}, remove: {{ _("Togli")|tojson }},
+    delModelTitle: {{ _("Togli il modello")|tojson }},
+    remove: {{ _("Togli")|tojson }},
+    assign: {{ _("Assegna")|tojson }}, assigned: {{ _("Modello assegnato a «{n}».")|tojson }},
+    delUnassignedAsk: {{ _("Eliminare il modello «{n}» dal repository? Non si annulla.")|tojson }},
+    delUnassignedTitle: {{ _("Elimina il modello")|tojson }}, delete: {{ _("Elimina")|tojson }},
     fromStaging: {{ _("dalla staging area · dataset {d}")|tojson }}, createdHere: {{ _("creato nel repository")|tojson }},
     modelChanged: {{ _("modificato da {u} il {d}")|tojson }},
     importBtn: {{ _("Importa")|tojson }}, imported: {{ _("Modello importato in «{n}».")|tojson }},
@@ -436,9 +451,40 @@
     });
 
     // staging area: i BPMN delle varianti da importare nel processo scelto
-    var dlg = $("tax-staging"), staging = [];
+    var dlg = $("tax-staging"), staging = [], unassigned = [];
+    function drawUnassigned(q) {
+      var body = $("tax-unassigned-rows"); body.textContent = "";
+      $("tax-unassigned-box").hidden = !unassigned.length;
+      unassigned.forEach(function (m) {
+        if (q && (m.title + " " + (m.source || "")).toLowerCase().indexOf(q) < 0) return;
+        var tr = el("tr");
+        var t1 = el("td"); var a = el("a", "", m.title); a.href = "/bpa/models/" + encodeURIComponent(m.id) + "/view"; a.target = "_blank"; a.rel = "noopener";
+        t1.appendChild(a); tr.appendChild(t1);
+        tr.appendChild(el("td", "tiny", m.from_staging ? fmt(T.fromStaging, { d: m.source || "—" }) : T.createdHere));
+        tr.appendChild(el("td", "tiny muted", m.updated_by ? fmt(T.modelChanged, { u: m.updated_by, d: when(m.updated_at) }) : ""));
+        var td = el("td", "tax-model-actions"), b = el("button", "secondary", T.assign); b.type = "button";
+        b.addEventListener("click", function () {
+          if (!detail) return;
+          b.disabled = true; var id = detail.id;
+          req("/bpa/api/processes/" + encodeURIComponent(id) + "/import", { model_id: m.id }).then(function () {
+            dlg.close(); say(fmt(T.assigned, { n: detail.name }), "ok"); return load(id);
+          }).catch(function (e) { b.disabled = false; say(e.message, "bad"); });
+        });
+        var d = el("button", "link-btn ct-danger", T.delete); d.type = "button";
+        d.addEventListener("click", function () {
+          dlg.close();
+          pmConfirm(fmt(T.delUnassignedAsk, { n: m.title }), { title: T.delUnassignedTitle, ok: T.delete }).then(function (yes) {
+            if (!yes) return;
+            req("/bpa/api/models/" + encodeURIComponent(m.id) + "/delete", {}).catch(function (e) { say(e.message, "bad"); });
+          });
+        });
+        td.appendChild(b); td.appendChild(d); tr.appendChild(td);
+        body.appendChild(tr);
+      });
+    }
     function drawStaging() {
       var body = $("tax-staging-rows"), q = $("tax-staging-search").value.trim().toLowerCase();
+      drawUnassigned(q);
       body.textContent = "";
       $("tax-staging-empty").hidden = staging.length > 0;
       staging.forEach(function (m) {
@@ -465,7 +511,7 @@
       });
     }
     $("tax-from-staging").addEventListener("click", function () {
-      req("/bpa/api/staging").then(function (j) { staging = j.models; drawStaging(); dlg.showModal(); })
+      req("/bpa/api/staging").then(function (j) { staging = j.models; unassigned = j.unassigned || []; drawStaging(); dlg.showModal(); })
         .catch(function (e) { say(e.message, "bad"); });
     });
     $("tax-staging-search").addEventListener("input", drawStaging);

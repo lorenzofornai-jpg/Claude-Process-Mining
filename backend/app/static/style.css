@@ -1514,3 +1514,5 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .bpa-proc-row { cursor: pointer; }
 .bpa-proc-row:hover { background: var(--card-bg-soft); }
 #confirm-text { white-space: pre-line; }
+.tax-staging-h { font-size: 0.95rem; margin: 14px 0 4px; }
+.tax-staging-h { font-size: 0.95rem; margin: 14px 0 4px; }

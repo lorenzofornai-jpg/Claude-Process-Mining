@@ -76,6 +76,8 @@ def _startup() -> None:
             from app.routers.bpa import migrate_overlay_flags
             migrate_overlay_flags(db)   # riferimenti del Process Overlay: dal flag sul modello alla tabella
             bpa_repo.unregister_staging(db)   # i BPMN delle varianti non sono nell'archivio degli oggetti
+            from app.services.bpa_taxonomy import release_models_of_removed
+            release_models_of_removed(db)   # modelli dei processi tolti dalla tassonomia: nella staging area
             db.commit()
         finally:
             db.close()

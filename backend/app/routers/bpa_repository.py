@@ -327,7 +327,9 @@ def api_staging(request: Request):
                          "dataset": configs[m.ingestion_config_id], "stats": m.stats or {}, "edited": bool(m.edited),
                          "steps": len(m.steps or []), "created_at": utc_iso(m.created_at),
                          "imported": imported.get(m.id, [])})
-        return JSONResponse({"models": rows})
+        cache: dict = {}
+        unassigned = [_model_json(db, m, lang, cache) for m in tax.unassigned_models(db)]
+        return JSONResponse({"models": rows, "unassigned": unassigned})
     finally:
         db.close()
 
@@ -345,9 +347,16 @@ async def api_import(request: Request, process_id: str):
         src = db.get(BpaModel, str(body.get("model_id") or ""))
         if p is None:
             return JSONResponse({"error": t(lang, "Processo non trovato.")}, status_code=404)
-        if src is None or src.stage is not None:
+        if src is None:
             return JSONResponse({"error": t(lang, "Modello non trovato.")}, status_code=404)
-        m = tax.import_model(db, src, p, user.name, user.id)
+        if src.stage == "repository":   # modello del repository senza processo: si assegna (si sposta)
+            if src.id not in {x.id for x in tax.unassigned_models(db)}:
+                return JSONResponse({"error": t(lang, "Modello non trovato.")}, status_code=404)
+            tax.assign_model(db, src, p)
+            src.updated_by, src.updated_at = user.name, tax._now()
+            m = src
+        else:
+            m = tax.import_model(db, src, p, user.name, user.id)
         db.commit()
         return JSONResponse({"model": _model_json(db, m, lang, {})})
     finally:

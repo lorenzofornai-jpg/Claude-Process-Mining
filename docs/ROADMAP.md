@@ -597,3 +597,7 @@ processi; poi altri cataloghi e oggetti.
 - ✅ In «Oggetti e attributi BPA», scheda «Processo (tassonomia)», sezione «senza occorrenze»: per ogni processo tolto
   «Rimetti nella tassonomia» (torna sotto il suo padre, o in fondo al primo livello se il padre non c'è più, con i
   sottoprocessi tolti con lui) o «Elimina definitivamente» (con i suoi modelli BPMN).
+- ✅ Togliendo un processo dalla tassonomia, i modelli BPMN suoi e dei sottoprocessi tolti con lui vanno nella
+  **staging area** come «Modelli del repository senza processo» (restano modelli del repository, con i loro oggetti):
+  da lì si **assegnano** a un processo (si spostano, non si copiano) o si eliminano. Rimettendo il processo nella
+  tassonomia i modelli non tornano da soli. (Un modello è assegnato a un solo processo.)

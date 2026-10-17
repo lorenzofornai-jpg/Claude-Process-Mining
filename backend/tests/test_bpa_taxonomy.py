@@ -201,7 +201,8 @@ def test_remove_restore_and_delete_forever(db):
     db.commit()
     assert [n["id"] for n in tax.tree(db, "it")] == [other.id] and other.position == 0
     assert {p.id for p in tax.removed_processes(db)} == {top.id, a.id, b.id}
-    assert db.get(BpaModel, m.id).process_id == b.id   # il modello resta attaccato
+    # i modelli dei processi tolti vanno nella staging area (modelli del repository senza processo)
+    assert db.get(BpaModel, m.id).process_id is None and [x.id for x in tax.unassigned_models(db)] == [m.id]
     # rimesso: torna tutto il ramo (al primo livello, in fondo)
     assert tax.restore(db, top) == 3
     db.commit()
@@ -213,8 +214,12 @@ def test_remove_restore_and_delete_forever(db):
     tax.restore(db, a)
     db.commit()
     assert db.get(BpaProcess, a.id).parent_id is None and db.get(BpaProcess, b.id).in_tree is None
-    # eliminato definitivamente: via anche i suoi modelli
+    # dalla staging area il modello si assegna (si sposta) a un processo
+    tax.assign_model(db, db.get(BpaModel, m.id), other)
+    db.commit()
+    assert not tax.unassigned_models(db) and [x.id for x in tax.repository_models(db, other.id)] == [m.id]
+    # eliminato definitivamente
     tax.remove_from_tree(db, b)
     tax.delete_forever(db, b)
     db.commit()
-    assert db.get(BpaProcess, b.id) is None and db.get(BpaModel, m.id) is None
+    assert db.get(BpaProcess, b.id) is None

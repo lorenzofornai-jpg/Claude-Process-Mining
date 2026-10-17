@@ -144,12 +144,16 @@ def _renumber(db, parent_id: str | None) -> None:
 
 
 def remove_from_tree(db, p) -> int:
-    """Toglie il processo e i suoi discendenti dalla tassonomia: restano nel repository (attributi, struttura e
-    modelli BPMN) tra gli oggetti senza occorrenze. Ritorna quanti processi sono stati tolti."""
+    """Toglie il processo e i suoi discendenti dalla tassonomia: restano nel repository (attributi e struttura) tra gli
+    oggetti senza occorrenze; i loro modelli BPMN vanno nella staging area (modelli del repository senza processo, da
+    riassegnare). Ritorna quanti processi sono stati tolti."""
     group = [p] + descendants(db, p)
     for x in group:
         x.in_tree = False
         db.add(x)
+        for m in repository_models(db, x.id):
+            m.process_id = None
+            db.add(m)
     db.flush()
     _renumber(db, p.parent_id)
     return len(group)
@@ -169,6 +173,34 @@ def restore(db, p) -> int:
         db.add(x)
     db.flush()
     return len(group)
+
+
+def unassigned_models(db) -> list:
+    """Modelli del repository senza processo (nella staging area): quelli dei processi tolti dalla tassonomia."""
+    from app.models import BpaModel, BpaProcess
+    out = []
+    for m in db.query(BpaModel).filter(BpaModel.stage == "repository").order_by(BpaModel.updated_at.desc(), BpaModel.created_at.desc()).all():
+        p = db.get(BpaProcess, m.process_id) if m.process_id else None
+        if p is None or p.in_tree is False:
+            out.append(m)
+    return out
+
+
+def release_models_of_removed(db) -> int:
+    """Processi tolti prima di questa regola: i loro modelli vanno nella staging area. Ritorna quanti."""
+    n = 0
+    for p in removed_processes(db):
+        for m in repository_models(db, p.id):
+            m.process_id = None
+            db.add(m)
+            n += 1
+    return n
+
+
+def assign_model(db, m, process) -> None:
+    """Un modello del repository senza processo (staging area) assegnato a un processo: si sposta, non si copia."""
+    m.process_id = process.id
+    db.add(m)
 
 
 def removed_processes(db) -> list:
