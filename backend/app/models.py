@@ -556,6 +556,9 @@ class BpaSymbol(Base):
     # senza nome proprio (evento, gateway, ... senza nome o con un nome generico): simbolo della sola occorrenza,
     # non condiviso e senza controllo dei nomi doppi
     anonymous: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # ha avuto almeno un'occorrenza in un BPMN del repository BPA: senza occorrenze resta tra gli «Oggetti senza
+    # occorrenze»; gli altri (venuti dai BPMN delle varianti) senza occorrenze si eliminano
+    in_repository: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class BpaOccurrence(Base):

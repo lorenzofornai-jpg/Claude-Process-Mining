@@ -518,9 +518,14 @@ def apply(db, model, lang: str, xml: str, other_xml: str, plan: dict, user_name:
             else:
                 s.name_en, s.name_it = name, ext_other.get(eid, s.name_it) or name
     db.query(BpaOccurrence).filter_by(model_id=model.id).delete(synchronize_session=False)
+    in_repo = getattr(model, "stage", None) == "repository"
     for eid, sid in assign.items():
         e = ext["elements"][eid]
         db.add(BpaOccurrence(symbol_id=sid, model_id=model.id, element_id=eid, bpmn_type=e["tag"], bpmn_detail=e.get("detail")))
+        if in_repo:
+            s = db.get(BpaSymbol, sid)
+            if s is not None and not s.in_repository:
+                s.in_repository = True
     db.query(BpaRelation).filter_by(model_id=model.id).delete(synchronize_session=False)
     for kind, a, b in relations_between_symbols(ext, assign):
         db.add(BpaRelation(model_id=model.id, kind=kind, source_id=a, target_id=b))
@@ -609,21 +614,26 @@ def backfill(db) -> int:
 
 def unregister_staging(db) -> int:
     """I BPMN delle varianti (staging) servono solo al Process Overlay e non sono nell'archivio degli oggetti: le loro
-    occorrenze e relazioni registrate prima si tolgono. Gli oggetti rimasti senza occorrenze si eliminano se non hanno
-    valori negli attributi (quelli con valori restano tra gli «Oggetti senza occorrenze»). Ritorna i modelli puliti."""
+    occorrenze e relazioni registrate prima si tolgono, e gli oggetti senza occorrenze che non sono mai stati in un BPMN
+    del repository si eliminano (anche con valori negli attributi). Ritorna le occorrenze tolte."""
     from app.models import BpaModel, BpaOccurrence, BpaRelation, BpaSymbol
     ids = [m.id for m in db.query(BpaModel).filter(BpaModel.stage.is_(None)).all()]
-    touched = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).filter(BpaOccurrence.model_id.in_(ids)).distinct()} if ids else set()
     n = 0
+    # oggetti con occorrenze nel repository: segnati (anche quelli registrati prima del segno)
+    repo_ids = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).join(BpaModel, BpaModel.id == BpaOccurrence.model_id)
+                .filter(BpaModel.stage == "repository").distinct()}
+    if repo_ids:
+        db.query(BpaSymbol).filter(BpaSymbol.id.in_(sorted(repo_ids)), BpaSymbol.in_repository.isnot(True)).update(
+            {BpaSymbol.in_repository: True}, synchronize_session=False)
     if ids:
         n = db.query(BpaOccurrence).filter(BpaOccurrence.model_id.in_(ids)).delete(synchronize_session=False)
         db.query(BpaRelation).filter(BpaRelation.model_id.in_(ids)).delete(synchronize_session=False)
         db.query(BpaModel).filter(BpaModel.id.in_(ids)).update({BpaModel.registered: None}, synchronize_session=False)
         db.flush()
     used = {sid for (sid,) in db.query(BpaOccurrence.symbol_id).distinct()}
-    for sid in touched - used:
-        s = db.get(BpaSymbol, sid)
-        if s is not None and (s.anonymous or not s.attrs):
+    for s in db.query(BpaSymbol).filter(BpaSymbol.in_repository.isnot(True)).all():
+        sid = s.id
+        if sid not in used:
             db.query(BpaRelation).filter((BpaRelation.source_id == sid) | (BpaRelation.target_id == sid)).delete(synchronize_session=False)
             db.delete(s)
     db.flush()

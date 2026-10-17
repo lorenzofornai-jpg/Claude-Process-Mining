@@ -1704,7 +1704,6 @@ EN: dict[str, str] = {
     "Salvato. Alcuni oggetti erano stati rinominati in un altro BPMN dopo l'apertura: il modello è stato ricaricato con i nomi aggiornati.": 'Saved. Some objects had been renamed in another BPMN after opening: the model was reloaded with the updated names.',
     'Scegli il tipo di dato.': 'Choose the data type.',
     'Seleziona gli elementi da copiare (pool e lane non si copiano: per riusare una lane dalle lo stesso nome).': 'Select the elements to copy (pools and lanes are not copied: to reuse a lane give it the same name).',
-    "Oggetti che non compaiono più in nessun BPMN: restano nell'archivio con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.": 'Objects that no longer appear in any BPMN: they stay in the repository with their attributes and can be reused by giving the same name. You can delete them here.',
     'Oggetti nuovi': 'New objects',
     'Oggetti senza occorrenze': 'Objects without occurrences',
     'Oggetto non trovato.': 'Object not found.',
@@ -1944,7 +1943,6 @@ EN: dict[str, str] = {
     "Scegli l'oggetto guida dei casi: i casi sono gli oggetti di quel tipo con gli eventi degli oggetti collegati.": 'Choose the lead object of the cases: the cases are the objects of that type with the events of the related objects.',
     '— scegli —': '— choose —',
     'Di sistema: si cambia nel repository BPA.': 'System: changed in the BPA repository.',
-    'I processi della tassonomia si creano e si compilano nel repository BPA (Process Architect): questi attributi compaiono sotto nome e descrizione.': 'Taxonomy processes are created and filled in the BPA repository (Process Architect): these attributes appear below name and description.',
     'Modello spostato in «{n}».': 'Model moved to «{n}».',
     'Processo a cui assegnare «{n}»': 'Process to assign «{n}» to',
     'Riferimento del Process Overlay: {d}': 'Process Overlay reference: {d}',
@@ -1962,4 +1960,7 @@ EN: dict[str, str] = {
     'Nessun attributo ancora per i processi: oltre a Nome e Descrizione aggiungi quelli che servono (es. un codice, process owner, livello, stato, KPI).': 'No attributes yet for processes: besides Name and Description add the ones you need (e.g. a code, process owner, level, status, KPI).',
     'Ordine tra i processi dello stesso livello': 'Order among processes at the same level',
     '«Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome.': '«Name» and «Description» are system attributes of processes: choose another name.',
+    'I processi si creano e si compilano nel repository BPA: questi attributi compaiono sotto nome e descrizione. Tocca una riga per aprire il processo.': 'Processes are created and filled in the BPA repository: these attributes appear below name and description. Tap a row to open the process.',
+    'Oggetti del repository che non compaiono più in nessun suo BPMN: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.': 'Repository objects that no longer appear in any of its BPMNs: they keep their attributes and can be reused by giving the same name. You can delete them here.',
+    'Processi della tassonomia': 'Taxonomy processes',
 }

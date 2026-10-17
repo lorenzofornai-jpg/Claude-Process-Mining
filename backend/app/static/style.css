@@ -1511,3 +1511,5 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .tax-row.drop-before { box-shadow: inset 0 2px 0 var(--brand); }
 .tax-row.drop-after { box-shadow: inset 0 -2px 0 var(--brand); }
 .tax-order { display: inline-flex; gap: 4px; }
+.bpa-proc-row { cursor: pointer; }
+.bpa-proc-row:hover { background: var(--card-bg-soft); }

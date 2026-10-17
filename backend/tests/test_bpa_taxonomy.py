@@ -109,6 +109,8 @@ def test_import_copies_and_consolidates_in_the_repository(db):
 def test_staging_models_leave_the_archive(db):
     src = _staging(db, "c1")
     bpa_repo.register_generated(db, src, "old")   # registrato come prima
+    for o in db.query(BpaOccurrence).filter_by(model_id=src.id):
+        db.get(BpaSymbol, o.symbol_id).attrs = {"a_x": "valore"}   # con valori: si elimina lo stesso
     p = tax.create_process(db, None, _name("Purchasing"), "arch")
     m = tax.import_model(db, _staging(db, "c2"), p, "arch")
     kept = db.query(BpaSymbol).filter_by(symbol_type="activity").count()
@@ -117,7 +119,13 @@ def test_staging_models_leave_the_archive(db):
     db.commit()
     assert db.query(BpaOccurrence).filter_by(model_id=src.id).count() == 0
     assert db.query(BpaOccurrence).filter_by(model_id=m.id).count() > 0
-    # gli oggetti della sola variante (senza valori) spariscono; quelli del repository restano
+    # gli oggetti della sola variante spariscono (anche con valori); quelli del repository restano, anche senza occorrenze
+    assert db.query(BpaSymbol).filter_by(symbol_type="activity").count() == kept - 2
+    assert all(x.in_repository for x in db.query(BpaSymbol).filter_by(symbol_type="activity"))
+    tax.delete_model(db, m)
+    db.commit()
+    bpa_repo.unregister_staging(db)
+    db.commit()
     assert db.query(BpaSymbol).filter_by(symbol_type="activity").count() == kept - 2
 
 

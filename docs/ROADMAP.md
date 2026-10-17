@@ -580,3 +580,11 @@ processi; poi altri cataloghi e oggetti.
   «Gestione › Acquisti»). Se serve un codice modificabile, il Process Architect lo crea come attributo dei processi.
 - ✅ Ordine dei processi dello stesso livello: pulsanti ↑ ↓ nel dettaglio (anche su iPad) e trascinamento nell'albero
   (parte alta di un processo = prima, parte bassa = dopo, centro = dentro come sottoprocesso).
+
+## Oggetti senza occorrenze e tabella dei processi (17 ottobre 2026)
+- ✅ «Oggetti senza occorrenze» vale solo per il repository BPA: ogni oggetto ricorda se è stato in un BPMN del
+  repository (`bpa_symbol.in_repository`). Quelli venuti dai BPMN delle varianti, senza occorrenze, si eliminano
+  all'avvio (anche con valori negli attributi).
+- ✅ In «Oggetti e attributi BPA», scheda «Processo (tassonomia)»: tabella dei processi nell'ordine dell'albero (rientro
+  per livello) con il nome nell'altra lingua, i modelli BPMN assegnati e i valori degli attributi, con ricerca; una riga
+  apre il processo nel repository.

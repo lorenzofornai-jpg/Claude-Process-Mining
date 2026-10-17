@@ -69,7 +69,7 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
     for s in db.query(BpaSymbol).order_by(BpaSymbol.symbol_type, BpaSymbol.name_it).all():
         if s.id in repo:
             counts[s.symbol_type] = counts.get(s.symbol_type, 0) + 1
-        elif s.id not in used and not s.anonymous:
+        elif s.id not in used and not s.anonymous and s.in_repository:
             unused.append(s)
     counts[bpa_repo.PROCESS_TYPE] = db.query(BpaProcess).count()
     lang = get_lang(request)
@@ -88,10 +88,33 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
                          "processes": "; ".join(sorted(processes.get(s.id, ()), key=str.casefold)),
                          "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
     rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
+    processes_rows = _process_rows(db, defs, lang) if symbol_type == bpa_repo.PROCESS_TYPE else []
     return {"request": request, "types": bpa_repo.ATTR_TYPES, "symbol_type": symbol_type, "defs": defs,
             "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
             "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
-            "errors": errors or [], "form": form, "rows": rows}
+            "errors": errors or [], "form": form, "rows": rows, "process_rows": processes_rows}
+
+
+def _process_rows(db, defs, lang: str) -> list[dict]:
+    """I processi della tassonomia nell'ordine dell'albero, con i valori degli attributi e i modelli assegnati."""
+    from app.models import BpaModel
+    from app.services import bpa_taxonomy as tax
+    counts: dict[str, int] = {}
+    for (pid,) in db.query(BpaModel.process_id).filter(BpaModel.stage == "repository").all():
+        if pid:
+            counts[pid] = counts.get(pid, 0) + 1
+    other = "en" if lang == "it" else "it"
+    out = []
+
+    def walk(parent, depth):
+        for p in tax.children(db, parent):
+            out.append({"id": p.id, "name": tax.text_of(p.name, lang), "depth": depth,
+                        "other": tax.text_of(p.name, other), "path": tax.path_name(db, p, lang),
+                        "models": counts.get(p.id, 0),
+                        "values": [_bpa_value_text(d, (p.attrs or {}).get(d.key), lang) for d in defs]})
+            walk(p.id, depth + 1)
+    walk(None, 0)
+    return out
 
 
 def _bpa_merge_context(db, request, symbol_type: str, ids: list[str], master: str | None = None, error=None):

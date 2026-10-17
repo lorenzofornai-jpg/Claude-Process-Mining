@@ -112,10 +112,49 @@
   </form>
 
   {% if symbol_type == 'process' %}
-  <p class="tiny muted">{{ _("I processi della tassonomia si creano e si compilano nel repository BPA (Process Architect): questi attributi compaiono sotto nome e descrizione.") }}</p>
+  <h2 id="processes">{{ _("Processi della tassonomia") }} <span class="muted tiny">{{ process_rows|length }}</span></h2>
+  <p class="tiny muted">{{ _("I processi si creano e si compilano nel repository BPA: questi attributi compaiono sotto nome e descrizione. Tocca una riga per aprire il processo.") }}</p>
+  {% if process_rows %}
+  <div class="bpa-sym-tools">
+    <input type="search" id="bpa-proc-search" placeholder="{{ _("Cerca un processo") }}" aria-label="{{ _("Cerca un processo") }}">
+  </div>
+  <div class="table-scroll">
+  <table class="admin-table bpa-symbols">
+    <thead><tr>
+      <th>{{ _("Nome") }}</th><th>{{ _("Nome") }} ({{ 'EN' if lang == 'it' else 'IT' }})</th>
+      <th class="num">{{ _("Modelli BPMN") }}</th>
+      {% for d in defs %}<th>{{ d.name.get(lang) or d.name.get('it') }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for r in process_rows %}
+      <tr class="bpa-proc-row" data-href="/bpa?process={{ r.id }}" data-path="{{ r.path }}" tabindex="0" role="link" title="{{ r.path }}">
+        <td><span style="padding-left: {{ r.depth * 18 }}px"><strong>{{ r.name }}</strong></span></td>
+        <td class="muted">{{ r.other }}</td>
+        <td class="num">{{ r.models }}</td>
+        {% for v in r["values"] %}<td>{{ v }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="tiny muted">{{ _("La tassonomia è vuota.") }}</p>{% endif %}
+  <script>
+    (function () {
+      document.querySelectorAll(".bpa-proc-row").forEach(function (r) {
+        function go() { location.href = r.dataset.href; }
+        r.addEventListener("click", go);
+        r.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); });
+      });
+      var q = document.getElementById("bpa-proc-search");
+      if (q) q.addEventListener("input", function () {
+        var v = q.value.trim().toLowerCase();
+        document.querySelectorAll(".bpa-proc-row").forEach(function (r) { r.hidden = v && (r.textContent + " " + r.dataset.path).toLowerCase().indexOf(v) < 0; });
+      });
+    })();
+  </script>
   {% else %}
   <h2 id="unused">{{ _("Oggetti senza occorrenze") }}</h2>
-  <p class="tiny muted">{{ _("Oggetti che non compaiono più in nessun BPMN: restano nell'archivio con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
+  <p class="tiny muted">{{ _("Oggetti del repository che non compaiono più in nessun suo BPMN: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
   {% if unused %}
   <form method="post" action="/bpa/attributes/unused/delete" data-confirm="{{ _("Eliminare gli oggetti scelti con i loro attributi?") }}" data-confirm-ok="{{ _("Elimina") }}">
     <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
