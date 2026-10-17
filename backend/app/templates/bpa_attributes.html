@@ -193,6 +193,28 @@
   {% else %}<p class="tiny muted">{{ _("Nessun oggetto di questo tipo nell'archivio.") }}</p>{% endif %}
   {% endif %}
 
+  {% if symbol_type == 'process' %}
+  <h2 id="unused">{{ _("Oggetti di tipo «{t}» senza occorrenze", t=types[symbol_type][lang]) }} <span class="muted tiny">{{ removed_processes|length }}</span></h2>
+  <p class="tiny muted">{{ _("Processi tolti dalla tassonomia: restano nel repository con attributi, sottoprocessi e modelli BPMN. Puoi rimetterli nella tassonomia (sotto il loro processo padre, o al primo livello se non c'è più) o eliminarli definitivamente.") }}</p>
+  {% if removed_processes %}
+  <form method="post" action="/bpa/attributes/processes/delete" id="bpa-proc-del" data-confirm="{{ _("Eliminare definitivamente i processi scelti con i loro modelli BPMN? Non si annulla.") }}" data-confirm-ok="{{ _("Elimina") }}"></form>
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead><tr><th></th><th>{{ _("Processo") }}</th><th>{{ _("Nome") }} ({{ 'EN' if lang == 'it' else 'IT' }})</th><th class="num">{{ _("Sottoprocessi") }}</th><th class="num">{{ _("Modelli BPMN") }}</th><th></th></tr></thead>
+    <tbody>
+      {% for r in removed_processes %}
+      <tr><td><input type="checkbox" name="process" value="{{ r.id }}" form="bpa-proc-del" aria-label="{{ r.path }}"></td>
+        <td><strong>{{ r.name }}</strong>{% if r.path != r.name %}<div class="tiny muted">{{ r.path }}</div>{% endif %}</td>
+        <td class="muted">{{ r.other }}</td>
+        <td class="num">{{ r.subs }}</td><td class="num">{{ r.models }}</td>
+        <td><form method="post" action="/bpa/attributes/processes/{{ r.id }}/restore" class="inline-form"><button type="submit" class="secondary">{{ _("Rimetti nella tassonomia") }}</button></form></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="actions"><button type="submit" form="bpa-proc-del" class="secondary">{{ _("Elimina definitivamente i processi scelti") }}</button></div>
+  {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
+  {% else %}
   <h2 id="unused">{{ _("Oggetti di tipo «{t}» senza occorrenze", t=types[symbol_type][lang]) }} <span class="muted tiny">{{ unused|length }}</span></h2>
   <p class="tiny muted">{{ _("Oggetti del repository BPA senza più occorrenze: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
   {% if unused %}
@@ -214,6 +236,7 @@
     <div class="actions"><button type="submit" class="secondary">{{ _("Elimina gli oggetti scelti") }}</button></div>
   </form>
   {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
+  {% endif %}
 
   <p class="tiny muted" style="margin-top:16px">
     {{ _("Per consultare l'archivio come tabelle: nel database ci sono le viste bpa_view_activity, bpa_view_lane, bpa_view_event… (una per tipo, una colonna per attributo) e bpa_view_relations.") }}

@@ -589,3 +589,11 @@ processi; poi altri cataloghi e oggetti.
   per livello) con il nome nell'altra lingua, i modelli BPMN assegnati e i valori degli attributi, con ricerca; una riga
   apre il processo nel repository.
 - ✅ «Oggetti senza occorrenze»: in ogni scheda quelli del suo tipo (oggetti del repository BPA, non solo dei BPMN).
+
+## Processi della tassonomia senza occorrenze (17 ottobre 2026)
+- ✅ Anche il processo è un oggetto del repository che resta quando non ha occorrenze. «Elimina» diventa **«Togli dalla
+  tassonomia»**: toglie il processo e tutti i suoi discendenti (con un avviso che dice quanti) e li lascia nel
+  repository con attributi, struttura e modelli BPMN (`bpa_process.in_tree = False`).
+- ✅ In «Oggetti e attributi BPA», scheda «Processo (tassonomia)», sezione «senza occorrenze»: per ogni processo tolto
+  «Rimetti nella tassonomia» (torna sotto il suo padre, o in fondo al primo livello se il padre non c'è più, con i
+  sottoprocessi tolti con lui) o «Elimina definitivamente» (con i suoi modelli BPMN).

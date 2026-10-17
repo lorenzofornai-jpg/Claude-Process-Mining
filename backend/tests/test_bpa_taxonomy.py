@@ -58,9 +58,7 @@ def test_taxonomy_codes_move_and_delete(db):
     assert tax.move_process(db, pay, p2p.id, 0)
     assert [x.id for x in tax.children(db, p2p.id)] == [pay.id, buy.id]
     assert tax.move_process(db, buy, None, 99) and buy.parent_id is None and buy.position == 1
-    assert tax.delete_process(db, p2p)   # ha un sottoprocesso: motivo
     tax.new_model(db, pay, "arch")
-    assert tax.delete_process(db, pay)   # ha un modello: motivo
     tree = {n["id"]: n for n in tax.tree(db, "it")}   # il codice interno non si mostra
     assert "code" not in tree[pay.id] and tree[pay.id]["models"] == 1 and tree[pay.id]["parent"] == p2p.id
     assert tax.path_name(db, pay, "it") == "Procure to Pay › Payments"
@@ -187,3 +185,36 @@ def test_removing_a_model_clears_its_overlay_references(db):
     tax.delete_model(db, m)
     db.commit()
     assert db.query(BpaOverlayRef).count() == 0
+
+
+
+def test_remove_restore_and_delete_forever(db):
+    from app.models import BpaProcess
+    top = tax.create_process(db, None, _name("Management"), "arch")
+    other = tax.create_process(db, None, _name("Support"), "arch")
+    a = tax.create_process(db, top.id, _name("Strategy"), "arch")
+    b = tax.create_process(db, a.id, _name("Planning"), "arch")
+    m = tax.new_model(db, b, "arch")
+    db.commit()
+    # togliere il padre toglie anche figli e nipoti: restano nel repository (senza occorrenze)
+    assert tax.remove_from_tree(db, top) == 3
+    db.commit()
+    assert [n["id"] for n in tax.tree(db, "it")] == [other.id] and other.position == 0
+    assert {p.id for p in tax.removed_processes(db)} == {top.id, a.id, b.id}
+    assert db.get(BpaModel, m.id).process_id == b.id   # il modello resta attaccato
+    # rimesso: torna tutto il ramo (al primo livello, in fondo)
+    assert tax.restore(db, top) == 3
+    db.commit()
+    assert [n["id"] for n in tax.tree(db, "it") if n["parent"] is None] == [other.id, top.id]
+    assert not tax.removed_processes(db)
+    # un sottoprocesso tolto da solo e il padre poi tolto: rimettendo il sottoprocesso va al primo livello
+    tax.remove_from_tree(db, a)
+    tax.remove_from_tree(db, top)
+    tax.restore(db, a)
+    db.commit()
+    assert db.get(BpaProcess, a.id).parent_id is None and db.get(BpaProcess, b.id).in_tree is None
+    # eliminato definitivamente: via anche i suoi modelli
+    tax.remove_from_tree(db, b)
+    tax.delete_forever(db, b)
+    db.commit()
+    assert db.get(BpaProcess, b.id) is None and db.get(BpaModel, m.id) is None

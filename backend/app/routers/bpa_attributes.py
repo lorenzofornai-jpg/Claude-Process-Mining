@@ -71,7 +71,7 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
             counts[s.symbol_type] = counts.get(s.symbol_type, 0) + 1
         elif s.id not in used and not s.anonymous and s.in_repository and s.symbol_type == symbol_type:
             unused.append(s)
-    counts[bpa_repo.PROCESS_TYPE] = db.query(BpaProcess).count()
+    counts[bpa_repo.PROCESS_TYPE] = db.query(BpaProcess).filter(BpaProcess.in_tree.isnot(False)).count()
     lang = get_lang(request)
     occ_count = {}
     for (sid,) in db.query(BpaOccurrence.symbol_id).all():
@@ -89,10 +89,25 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
                          "values": [_bpa_value_text(d, (s.attrs or {}).get(d.key), lang) for d in defs]})
     rows.sort(key=lambda r: (r["anonymous"], r["name"].casefold()))
     processes_rows = _process_rows(db, defs, lang) if symbol_type == bpa_repo.PROCESS_TYPE else []
+    removed = _removed_rows(db, lang) if symbol_type == bpa_repo.PROCESS_TYPE else []
     return {"request": request, "types": bpa_repo.ATTR_TYPES, "symbol_type": symbol_type, "defs": defs,
             "data_types": bpa_repo.DATA_TYPES, "text_types": sorted(bpa_repo.TEXT_TYPES), "counts": counts,
             "unused": unused, "edit": next((d for d in defs if d.key == edit_key), None),
-            "errors": errors or [], "form": form, "rows": rows, "process_rows": processes_rows}
+            "errors": errors or [], "form": form, "rows": rows, "process_rows": processes_rows,
+            "removed_processes": removed}
+
+
+def _removed_rows(db, lang: str) -> list[dict]:
+    """Processi tolti dalla tassonomia (senza occorrenze): con il percorso, i sottoprocessi tolti con loro e i modelli."""
+    from app.services import bpa_taxonomy as tax
+    other = "en" if lang == "it" else "it"
+    out = []
+    for p in tax.removed_processes(db):
+        out.append({"id": p.id, "name": tax.text_of(p.name, lang), "other": tax.text_of(p.name, other),
+                    "path": tax.path_name(db, p, lang), "models": len(tax.repository_models(db, p.id)),
+                    "subs": len([x for x in tax.descendants(db, p, removed=True) if x.in_tree is False]),
+                    "updated_by": p.updated_by or p.created_by})
+    return sorted(out, key=lambda r: r["path"].casefold())
 
 
 def _process_rows(db, defs, lang: str) -> list[dict]:
@@ -307,6 +322,48 @@ async def bpa_attributes_unused_delete(request: Request):
     finally:
         db.close()
     return RedirectResponse(f"/bpa/attributes?type={form.get('symbol_type') or 'activity'}&saved=1#unused", status_code=303)
+
+
+@router.post("/bpa/attributes/processes/{process_id}/restore")
+def bpa_process_restore(request: Request, process_id: str):
+    """Rimette nella tassonomia un processo tolto (con i sottoprocessi tolti con lui)."""
+    from app.models import BpaProcess
+    from app.services import bpa_taxonomy as tax
+    user, denied = _access(request, edit=True, json=False)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        p = db.get(BpaProcess, process_id)
+        if p is not None and p.in_tree is False:
+            tax.restore(db, p)
+            p.updated_by, p.updated_at = user.name, tax._now()
+            db.commit()
+            return RedirectResponse(f"/bpa?process={p.id}", status_code=303)
+    finally:
+        db.close()
+    return RedirectResponse("/bpa/attributes?type=process#unused", status_code=303)
+
+
+@router.post("/bpa/attributes/processes/delete")
+async def bpa_process_delete_forever(request: Request):
+    """Elimina definitivamente i processi tolti dalla tassonomia scelti, con i loro modelli BPMN."""
+    from app.models import BpaProcess
+    from app.services import bpa_taxonomy as tax
+    user, denied = _access(request, edit=True, json=False)
+    if denied:
+        return denied
+    form = await request.form()
+    db = SessionLocal()
+    try:
+        for pid in form.getlist("process"):
+            p = db.get(BpaProcess, str(pid))
+            if p is not None and p.in_tree is False:
+                tax.delete_forever(db, p)
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse("/bpa/attributes?type=process&saved=1#unused", status_code=303)
 
 
 @router.get("/bpa/attributes/merge", response_class=HTMLResponse)

@@ -1513,3 +1513,4 @@ tr.pm-brush td, .ct-hbar.pm-brush { background: color-mix(in srgb, var(--brand) 
 .tax-order { display: inline-flex; gap: 4px; }
 .bpa-proc-row { cursor: pointer; }
 .bpa-proc-row:hover { background: var(--card-bg-soft); }
+#confirm-text { white-space: pre-line; }

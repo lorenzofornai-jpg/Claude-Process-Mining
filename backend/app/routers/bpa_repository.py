@@ -292,11 +292,9 @@ def api_delete(request: Request, process_id: str):
         p = db.get(BpaProcess, process_id)
         if p is None:
             return JSONResponse({"error": t(lang, "Processo non trovato.")}, status_code=404)
-        reason = tax.delete_process(db, p)
-        if reason:
-            return JSONResponse({"error": render(lang, reason)}, status_code=400)
+        n = tax.remove_from_tree(db, p)   # restano nel repository tra gli oggetti senza occorrenze
         db.commit()
-        return JSONResponse({"deleted": True})
+        return JSONResponse({"removed": n})
     finally:
         db.close()
 

@@ -509,7 +509,10 @@ class BpaProcess(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     name: Mapped[dict] = mapped_column(JSON, default=dict)          # {"it", "en"}
     description: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # {"it", "en"}
-    attrs: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # attributi definiti dall'Amministratore
+    attrs: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # attributi definiti nel repository
+    # False = tolto dalla tassonomia: resta nel repository (con attributi, sottoprocessi e modelli) tra gli oggetti
+    # senza occorrenze, da dove si rimette nell'albero o si elimina; None/True = nell'albero
+    in_tree: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)

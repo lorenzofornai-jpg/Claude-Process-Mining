@@ -35,7 +35,7 @@
               <button type="button" class="secondary bpa-icon" id="tax-down" title="{{ _("Sposta giù") }}" aria-label="{{ _("Sposta giù") }}">↓</button>
             </span>
             <button type="button" class="secondary" id="tax-new-child">+ {{ _("Sottoprocesso") }}</button>
-            <button type="button" class="link-btn ct-danger" id="tax-delete">{{ _("Elimina") }}</button>
+            <button type="button" class="link-btn ct-danger" id="tax-delete">{{ _("Togli dalla tassonomia") }}</button>
           </div>
           {% endif %}
         </div>
@@ -98,7 +98,9 @@
     createTitle: {{ _("Nuovo processo")|tojson }}, create: {{ _("Crea")|tojson }},
     root: {{ _("— primo livello —")|tojson }},
     saved: {{ _("Salvato.")|tojson }}, saving: {{ _("Salvataggio…")|tojson }},
-    deleteAsk: {{ _("Eliminare il processo «{n}»?")|tojson }}, deleteTitle: {{ _("Elimina il processo")|tojson }}, del: {{ _("Elimina")|tojson }},
+    deleteAsk: {{ _("Togliere «{n}» dalla tassonomia? Resta nel repository, con attributi e modelli BPMN, tra gli oggetti senza occorrenze (Oggetti e attributi BPA): da lì si rimette nella tassonomia o si elimina.")|tojson }},
+    deleteAskSubs: {{ _("Attenzione: verranno tolti dalla tassonomia anche i {n} processi sotto «{p}» (sottoprocessi, e i loro sottoprocessi). Restano nel repository e tornano insieme a «{p}» se lo rimetti nella tassonomia.")|tojson }},
+    deleteTitle: {{ _("Togli dalla tassonomia")|tojson }}, del: {{ _("Togli")|tojson }},
     otherName: {{ _("In {l}: {n}")|tojson }},
     created: {{ _("Creato da {u} il {d}.")|tojson }}, changed: {{ _("Ultima modifica di {u} il {d}.")|tojson }},
     open: {{ _("Apri")|tojson }}, view: {{ _("Visualizza")|tojson }}, rename: {{ _("Rinomina")|tojson }},
@@ -412,7 +414,9 @@
     $("tax-delete").addEventListener("click", function () {
       if (!detail) return;
       var id = detail.id, parent = detail.parent;
-      pmConfirm(fmt(T.deleteAsk, { n: detail.name }), { title: T.deleteTitle, ok: T.del }).then(function (yes) {
+      var subs = 0; (function count(id) { (kids[id] || []).forEach(function (x) { subs++; count(x.id); }); })(id);
+      var q = (subs ? fmt(T.deleteAskSubs, { n: subs, p: detail.name }) + "\n\n" : "") + fmt(T.deleteAsk, { n: detail.name });
+      pmConfirm(q, { title: T.deleteTitle, ok: T.del }).then(function (yes) {
         if (!yes) return;
         req("/bpa/api/processes/" + encodeURIComponent(id) + "/delete", {}).then(function () {
           current = null;

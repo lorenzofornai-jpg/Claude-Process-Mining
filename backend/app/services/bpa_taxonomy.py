@@ -77,10 +77,23 @@ def path_name(db, p, lang: str) -> str:
     return " › ".join(reversed(names))
 
 
-def children(db, parent_id: str | None) -> list:
+def children(db, parent_id: str | None, removed: bool = False) -> list:
+    """I sottoprocessi nell'albero (removed=True: anche quelli tolti dalla tassonomia)."""
     from app.models import BpaProcess
-    return db.query(BpaProcess).filter(BpaProcess.parent_id.is_(None) if parent_id is None
-                                       else BpaProcess.parent_id == parent_id).order_by(BpaProcess.position).all()
+    q = db.query(BpaProcess).filter(BpaProcess.parent_id.is_(None) if parent_id is None
+                                    else BpaProcess.parent_id == parent_id)
+    if not removed:
+        q = q.filter(BpaProcess.in_tree.isnot(False))
+    return q.order_by(BpaProcess.position).all()
+
+
+def descendants(db, p, removed: bool = False) -> list:
+    out, stack = [], list(children(db, p.id, removed))
+    while stack:
+        x = stack.pop(0)
+        out.append(x)
+        stack.extend(children(db, x.id, removed))
+    return out
 
 
 def create_process(db, parent_id: str | None, name: dict, user_name: str | None):
@@ -124,21 +137,55 @@ def move_process(db, p, parent_id: str | None, position: int) -> bool:
     return True
 
 
-def delete_process(db, p) -> str | None:
-    """Elimina un processo senza sottoprocessi e senza modelli; altrimenti il motivo (msg)."""
-    from app.i18n import msg
-    from app.models import BpaModel, BpaProcess
-    if db.query(BpaProcess).filter_by(parent_id=p.id).first() is not None:
-        return msg("Il processo ha dei sottoprocessi: eliminali o spostali prima.")
-    if db.query(BpaModel).filter_by(process_id=p.id, stage="repository").first() is not None:
-        return msg("Al processo sono assegnati dei modelli BPMN: eliminali prima.")
-    parent = p.parent_id
-    db.delete(p)
-    db.flush()
-    for i, x in enumerate(children(db, parent)):
+def _renumber(db, parent_id: str | None) -> None:
+    for i, x in enumerate(children(db, parent_id)):
         x.position = i
         db.add(x)
-    return None
+
+
+def remove_from_tree(db, p) -> int:
+    """Toglie il processo e i suoi discendenti dalla tassonomia: restano nel repository (attributi, struttura e
+    modelli BPMN) tra gli oggetti senza occorrenze. Ritorna quanti processi sono stati tolti."""
+    group = [p] + descendants(db, p)
+    for x in group:
+        x.in_tree = False
+        db.add(x)
+    db.flush()
+    _renumber(db, p.parent_id)
+    return len(group)
+
+
+def restore(db, p) -> int:
+    """Rimette nella tassonomia un processo tolto, con i discendenti tolti: sotto il suo padre se e' nell'albero,
+    altrimenti al primo livello (in fondo). Ritorna quanti processi sono tornati."""
+    from app.models import BpaProcess
+    parent = db.get(BpaProcess, p.parent_id) if p.parent_id else None
+    if parent is None or parent.in_tree is False:
+        p.parent_id = None
+    p.position = len(children(db, p.parent_id))
+    group = [p] + [x for x in descendants(db, p, removed=True) if x.in_tree is False]
+    for x in group:
+        x.in_tree = None
+        db.add(x)
+    db.flush()
+    return len(group)
+
+
+def removed_processes(db) -> list:
+    from app.models import BpaProcess
+    return db.query(BpaProcess).filter(BpaProcess.in_tree.is_(False)).all()
+
+
+def delete_forever(db, p) -> None:
+    """Elimina un processo tolto dalla tassonomia con i suoi modelli BPMN; i suoi sottoprocessi restano (senza padre)."""
+    from app.models import BpaProcess
+    for m in repository_models(db, p.id):
+        delete_model(db, m)
+    for x in db.query(BpaProcess).filter_by(parent_id=p.id).all():
+        x.parent_id = None
+        db.add(x)
+    db.delete(p)
+    db.flush()
 
 
 def tree(db, lang: str) -> list[dict]:
@@ -149,7 +196,7 @@ def tree(db, lang: str) -> list[dict]:
             counts[pid] = counts.get(pid, 0) + 1
     return [{"id": p.id, "parent": p.parent_id, "position": p.position,
              "name": text_of(p.name, lang), "models": counts.get(p.id, 0)}
-            for p in db.query(BpaProcess).order_by(BpaProcess.position).all()]
+            for p in db.query(BpaProcess).filter(BpaProcess.in_tree.isnot(False)).order_by(BpaProcess.position).all()]
 
 
 # ---------- modelli del repository ----------
