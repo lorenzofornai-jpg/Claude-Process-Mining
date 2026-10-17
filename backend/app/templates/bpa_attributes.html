@@ -153,27 +153,7 @@
     })();
   </script>
   {% else %}
-  <h2 id="unused">{{ _("Oggetti senza occorrenze") }}</h2>
-  <p class="tiny muted">{{ _("Oggetti del repository che non compaiono più in nessun suo BPMN: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
-  {% if unused %}
-  <form method="post" action="/bpa/attributes/unused/delete" data-confirm="{{ _("Eliminare gli oggetti scelti con i loro attributi?") }}" data-confirm-ok="{{ _("Elimina") }}">
-    <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
-    <div class="table-scroll">
-    <table class="admin-table">
-      <thead><tr><th></th><th>{{ _("Tipo") }}</th><th>{{ _("Nome") }}</th><th>{{ _("Creato da") }}</th></tr></thead>
-      <tbody>
-        {% for s in unused %}
-        <tr><td><input type="checkbox" name="symbol" value="{{ s.id }}" aria-label="{{ s.name_it }}"></td>
-          <td>{{ types[s.symbol_type][lang] }}</td>
-          <td>{{ s.name_it if lang == 'it' else (s.name_en or s.name_it) }} <span class="tiny muted">· {{ s.name_en if lang == 'it' else s.name_it }}</span></td>
-          <td class="tiny muted">{{ s.created_by or "—" }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    <div class="actions"><button type="submit" class="secondary">{{ _("Elimina gli oggetti scelti") }}</button></div>
-  </form>
-  {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
+
 
   <h2 id="symbols">{{ _("Oggetti di tipo «{t}»", t=types[symbol_type][lang]) }} <span class="muted tiny">{{ rows|length }}</span></h2>
   {% if rows %}
@@ -212,6 +192,28 @@
   </div>
   {% else %}<p class="tiny muted">{{ _("Nessun oggetto di questo tipo nell'archivio.") }}</p>{% endif %}
   {% endif %}
+
+  <h2 id="unused">{{ _("Oggetti senza occorrenze") }} <span class="muted tiny">{{ unused|length }}</span></h2>
+  <p class="tiny muted">{{ _("Oggetti di tutti i tipi che non compaiono più in nessun BPMN del repository: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
+  {% if unused %}
+  <form method="post" action="/bpa/attributes/unused/delete" data-confirm="{{ _("Eliminare gli oggetti scelti con i loro attributi?") }}" data-confirm-ok="{{ _("Elimina") }}">
+    <input type="hidden" name="symbol_type" value="{{ symbol_type }}">
+    <div class="table-scroll">
+    <table class="admin-table">
+      <thead><tr><th></th><th>{{ _("Tipo") }}</th><th>{{ _("Nome") }}</th><th>{{ _("Creato da") }}</th></tr></thead>
+      <tbody>
+        {% for s in unused %}
+        <tr><td><input type="checkbox" name="symbol" value="{{ s.id }}" aria-label="{{ s.name_it }}"></td>
+          <td>{{ types[s.symbol_type][lang] }}</td>
+          <td>{{ s.name_it if lang == 'it' else (s.name_en or s.name_it) }} <span class="tiny muted">· {{ s.name_en if lang == 'it' else s.name_it }}</span></td>
+          <td class="tiny muted">{{ s.created_by or "—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="actions"><button type="submit" class="secondary">{{ _("Elimina gli oggetti scelti") }}</button></div>
+  </form>
+  {% else %}<p class="tiny muted">{{ _("Nessuno.") }}</p>{% endif %}
 
   <p class="tiny muted" style="margin-top:16px">
     {{ _("Per consultare l'archivio come tabelle: nel database ci sono le viste bpa_view_activity, bpa_view_lane, bpa_view_event… (una per tipo, una colonna per attributo) e bpa_view_relations.") }}

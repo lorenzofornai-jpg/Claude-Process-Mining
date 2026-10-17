@@ -1961,6 +1961,6 @@ EN: dict[str, str] = {
     'Ordine tra i processi dello stesso livello': 'Order among processes at the same level',
     '«Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome.': '«Name» and «Description» are system attributes of processes: choose another name.',
     'I processi si creano e si compilano nel repository BPA: questi attributi compaiono sotto nome e descrizione. Tocca una riga per aprire il processo.': 'Processes are created and filled in the BPA repository: these attributes appear below name and description. Tap a row to open the process.',
-    'Oggetti del repository che non compaiono più in nessun suo BPMN: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.': 'Repository objects that no longer appear in any of its BPMNs: they keep their attributes and can be reused by giving the same name. You can delete them here.',
     'Processi della tassonomia': 'Taxonomy processes',
+    'Oggetti di tutti i tipi che non compaiono più in nessun BPMN del repository: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.': 'Objects of every type that no longer appear in any repository BPMN: they keep their attributes and can be reused by giving the same name. You can delete them here.',
 }
