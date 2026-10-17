@@ -193,8 +193,8 @@
   {% else %}<p class="tiny muted">{{ _("Nessun oggetto di questo tipo nell'archivio.") }}</p>{% endif %}
   {% endif %}
 
-  <h2 id="unused">{{ _("Oggetti senza occorrenze") }} <span class="muted tiny">{{ unused|length }}</span></h2>
-  <p class="tiny muted">{{ _("Oggetti di tutti i tipi che non compaiono più in nessun BPMN del repository: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
+  <h2 id="unused">{{ _("Oggetti di tipo «{t}» senza occorrenze", t=types[symbol_type][lang]) }} <span class="muted tiny">{{ unused|length }}</span></h2>
+  <p class="tiny muted">{{ _("Oggetti del repository BPA senza più occorrenze: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.") }}</p>
   {% if unused %}
   <form method="post" action="/bpa/attributes/unused/delete" data-confirm="{{ _("Eliminare gli oggetti scelti con i loro attributi?") }}" data-confirm-ok="{{ _("Elimina") }}">
     <input type="hidden" name="symbol_type" value="{{ symbol_type }}">

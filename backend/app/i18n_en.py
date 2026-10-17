@@ -1962,5 +1962,6 @@ EN: dict[str, str] = {
     '«Nome» e «Descrizione» sono attributi di sistema dei processi: scegli un altro nome.': '«Name» and «Description» are system attributes of processes: choose another name.',
     'I processi si creano e si compilano nel repository BPA: questi attributi compaiono sotto nome e descrizione. Tocca una riga per aprire il processo.': 'Processes are created and filled in the BPA repository: these attributes appear below name and description. Tap a row to open the process.',
     'Processi della tassonomia': 'Taxonomy processes',
-    'Oggetti di tutti i tipi che non compaiono più in nessun BPMN del repository: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.': 'Objects of every type that no longer appear in any repository BPMN: they keep their attributes and can be reused by giving the same name. You can delete them here.',
+    'Oggetti di tipo «{t}» senza occorrenze': 'Objects of type «{t}» without occurrences',
+    'Oggetti del repository BPA senza più occorrenze: restano con i loro attributi e si possono riutilizzare dando lo stesso nome. Qui puoi eliminarli.': 'BPA repository objects with no occurrences left: they keep their attributes and can be reused by giving the same name. You can delete them here.',
 }

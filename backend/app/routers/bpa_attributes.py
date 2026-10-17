@@ -69,7 +69,7 @@ def _bpa_context(db, request, symbol_type: str, edit_key: str | None, errors=Non
     for s in db.query(BpaSymbol).order_by(BpaSymbol.symbol_type, BpaSymbol.name_it).all():
         if s.id in repo:
             counts[s.symbol_type] = counts.get(s.symbol_type, 0) + 1
-        elif s.id not in used and not s.anonymous and s.in_repository:
+        elif s.id not in used and not s.anonymous and s.in_repository and s.symbol_type == symbol_type:
             unused.append(s)
     counts[bpa_repo.PROCESS_TYPE] = db.query(BpaProcess).count()
     lang = get_lang(request)

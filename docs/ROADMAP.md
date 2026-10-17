@@ -588,5 +588,4 @@ processi; poi altri cataloghi e oggetti.
 - ✅ In «Oggetti e attributi BPA», scheda «Processo (tassonomia)»: tabella dei processi nell'ordine dell'albero (rientro
   per livello) con il nome nell'altra lingua, i modelli BPMN assegnati e i valori degli attributi, con ricerca; una riga
   apre il processo nel repository.
-- ✅ «Oggetti senza occorrenze» è una sezione unica in fondo alla pagina, uguale in ogni scheda (anche «Processo
-  (tassonomia)»), con gli oggetti di tutti i tipi.
+- ✅ «Oggetti senza occorrenze»: in ogni scheda quelli del suo tipo (oggetti del repository BPA, non solo dei BPMN).
