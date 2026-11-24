@@ -3,7 +3,9 @@ Uso: python -m pytest backend/tests
 """
 from __future__ import annotations
 
+import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -69,14 +71,29 @@ def test_taxonomy_codes_move_and_delete(db):
     assert [x.id for x in tax.children(db, p2p.id)] == [pay.id, buy.id]
 
 
-def test_names_in_both_languages():
-    assert tax.both("Acquisti", "it", None, "Purchasing") == {"it": "Acquisti", "en": "Purchasing"}
-    # l'inglese era stato scritto a parte (diverso dall'italiano di prima): resta
-    assert tax.both("Acquisti diretti", "it", {"it": "Acquisti", "en": "Purchasing"}, "Direct") == \
-        {"it": "Acquisti diretti", "en": "Purchasing"}
-    assert not tax.needs_translation("Acquisti diretti", "it", {"it": "Acquisti", "en": "Purchasing"})
-    assert tax.needs_translation("Acquisti", "it", None)
-    assert tax.both("Acquisti", "it", {"it": "Vecchio", "en": "Vecchio"}, None) == {"it": "Acquisti", "en": "Acquisti"}
+def test_names_in_both_languages(monkeypatch):
+    pair = {"it": "Acquisti", "en": "Purchasing"}
+    assert tax.both("Acquisti", "it", None, pair) == pair
+    # testo inglese scritto con l'interfaccia in italiano: in italiano va la traduzione
+    assert tax.both("Purchasing", "it", None, pair) == pair
+    # il testo cambia: si ritraduce anche l'altra lingua
+    assert tax.needs_translation("Acquisti diretti", "it", pair) and tax.needs_translation("Acquisti", "it", None)
+    # testo non cambiato: niente LLM, resta com'era (anche l'inglese corretto a mano)
+    assert not tax.needs_translation("Acquisti", "it", {"it": "Acquisti", "en": "Procurement"})
+    assert tax.both("Acquisti", "it", {"it": "Acquisti", "en": "Procurement"}, None) == {"it": "Acquisti", "en": "Procurement"}
+    # senza LLM: lo stesso testo nelle due lingue
+    assert tax.both("Acquisti", "it", {"it": "Vecchio", "en": "Old"}, None) == {"it": "Acquisti", "en": "Acquisti"}
+    # la risposta dell'LLM si legge per chiave, con a capo e testo intero
+    from app.services import bpmn, llm
+    long_en = "Accounts Receivable manages...\n1. Invoicing\n2. Collections"
+    reply = {"v": {"it": "La contabilita' clienti gestisce...\n1. Fatturazione\n2. Incassi", "en": long_en}, "x": "?"}
+    fake = SimpleNamespace(messages=SimpleNamespace(create=lambda **k: SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+        content=[SimpleNamespace(text="ok " + json.dumps(reply))])))
+    monkeypatch.setattr(llm, "available", lambda: True)
+    monkeypatch.setattr(llm, "client", lambda: fake)
+    out, _ = bpmn.llm_text_both({"v": long_en, "x": "y"})
+    assert out == {"v": reply["v"]}
 
 
 def test_import_copies_and_consolidates_in_the_repository(db):

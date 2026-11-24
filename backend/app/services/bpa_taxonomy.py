@@ -28,29 +28,29 @@ def text_of(value, lang: str) -> str:
     return v.get(lang) or v.get("en" if lang == "it" else "it") or ""
 
 
-def both(value: str, lang: str, old: dict | None, translated: str | None) -> dict:
-    """{"it", "en"} con il testo nuovo nella lingua dell'utente; l'altra lingua prende la traduzione, oppure resta com'era
-    se era gia' stata scritta a parte (diversa dal testo di prima nella lingua dell'utente)."""
-    other = "en" if lang == "it" else "it"
+def both(value: str, lang: str, old: dict | None, translated: dict | None) -> dict:
+    """{"it", "en"} dal testo scritto nella lingua dell'interfaccia: `translated` e' la coppia data dall'LLM, che
+    riconosce la lingua in cui il testo e' scritto davvero (un testo inglese incollato con l'interfaccia in italiano
+    va in inglese, e in italiano la sua traduzione). Testo non cambiato: resta com'era, con le correzioni fatte a mano
+    nell'altra lingua. Senza LLM: lo stesso testo nelle due lingue."""
     old = dict(old or {})
-    keep = old.get(other) and old.get(other) != old.get(lang)
-    out = {lang: value}
-    out[other] = old[other] if keep else (translated or value)
-    return out
+    if translated:
+        return {x: translated.get(x) or value for x in ("it", "en")}
+    if old.get(lang) == value and all(old.get(x) for x in ("it", "en")):
+        return {"it": old["it"], "en": old["en"]}
+    return {"it": value, "en": value}
 
 
 def needs_translation(value: str, lang: str, old: dict | None) -> bool:
-    other = "en" if lang == "it" else "it"
+    """Si traduce quando il testo nella lingua dell'interfaccia cambia: l'altra lingua lo segue."""
     old = old or {}
-    if not value:
-        return False
-    return not (old.get(other) and old.get(other) != old.get(lang)) and old.get(lang) != value
+    return bool(value) and old.get(lang) != value
 
 
-def translate(texts: dict[str, str], target: str) -> tuple[dict[str, str], float]:
-    """Traduzioni dall'LLM (senza LLM: {} e i testi restano uguali nelle due lingue)."""
+def translate(texts: dict[str, str]) -> tuple[dict[str, dict], float]:
+    """{chiave: {"it", "en"}} dall'LLM (senza LLM: {} e i testi restano uguali nelle due lingue)."""
     texts = {k: v for k, v in texts.items() if v}
-    return bpmn.llm_translate(texts, target) if texts else ({}, 0.0)
+    return bpmn.llm_text_both(texts) if texts else ({}, 0.0)
 
 
 # ---------- tassonomia ----------

@@ -320,6 +320,48 @@ def llm_translate(items: dict[str, str], target: str) -> tuple[dict[str, str], f
     return {k: str(v) for k, v in out.items() if k in items and isinstance(v, (str, int, float))}, round(cost, 5)
 
 
+TEXT_BOTH_PROMPT = """\
+Testi di un repository di processi aziendali: nomi di processi, titoli di modelli, descrizioni anche lunghe.
+Ogni testo può essere scritto in italiano o in inglese. Per ogni voce restituisci {"it": ..., "en": ...}:
+nella lingua in cui il testo è già scritto lascialo identico; nell'altra traducilo fedelmente e per intero, senza
+riassumere né accorciare, mantenendo a capo, elenchi numerati e puntati, grassetti, sigle e termini tecnici d'uso
+comune (es. DSO, KPI, SAP, Order-to-Cash). Rispondi SOLO con un oggetto JSON {chiave: {"it": ..., "en": ...}},
+nessun altro testo."""
+
+
+def llm_text_both(items: dict[str, str]) -> tuple[dict[str, dict], float]:
+    """{chiave: testo in italiano o in inglese} -> ({chiave: {"it", "en"}}, costo in USD): la lingua di partenza la
+    riconosce l'LLM (chi incolla un testo inglese con l'interfaccia in italiano lo ritrova tradotto in italiano).
+    Senza LLM o se la risposta non si legge: ({}, 0)."""
+    from app.services import llm
+    if not items or not llm.available():
+        return {}, 0.0
+    try:
+        client = llm.client()
+        response = client.messages.create(
+            model=llm.model("assistant"), max_tokens=llm.max_tokens("assistant", 16000), system=TEXT_BOTH_PROMPT,
+            messages=[{"role": "user", "content": json.dumps(items, ensure_ascii=False)}])
+    except Exception as exc:   # rete, chiave, limiti: il testo si salva comunque
+        print(f"BPA: traduzione non riuscita ({exc!r}).")
+        return {}, 0.0
+    price_in, price_out = llm.price(llm.model("assistant"))
+    u = response.usage
+    cost = ((u.input_tokens or 0) * price_in + (u.output_tokens or 0) * price_out) / 1_000_000
+    text = "".join(getattr(b, "text", "") for b in response.content)
+    start, end = text.find("{"), text.rfind("}")
+    try:
+        out = json.loads(text[start:end + 1]) if start >= 0 else {}
+    except ValueError:
+        out = {}
+    res = {}
+    for k, v in (out.items() if isinstance(out, dict) else []):
+        if k in items and isinstance(v, dict):
+            pair = {lang: str(v[lang]).strip() for lang in LANGS if isinstance(v.get(lang), str) and v[lang].strip()}
+            if pair:
+                res[k] = pair
+    return res, round(cost, 5)
+
+
 def labels_both(texts_: list[str], known: dict[str, dict] | None = None) -> tuple[dict[str, dict], float]:
     """{testo: {"it", "en"}} per nomi di attivita' e ruoli dal dataset (lingua di partenza qualsiasi): quelli gia'
     tradotti (known) non si richiedono. Senza LLM il testo resta uguale nelle due lingue."""

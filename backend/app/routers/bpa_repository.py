@@ -147,10 +147,9 @@ def api_process(request: Request, process_id: str):
 
 
 async def _translated(value: str, lang: str, old: dict | None) -> tuple[dict, float]:
-    other = "en" if lang == "it" else "it"
     tr, cost = ({}, 0.0)
     if tax.needs_translation(value, lang, old):
-        tr, cost = await run_in_threadpool(tax.translate, {"v": value}, other)
+        tr, cost = await run_in_threadpool(tax.translate, {"v": value})
     return tax.both(value, lang, old, tr.get("v")), cost
 
 
@@ -183,7 +182,7 @@ async def api_create(request: Request):
 
 @router.post("/bpa/api/processes/{process_id}")
 async def api_update(request: Request, process_id: str):
-    """Nome e descrizione nella lingua dell'interfaccia; l'altra lingua si traduce (se non era stata scritta a parte)."""
+    """Nome e descrizione: se il testo cambia, l'LLM lo mette in tutte e due le lingue (riconosce in quale e' scritto)."""
     user, denied = _access(request, edit=True)
     if denied:
         return denied
