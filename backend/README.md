@@ -102,6 +102,11 @@ dipendenze, genera il dataset di test se manca, avvia il server.
 bash backend/run_dev.sh
 ```
 
+In un Codespace l'app parte da sola a ogni avvio, in background (`backend/start_app.sh`, lanciato da
+`postStartCommand`; log in `backend/data/app.log`, si ferma con `bash backend/start_app.sh stop`): per una demo basta
+aprire il collegamento dell'app sulla porta 8000, anche dall'icona salvata nella schermata Home (Safari → Condividi →
+Aggiungi alla schermata Home). `run_dev.sh` ferma quella in background e riparte con il riavvio a ogni modifica.
+
 Passo-passo equivalente (anche per Windows, adattando l'attivazione del venv):
 
 ```bash

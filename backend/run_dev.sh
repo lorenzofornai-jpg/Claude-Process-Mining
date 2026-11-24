@@ -9,6 +9,9 @@ if [ ! -d ".venv" ]; then
   python3 -m venv .venv
 fi
 
+# se l'app e' gia' avviata in background (avvio del Codespace, start_app.sh) la fermo: la porta 8000 serve qui
+bash ./start_app.sh stop >/dev/null
+
 source .venv/bin/activate
 echo "Installo le dipendenze..."
 pip install -q --upgrade pip

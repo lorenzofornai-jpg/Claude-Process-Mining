@@ -8,3 +8,5 @@ backend/.env
 .DS_Store
 backend/data/documents/
 backend/data/secret/
+backend/data/app.log
+backend/data/app.pid
