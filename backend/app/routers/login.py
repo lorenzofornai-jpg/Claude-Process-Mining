@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,6 +32,20 @@ def _cache_bust() -> str:
     riutilizzato nell'URL, quella vecchia voce di cache (chiavata per URL)
     semplicemente non puo' mai fare match."""
     return uuid.uuid4().hex[:10]
+
+
+def _go(url: str) -> HTMLResponse:
+    """Pagina 200 che porta subito a `url`: dopo accesso e uscita si usa al posto di un redirect 303. Bug reale visto
+    su iPad (Safari) con l'inoltro porte di Codespaces: il cookie mandato insieme a un redirect a volte non veniva
+    salvato prima di seguirlo, e la pagina dopo arrivava col cookie di prima (l'utente precedente, o una sessione gia'
+    chiusa: «Sessione scaduta» e non si riusciva piu' a entrare). Un cookie arrivato con una pagina normale il browser
+    lo salva prima di caricare la successiva."""
+    from html import escape
+    u = escape(url, quote=True)
+    return HTMLResponse(
+        f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url={u}">'
+        f'<title>AI Process Intelligence</title></head><body style="font-family:sans-serif">'
+        f'<script>location.replace({json.dumps(url)});</script><a href="{u}">AI Process Intelligence</a></body></html>')
 
 
 def _home_url(user: User) -> str:
@@ -81,7 +96,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
         )
 
     start_session(request, user)
-    return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
+    return _go(f"{_home_url(user)}?_s={_cache_bust()}")   # non un 303: vedi _go
 
 
 @router.get("/lang/{code}")
@@ -131,4 +146,4 @@ def logout(request: Request):
     # ?logged_out=1 dice a login_form() di non rimbalzare alla dashboard anche
     # se, per lo stesso motivo di timing, current_user() vedesse ancora un
     # utente valido su QUESTA richiesta immediatamente successiva.
-    return RedirectResponse(f"/login?logged_out=1&_s={_cache_bust()}", status_code=303)
+    return _go(f"/login?logged_out=1&_s={_cache_bust()}")   # non un 303: vedi _go
