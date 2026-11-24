@@ -16,6 +16,34 @@ app = FastAPI(title="AI Process Intelligence")
 # dei 14 giorni di default di Starlette che facevano rientrare senza login.
 # La scadenza per inattivita' e' in auth.current_user().
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax", max_age=None)
+
+
+class _MergeCookieHeaders:
+    """Unisce in una sola le intestazioni Cookie di una richiesta, prima che SessionMiddleware legga la sessione.
+    Con HTTP/2 il browser puo' mandare i cookie divisi in piu' intestazioni «cookie» (una per cookie), e l'inoltro
+    porte di Codespaces le passa all'app cosi' come sono; Starlette pero' legge solo la prima. Bug reale visto su iPad:
+    a seconda di quale cookie arrivava per primo (quelli di GitHub o quello dell'app) la stessa sessione valeva a una
+    richiesta e non alla successiva - fuori dopo il login, «Sessione scaduta», l'utente di prima, albero BPA vuoto."""
+
+    def __init__(self, app):
+        self.app = app
+        self.noticed = False
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = scope.get("headers") or []
+            parts = [v for k, v in headers if k == b"cookie"]
+            if len(parts) > 1:
+                if not self.noticed:
+                    self.noticed = True
+                    print(f"Cookie divisi in {len(parts)} intestazioni (inoltro porte): uniti in una.")
+                merged = b"; ".join(p.strip().rstrip(b";") for p in parts if p.strip())
+                scope = dict(scope)
+                scope["headers"] = [(k, v) for k, v in headers if k != b"cookie"] + [(b"cookie", merged)]
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_MergeCookieHeaders)   # dopo SessionMiddleware = gira prima di lei
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 app.include_router(login.router)
 app.include_router(admin.router)
