@@ -1976,4 +1976,12 @@ EN: dict[str, str] = {
     "Processi tolti dalla tassonomia: restano nel repository con attributi e sottoprocessi (i loro modelli BPMN sono nella staging area). Puoi rimetterli nella tassonomia (sotto il loro processo padre, o al primo livello se non c'è più) o eliminarli definitivamente.": 'Processes removed from the taxonomy: they stay in the repository with attributes and sub-processes (their BPMN models are in the staging area). You can put them back in the taxonomy (under their parent process, or at the top level if it is no longer there) or delete them permanently.',
     'Togliere «{n}» dalla tassonomia? Resta nel repository, con i suoi attributi, tra gli oggetti senza occorrenze (Oggetti e attributi BPA): da lì si rimette nella tassonomia o si elimina. I suoi modelli BPMN vanno nella staging area, da dove si possono assegnare a un altro processo.': 'Remove «{n}» from the taxonomy? It stays in the repository, with its attributes, among the objects without occurrences (BPA objects and attributes): from there it can be put back in the taxonomy or deleted. Its BPMN models go to the staging area, from where they can be assigned to another process.',
     'Ultima modifica': 'Last change',
+    'Almeno {n} caratteri.': 'At least {n} characters.',
+    'La password deve avere almeno {n} caratteri.': 'The password must have at least {n} characters.',
+    'Le due password non coincidono.': 'The two passwords do not match.',
+    'Nuova password': 'New password',
+    "Nuova password per {n} ({e}). La vecchia password non serve e smette di valere; la nuova vale dal prossimo accesso. Comunicala all'utente in modo sicuro.": 'New password for {n} ({e}). The old password is not needed and stops working; the new one applies from the next sign-in. Give it to the user securely.',
+    'Password reimpostata per {n}: vale dal prossimo accesso.': 'Password reset for {n}: it applies from the next sign-in.',
+    'Reimposta password': 'Reset password',
+    'Ripeti la nuova password': 'Repeat the new password',
 }

@@ -137,6 +137,16 @@ struttura e "Aggiorna dati"): l'estrazione è sanificata (nessun path fuori
 dalla cartella di destinazione, solo membri `.csv`/`.txt`, max 50 MB per
 membro come guardia contro zip bomb).
 
+### Password dimenticata
+
+- **Da Amministrazione**: in «Utenti» ogni riga ha «Reimposta password». Un amministratore può reimpostare la
+  password di qualunque utente, anche di un altro amministratore o del superuser (almeno 8 caratteri, scritta due
+  volte; la vecchia non serve). Vale dal prossimo accesso.
+- **Dal terminale**, quando nessun amministratore riesce ad accedere (es. password del superuser dimenticata): dalla
+  cartella `backend`, `python scripts/reset_password.py` elenca gli amministratori e chiede quale reimpostare;
+  `python scripts/reset_password.py --email superuser` va diretto. La password si scrive due volte e non compare a
+  schermo. Serve l'accesso al server (o al Codespace) dove gira l'app.
+
 ### Ruoli e permessi
 
 - **Admin**: crea utenti, crea ed elimina processi, assegna **Data

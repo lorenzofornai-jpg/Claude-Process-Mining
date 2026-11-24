@@ -50,7 +50,7 @@ ROLE_LABELS = {"data_engineer": "Data Engineer", "data_analyst": "Data Analyst"}
 
 
 @router.get("", response_class=HTMLResponse)
-def admin_dashboard(request: Request):
+def admin_dashboard(request: Request, reset: str = ""):
     user, denied = _require_admin(request)
     if denied:
         return denied
@@ -89,6 +89,7 @@ def admin_dashboard(request: Request):
         {
             "request": request, "user": user, "rows": rows, "assignable_users": assignable_users,
             "all_users": all_users, "assignable_roles": ASSIGNABLE_ROLES, "role_labels": ROLE_LABELS,
+            "reset_for": next((u for u in all_users if u.id == reset), None),
         },
     )
 
@@ -197,6 +198,55 @@ def create_user(
         db.close()
 
     return RedirectResponse("/admin", status_code=303)
+
+
+MIN_PASSWORD = 8
+
+
+def _reset_page(request: Request, user: User, target: User, error=None, status_code: int = 200):
+    return templates.TemplateResponse("admin_reset_password.html", {
+        "request": request, "user": user, "target": target, "error": error, "min_password": MIN_PASSWORD},
+        status_code=status_code)
+
+
+@router.get("/users/{user_id}/password", response_class=HTMLResponse)
+def reset_password_form(request: Request, user_id: str):
+    """Pagina per reimpostare la password di un utente (anche di un altro amministratore o del superuser)."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        target = db.get(User, user_id)
+    finally:
+        db.close()
+    if target is None:
+        return RedirectResponse("/admin#users", status_code=303)
+    return _reset_page(request, user, target)
+
+
+@router.post("/users/{user_id}/password")
+def reset_password(request: Request, user_id: str, password: str = Form(...), confirm: str = Form(...)):
+    """Reimposta la password: la vecchia non serve (chi l'ha dimenticata non puo' darla). Il cambio vale dal prossimo
+    accesso; le sessioni gia' aperte restano valide fino alla scadenza per inattivita'."""
+    user, denied = _require_admin(request)
+    if denied:
+        return denied
+    db = SessionLocal()
+    try:
+        target = db.get(User, user_id)
+        if target is None:
+            return RedirectResponse("/admin#users", status_code=303)
+        if len(password) < MIN_PASSWORD:
+            return _reset_page(request, user, target, msg("La password deve avere almeno {n} caratteri.", n=MIN_PASSWORD), 400)
+        if password != confirm:
+            return _reset_page(request, user, target, msg("Le due password non coincidono."), 400)
+        target.password_hash = hash_password(password)
+        db.commit()
+        target_id = target.id
+    finally:
+        db.close()
+    return RedirectResponse(f"/admin?reset={target_id}#users", status_code=303)
 
 
 @router.post("/users/{user_id}/bpa-role")
