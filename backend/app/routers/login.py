@@ -58,8 +58,9 @@ def login_form(request: Request):
     user = None if just_logged_out else current_user(request)
     if user is not None:
         return RedirectResponse(f"{_home_url(user)}?_s={_cache_bust()}", status_code=303)
+    from app.auth import session_expired
     error = None
-    if request.session.pop("expired", False):
+    if not just_logged_out and session_expired(request):
         error = "Sessione scaduta per inattività: accedi di nuovo."
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
@@ -114,7 +115,9 @@ def switch_language(request: Request, code: str):
 
 @router.post("/logout")
 def logout(request: Request):
+    from app.auth import end_session
     lang = request.session.get("lang")
+    end_session(request)   # anche se il browser rimandasse il vecchio cookie, quella sessione non vale piu'
     request.session.clear()
     if lang:
         request.session["lang"] = lang  # la pagina di accesso resta nella lingua scelta

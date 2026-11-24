@@ -90,14 +90,28 @@ def test_script_resets_by_email_or_by_choice(Session, monkeypatch, capsys):
     assert _password_ok(Session, "su", "dal-terminale")
 
 
-def test_session_cookie_is_not_rewritten_on_every_request(monkeypatch):
-    """L'ultima attivita' si aggiorna al massimo una volta al minuto (meno riscritture del cookie di sessione)."""
+def test_session_cookie_is_written_only_at_login_and_logout(monkeypatch, tmp_path):
+    """L'ultima attivita' e' tenuta dal server: navigando il cookie non cambia; «Esci» e un nuovo accesso rendono
+    non valida la sessione precedente anche se il browser rimanda il vecchio cookie; dopo l'inattivita' scade."""
     from app import auth
-    fake = SimpleNamespace(session={"user_id": "u", "last_seen": 1000})
-    monkeypatch.setattr(auth, "SessionLocal", lambda: SimpleNamespace(get=lambda *a: "utente", close=lambda: None))
-    monkeypatch.setattr(auth.time, "time", lambda: 1030)
-    assert auth.current_user(fake) == "utente" and fake.session["last_seen"] == 1000
-    monkeypatch.setattr(auth.time, "time", lambda: 1000 + auth.LAST_SEEN_EVERY)
-    assert auth.current_user(fake) == "utente" and fake.session["last_seen"] == 1000 + auth.LAST_SEEN_EVERY
-    monkeypatch.setattr(auth.time, "time", lambda: 1000 + auth.LAST_SEEN_EVERY + auth.SESSION_IDLE_MINUTES * 60 + 1)
-    assert auth.current_user(fake) is None and fake.session.get("expired")
+    monkeypatch.setattr(auth, "_REVOKED_FILE", tmp_path / "revoked.txt")
+    monkeypatch.setattr(auth, "_REVOKED", set())
+    monkeypatch.setattr(auth, "_LAST_SEEN", {})
+    monkeypatch.setattr(auth, "SessionLocal", lambda: SimpleNamespace(get=lambda m, uid: uid, close=lambda: None))
+    clock = [1000]
+    monkeypatch.setattr(auth.time, "time", lambda: clock[0])
+    browser = SimpleNamespace(session={})
+    auth.start_session(browser, SimpleNamespace(id="superuser", language=None))
+    old = dict(browser.session)
+    clock[0] += 120
+    assert auth.current_user(browser) == "superuser" and browser.session == old   # navigando il cookie non cambia
+    # nuovo accesso nello stesso browser (altro utente): il cookie vecchio non vale piu'
+    auth.start_session(browser, SimpleNamespace(id="sinner", language=None))
+    assert auth.current_user(browser) == "sinner"
+    assert auth.current_user(SimpleNamespace(session=dict(old))) is None
+    assert old["sid"] in (tmp_path / "revoked.txt").read_text()   # anche dopo un riavvio del server
+    # inattivita' oltre il limite: scaduta (e lo dice al login)
+    clock[0] += auth.SESSION_IDLE_MINUTES * 60 + 1
+    assert auth.current_user(browser) is None and auth.session_expired(browser)
+    # cookie senza «sid» (di prima di questa versione): non vale
+    assert auth.current_user(SimpleNamespace(session={"user_id": "sinner", "last_seen": clock[0]})) is None

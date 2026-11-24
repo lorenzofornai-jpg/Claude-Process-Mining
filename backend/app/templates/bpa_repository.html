@@ -147,7 +147,10 @@
   function req(url, body) {
     var o = { credentials: "same-origin" };
     if (body !== undefined) { o.method = "POST"; o.headers = { "Content-Type": "application/json" }; o.body = JSON.stringify(body); }
-    return fetch(url, o).then(function (r) { return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; }); });
+    return fetch(url, o).then(function (r) {
+      if (r.status === 401) { location.href = "/login"; throw new Error(""); }   // sessione non valida: di nuovo l'accesso
+      return r.json().then(function (j) { if (!r.ok || j.error) throw new Error(j.error || r.status); return j; });
+    });
   }
   function say(text, cls) { var s = $("tax-status"); s.textContent = text || ""; s.className = "tiny " + (cls || ""); }
   function when(iso) { return iso ? window.pmLocalTime(iso) : ""; }
