@@ -16,6 +16,9 @@ from app.db import SessionLocal
 from app.models import ProcessAssignment, User
 
 
+LAST_SEEN_EVERY = 60   # secondi tra due aggiornamenti dell'ultima attivita' nella sessione
+
+
 def hash_password(raw: str) -> str:
     return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -49,7 +52,11 @@ def current_user(request) -> User | None:
         request.session.clear()
         request.session["expired"] = True
         return None
-    request.session["last_seen"] = now
+    # l'ora dell'ultima attivita' si aggiorna al massimo una volta al minuto: ogni aggiornamento riscrive il cookie
+    # di sessione, e con piu' richieste in corso (o piu' schede, o l'inoltro porte di Codespaces) una risposta
+    # arrivata dopo puo' rimettere nel browser una sessione vecchia (es. di prima del logout o di un altro utente)
+    if now - last_seen >= LAST_SEEN_EVERY:
+        request.session["last_seen"] = now
     db = SessionLocal()
     try:
         return db.get(User, user_id)

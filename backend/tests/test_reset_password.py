@@ -88,3 +88,16 @@ def test_script_resets_by_email_or_by_choice(Session, monkeypatch, capsys):
     mod = _script(Session, monkeypatch, [], [])
     assert mod.main(["--email", "nessuno@x.it"]) == 1
     assert _password_ok(Session, "su", "dal-terminale")
+
+
+def test_session_cookie_is_not_rewritten_on_every_request(monkeypatch):
+    """L'ultima attivita' si aggiorna al massimo una volta al minuto (meno riscritture del cookie di sessione)."""
+    from app import auth
+    fake = SimpleNamespace(session={"user_id": "u", "last_seen": 1000})
+    monkeypatch.setattr(auth, "SessionLocal", lambda: SimpleNamespace(get=lambda *a: "utente", close=lambda: None))
+    monkeypatch.setattr(auth.time, "time", lambda: 1030)
+    assert auth.current_user(fake) == "utente" and fake.session["last_seen"] == 1000
+    monkeypatch.setattr(auth.time, "time", lambda: 1000 + auth.LAST_SEEN_EVERY)
+    assert auth.current_user(fake) == "utente" and fake.session["last_seen"] == 1000 + auth.LAST_SEEN_EVERY
+    monkeypatch.setattr(auth.time, "time", lambda: 1000 + auth.LAST_SEEN_EVERY + auth.SESSION_IDLE_MINUTES * 60 + 1)
+    assert auth.current_user(fake) is None and fake.session.get("expired")
